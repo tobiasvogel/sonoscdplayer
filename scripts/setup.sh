@@ -27,3 +27,5 @@ apt install "${a[@]}"
 raspi-config nonint do_hostname "sonoscdplayer-${WLANMAC}"
 # enable i2c
 raspi-config nonint do_i2c 0
+# enable spi
+raspi-config nonint do_spi 0
