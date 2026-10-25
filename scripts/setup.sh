@@ -29,3 +29,8 @@ raspi-config nonint do_hostname "sonoscdplayer-${WLANMAC}"
 raspi-config nonint do_i2c 0
 # enable spi
 raspi-config nonint do_spi 0
+
+# setup python venv
+mkdir -p ~/sonoscdplayer
+python3 -m venv ~/sonoscdplayer/.venv
+~/sonoscdplayer/.venv/bin/python -m pip install soco
