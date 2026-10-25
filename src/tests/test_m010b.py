@@ -62,6 +62,26 @@ class OrphanTests(unittest.TestCase):
         self.assertIs(self.server.stream.ring, self.stream.ring)
         c2.close()
 
+    def test_cancelled_ring_restarts_even_when_start_still_retained(self):
+        # Regression: immediate Sonos reconnect with initial PCM still in RAM.
+        # An old attach(0) would succeed, then fail on BufferClosed.
+        original_reader = self.stream.attach()
+        self.stream.ring.unregister(original_reader)
+        self.stream.cancel_orphan()
+        self.stream.thread.join(timeout=4)
+        self.assertFalse(self.stream.thread.is_alive())
+        self.assertEqual(self.stream.ring.stats['oldest_offset'], 0)
+        c = http.client.HTTPConnection('127.0.0.1', self.server.server_port, timeout=8)
+        try:
+            c.request('GET', '/track/1.wav')
+            r = c.getresponse()
+            payload = r.read()
+            self.assertEqual(r.status, 200)
+            self.assertEqual(len(payload), self.count + 44)
+            self.assertEqual(self.server._generation, 2)
+        finally:
+            c.close()
+
     def test_disconnected_client_never_cancels_remaining_live_reader(self):
         held = self.stream.ring.register(0)
         try:

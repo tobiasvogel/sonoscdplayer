@@ -271,10 +271,15 @@ class Server(ThreadingHTTPServer):
         """
         with self._generation_lock:
             current = self.stream
-            try:
-                return current, current.attach()
-            except DataExpired:
-                pass
+            # A cancelled/failed producer may still have offset 0 retained.
+            # Never attach a fresh GET to its terminally closed ring: a Sonos
+            # reconnect would receive BufferClosed rather than a new stream.
+            terminal_error = current._cancel.is_set() or (current.ring.stats['finished'] and current.error is not None)
+            if not terminal_error:
+                try:
+                    return current, current.attach()
+                except DataExpired:
+                    pass
             # The old anchor exists only before the first GET; an expired
             # beginning implies it was removed. Count readers under ring lock.
             state = current.ring.stats
