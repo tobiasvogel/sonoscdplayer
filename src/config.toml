@@ -1,0 +1,2 @@
+[streaming]
+max_buffer_mib = 16

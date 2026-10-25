@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+config-local.toml
+*.wav
+*.pcm
+*.raw
+*.log
+
+# Local-only settings / artifacts
+config.local.toml
+config-*.toml
+*.env
+.env
+.env.*
+*.zip
+*.txt
+.DS_Store
