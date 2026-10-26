@@ -1,0 +1,15 @@
+[pushbuttons]
+power = 17
+connect = 21
+eject = 20
+previous = 15
+stop = 18
+playpause = 14
+skip = 16
+volume_up = 27
+volume_dn = 22
+
+[encoder]
+encoder_a = 6
+encoder_b = 26
+encoder_sw = 5

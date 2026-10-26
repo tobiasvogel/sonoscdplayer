@@ -1,0 +1,13 @@
+[Unit]
+Description=APDS9306 Helligkeitssensor
+After=systemd-udev-settle.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/apds9306d 25
+Restart=on-failure
+RestartSec=2
+UMask=0002
+
+[Install]
+WantedBy=multi-user.target
