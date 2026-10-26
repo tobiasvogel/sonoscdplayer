@@ -63,8 +63,8 @@ Sonos playback requires a suitable streaming and control integration. The specif
 
 - [x] Prove reliable digital audio-CD reading on a target SBC and drive.
 - [x] Prove playback on a real Sonos speaker using a locally hosted, Sonos-compatible stream.
-- [ ] Define buffering, timing, end-of-track handling, and error recovery.
-- [ ] Implement a playback state machine and physical controls.
+- [x] Define buffering, timing, end-of-track handling, and error recovery.
+- [x] Implement a playback state machine and physical controls.
 - [ ] Add Sonos discovery, target selection, and group-aware behavior.
 - [ ] Add a compact display and settings menu.
 - [ ] Validate boot-time operation, unplug/reinsert events, and network interruptions.
