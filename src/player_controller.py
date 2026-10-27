@@ -29,6 +29,19 @@ class ProcessServer:
         self.base, self.device, self.config, self.port = base, device, config, port
         self.popen = popen
         self.proc = None
+        self._reader_active = False
+        self._reader_lock = threading.Lock()
+
+    def reader_active(self):
+        with self._reader_lock:
+            return self._reader_active if self.alive() else False
+
+    def _observe_line(self, line):
+        with self._reader_lock:
+            if 'READER started' in line:
+                self._reader_active = True
+            elif 'READER end written=' in line:
+                self._reader_active = False
 
     def start(self, track):
         if self.proc is not None:
@@ -40,8 +53,10 @@ class ProcessServer:
                        cwd=self.base, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, text=True, bufsize=1)
         self.proc = p
+        with self._reader_lock:
+            self._reader_active = True  # conservative until reader reports completion
         threading.Thread(target=stream_lines,
-                         args=(p, events, time.monotonic()), daemon=True).start()
+                         args=(p, events, time.monotonic(), self._observe_line), daemon=True).start()
         try:
             wait_reader(events, p, timeout=30)
             if p.poll() is not None:
@@ -55,6 +70,8 @@ class ProcessServer:
 
     def close(self):
         p, self.proc = self.proc, None
+        with self._reader_lock:
+            self._reader_active = False
         if p is not None and p.poll() is None:
             p.terminate()
             try:
@@ -87,6 +104,8 @@ class Controller:
         self.player = None
         self.last_transport = 'UNKNOWN'
         self.seen_playing = False
+        self.start_monotonic = None
+        self.stopped_since = None
 
     def _url(self, track):
         return make_url(self.host, self.port, track)
@@ -95,6 +114,32 @@ class Controller:
         return (f'mode={self.state.mode.value} track={self.state.selected_track}/'
                 f'{len(self.state.track_numbers)} sonos={self.last_transport} '
                 f'owned={bool(self.owned_url)} server={self.server.alive()}')
+    
+    def status_snapshot(self):
+        """Read cached state only: no CD, network, or Sonos status queries.
+
+        ``owned`` reports a cached session association, not authorization for
+        later destructive commands. Those must repeat live ownership checks.
+        """
+        active = self.server.alive()
+        owned = bool(self.owned_url)
+        return {
+            'schema_version': 1,
+            'player': {
+                'mode': self.state.mode.value,
+                'track': self.state.selected_track,
+                'track_count': len(self.state.track_numbers),
+                'error': self.state.error,
+            },
+            'sonos': {
+                'target_uid': self.uid if owned else None,
+                'transport': self.last_transport,
+                'owned': owned,
+            },
+            'stream': {
+                'active': active,
+            },
+        }
 
     def refresh(self):
         if self.state.mode not in (Mode.STARTING, Mode.PLAYING):
@@ -107,11 +152,21 @@ class Controller:
             transport = player.get_current_transport_info()['current_transport_state']
             self.last_transport = transport
             if transport == 'PLAYING':
+                self.stopped_since = None
                 ownership_snapshot(player, self.uid, self.owned_url)
                 self.seen_playing = True
                 if self.state.mode == Mode.STARTING:
                     self.state = self.state.playback_confirmed()
                     print('[M0.11d] PLAYING confirmed', flush=True)
+            elif transport == 'STOPPED' and self.state.mode == Mode.STARTING and not self.seen_playing:
+                # Sonos can abort a slow first GET without ever reaching PLAYING.
+                # Require a grace period so a transient STOPPED does not abort startup.
+                now = time.monotonic()
+                if self.stopped_since is None:
+                    self.stopped_since = now
+                if (self.start_monotonic is not None and now - self.start_monotonic >= 20
+                        and now - self.stopped_since >= 5):
+                    self._fail('Sonos remained STOPPED without confirmed PLAYING; startup aborted')
             elif transport == 'STOPPED' and self.seen_playing:
                 # Do not call this a natural end if the URI has changed.
                 info = player.get_current_track_info()
@@ -123,6 +178,8 @@ class Controller:
                 self.player = None
                 self.server.close()
                 print('[M0.11d] STOPPED observed; local server closed', flush=True)
+            elif transport == 'TRANSITIONING':
+                self.stopped_since = None
             elif transport not in ('STOPPED', 'TRANSITIONING', 'PLAYING'):
                 self._fail(f'unexpected Sonos transport state: {transport}')
         except Exception as exc:
@@ -168,6 +225,8 @@ class Controller:
         self.player, self.owned_url = player, url
         self.seen_playing = False
         self.last_transport = 'TRANSITIONING'
+        self.start_monotonic = time.monotonic()
+        self.stopped_since = None
 
     def _stop_owned(self):
         if self.state.mode != Mode.PLAYING or not self.seen_playing or not self.owned_url:
@@ -183,7 +242,79 @@ class Controller:
         self.server.close()
 
     def stop(self):
+        # If Sonos already stopped during STARTING, release ONLY our local session.
+        # Never issue Sonos STOP on this recovery path.
+        if self.state.mode == Mode.STARTING and self.owned_url and self.player:
+            player = self.verify_existing()
+            if player.uid != self.uid:
+                raise RuntimeError('target UID changed')
+            group = player.group
+            members = list(group.members)
+            if (len(members) != 1 or members[0].uid != self.uid
+                    or group.coordinator.uid != self.uid):
+                raise RuntimeError('target no longer solo; refusing local release')
+            state = player.get_current_transport_info()['current_transport_state']
+            self.last_transport = state
+            if state != 'STOPPED':
+                raise ValueError('startup recovery only when Sonos is already STOPPED')
+            self.state = self.state.natural_end()
+            self.owned_url, self.player = None, None
+            self.seen_playing = False
+            self.start_monotonic, self.stopped_since = None, None
+            self.server.close()
+            return
         self._stop_owned()
+
+    def reset(self):
+        """Clear an already locally released ERROR; never contact or command Sonos."""
+        if self.state.mode != Mode.ERROR:
+            raise ValueError('RESET requires ERROR')
+        if self.server.alive() or self.owned_url or self.player is not None:
+            raise RuntimeError('RESET refused: local playback still attached')
+        self.state = self.state.reset_error()
+        self.uid = None
+        self.last_transport = 'UNKNOWN'
+        self.seen_playing = False
+        self.start_monotonic = self.stopped_since = None
+
+    def force_stop(self, uid, *, discover=None):
+        """Explicit emergency action: stop selected solo speaker without URI proof.
+
+        Never affects a group. Never chooses a device implicitly. No retries.
+        The operator intentionally overrides the normal owned-stream restriction.
+        """
+        from sonos_parallel_test import find_target
+        if not uid:
+            raise ValueError('force STOP requires explicit target UID')
+        if self.owned_url and self.uid != uid:
+            raise RuntimeError('another target has active local session; force STOP refused')
+        target = (discover or find_target)(uid)
+        for _ in range(2):
+            if target.uid != uid:
+                raise RuntimeError('force STOP UID mismatch')
+            group = target.group
+            members = list(group.members)
+            if (len(members) != 1 or members[0].uid != uid
+                    or group.coordinator.uid != uid):
+                raise RuntimeError('force STOP blocked: target not a solo coordinator')
+        # This action CAN stop unrelated playback on the explicitly selected solo
+        # speaker. Caller must request --force; never use it automatically.
+        target.stop()
+        self.last_transport = 'STOPPED'
+        if self.uid == uid and self.owned_url:
+            self.server.close()
+            self.owned_url, self.player = None, None
+            self.seen_playing = False
+            self.start_monotonic, self.stopped_since = None, None
+            if self.state.mode in (Mode.STARTING, Mode.PLAYING):
+                self.state = self.state.natural_end()
+            elif self.state.mode == Mode.ERROR:
+                self.state = self.state.reset_error()
+        # _fail() already detached the original session. A successful, explicit
+        # emergency STOP still permits recovery from that released ERROR state.
+        if (self.state.mode == Mode.ERROR and not self.server.alive()
+                and self.owned_url is None and self.player is None):
+            self.reset()
 
     def change(self, direction):
         if direction not in ('next', 'previous'):
@@ -229,6 +360,53 @@ class Controller:
             raise ValueError('unknown command; type help')
         return True
 
+    def shutdown_owned(self, policy='stop_owned'):
+        """Best-effort shutdown; NEVER stop Sonos without two fresh URI proofs.
+
+        No assumption is made about STARTING, ERROR, a changed group, or a
+        changed URI.  The server is closed by close() in the caller's finally.
+        """
+        if policy not in ('stop_owned', 'leave_playing'):
+            raise ValueError('unknown shutdown policy')
+        if policy == 'leave_playing':
+            return {'action': 'left_playing', 'reason': 'configured policy'}
+        if not self.owned_url or self.player is None:
+            return {'action': 'nothing_to_stop'}
+        if self.state.mode != Mode.PLAYING or not self.seen_playing:
+            return {'action': 'not_stopped', 'reason': 'PLAYING never confirmed'}
+        try:
+            player = self.verify_existing()
+            ownership_snapshot(player, self.uid, self.owned_url)
+            ownership_snapshot(player, self.uid, self.owned_url)
+            player.stop()
+        except Exception as exc:
+            return {'action': 'not_stopped',
+                    'reason': f'{type(exc).__name__}: {exc}'}
+        self.last_transport = 'STOPPED'
+        self.state = self.state.natural_end()
+        self.owned_url, self.player = None, None
+        self.seen_playing = False
+        return {'action': 'stopped_owned'}
+
+    @staticmethod
+    def sonos_live_status(uid, *, discover=None):
+        """Read-only inspection; never attaches or changes playback ownership."""
+        from sonos_parallel_test import find_target
+        if not isinstance(uid, str) or not uid:
+            raise ValueError('explicit UID required')
+        player = (discover or find_target)(uid)
+        if player.uid != uid:
+            raise RuntimeError('live status target UID mismatch')
+        group = player.group
+        members = list(group.members)
+        is_solo = (len(members) == 1 and members[0].uid == uid
+                   and group.coordinator.uid == uid)
+        transport = player.get_current_transport_info()['current_transport_state']
+        uri = player.get_current_track_info().get('uri')
+        return {'target_uid': uid, 'transport': transport, 'solo': is_solo,
+                'uri_present': bool(uri),
+                'player_stream_uri': isinstance(uri, str) and '/track/' in uri and uri.endswith('.wav')}
+ 
     def close(self):
         # Crucial: leaving the CLI never causes a Sonos STOP.
         self.server.close()

@@ -18,6 +18,8 @@ class DummyController:
         self.refreshes = 0
     def status(self):
         return 'mode=STOPPED track=2/15 sonos=UNKNOWN owned=False server=False'
+    def status_snapshot(self):
+        return {'schema_version': 1, 'player': {'mode': 'STOPPED'}}
     def play(self, uid):
         self.calls.append(('play', uid))
     def command(self, cmd):

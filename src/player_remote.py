@@ -6,7 +6,7 @@ import socket
 import sys
 
 
-def request(path, command, *, uid=None, response_timeout=120):
+def request(path, command, *, uid=None, force=False, response_timeout=120):
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         client.settimeout(3)  # Local socket connection only
         client.connect(path)
@@ -14,6 +14,8 @@ def request(path, command, *, uid=None, response_timeout=120):
         payload = {'command': command}
         if uid is not None:
             payload['uid'] = uid
+        if force:
+            payload['force'] = True
         client.sendall((json.dumps(payload) + '\n').encode())
         data = bytearray()
         while b'\n' not in data and len(data) < 8192:
@@ -31,19 +33,25 @@ def run(argv=None):
     parser.add_argument('--socket', default='/tmp/sonoscdplayer-control.sock')
     parser.add_argument('--response-timeout', type=float, default=120,
                         help='seconds to wait for a command response (default: 120)')
-    parser.add_argument('--uid', help='Sonos target UID (required for PLAY)')
-    parser.add_argument('command', choices=('status','play','next','previous','stop','select','help'))
+    parser.add_argument('--uid', help='Sonos target UID (PLAY, live status or forced STOP)')
+    parser.add_argument('--force', action='store_true', help='emergency STOP of explicitly selected solo speaker; bypasses ownership')
+    parser.add_argument('command', choices=('status','sonos-status','play','next','previous','stop','select','reset','help'))
     parser.add_argument('track', nargs='?', type=int)
     args = parser.parse_args(argv)
     if (args.command == 'select') != (args.track is not None):
         parser.error('select requires a track; other commands do not accept a track')
-    if (args.command == 'play') != (args.uid is not None):
-        parser.error('--uid is required for play and forbidden for other commands')
+    if args.force and args.command != 'stop':
+        parser.error('--force is only accepted with stop')
+    if args.command in ('play', 'sonos-status') or (args.command == 'stop' and args.force):
+        if not args.uid:
+            parser.error('PLAY, sonos-status and forced STOP require --uid')
+    elif args.uid is not None:
+        parser.error('--uid is only accepted with PLAY, sonos-status or STOP --force')
     if not 1 <= args.response_timeout <= 600:
         parser.error('--response-timeout must be between 1 and 600 seconds')
     command = f'select {args.track}' if args.track is not None else args.command
     try:
-        result = request(args.socket, command, uid=args.uid, response_timeout=args.response_timeout)
+        result = request(args.socket, command, uid=args.uid, force=args.force, response_timeout=args.response_timeout)
     except socket.timeout:
         print('No response before timeout; command outcome UNKNOWN. Do NOT blindly repeat '+
               'PLAY/NEXT/PREVIOUS/STOP. Check: python3 player_remote.py status', file=sys.stderr)

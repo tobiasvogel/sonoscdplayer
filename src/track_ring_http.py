@@ -6,12 +6,14 @@ This server is NOT a seamless concurrent retry implementation.
 """
 from __future__ import annotations
 import argparse
+from contextlib import nullcontext
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import subprocess
 import threading
 import time
 from urllib.parse import urlsplit
 from cd_toc import read_toc
+from drive_access import drive_lock
 from ram_ring import PCMRing, StreamingConfig, BufferTimeout, BufferClosed, DataExpired
 
 CHUNK = 2352 * 25  # 58,800 bytes, 1/3s PCM
@@ -51,6 +53,7 @@ class Stream:
         self._cancel = threading.Event()
         self._proc_lock = threading.Lock()
         self._proc = None
+        self._diag_thread = None
         self.thread = threading.Thread(target=self._produce, daemon=True, name='cd-reader')
 
     def log(self, msg):
@@ -58,7 +61,21 @@ class Stream:
 
     def start(self):
         self.thread.start()
-        threading.Thread(target=self._diag_loop, daemon=True, name='pcm-diagnostics').start()
+        self._diag_thread = threading.Thread(target=self._diag_loop, daemon=True, name='pcm-diagnostics')
+        self._diag_thread.start()
+ 
+    def shutdown(self, *, timeout=4.0):
+        """Bounded, idempotent teardown of the reader and diagnostic worker.
+
+        Called when the HTTP server is closed, including after failed/aborted
+        tests. Never issues a Sonos control command or writes PCM to disk.
+        """
+        self._diag_stop.set()
+        if self.thread.ident is not None and self.thread.is_alive():
+            self.cancel_orphan()
+            self.thread.join(timeout=timeout)
+        if self._diag_thread is not None and self._diag_thread.is_alive():
+            self._diag_thread.join(timeout=min(timeout, 2.0))
 
     def http_begin(self, reader_id: int, client: str):
         with self._diag_lock:
@@ -118,6 +135,14 @@ class Stream:
         self.log('READER cancellation requested: disconnected orphan')
 
     def _produce(self):
+        # A replay generation must acquire the same lock as motor keep-alive.
+        # The reader owns it until its subprocess has fully exited.
+        device = self.command[self.command.index('-d') + 1] if '-d' in self.command else None
+        # Unit-test synthetic producers have no optical drive to coordinate.
+        with (drive_lock(device) if device is not None else nullcontext()):
+            self._produce_locked()
+
+    def _produce_locked(self):
         proc = None
         err = None
         try:
@@ -244,7 +269,16 @@ class Server(ThreadingHTTPServer):
         self.route = f'/track/{track}.wav'
         self._generation_lock = threading.Lock()
         self._generation = 1
+        self._streams = [stream]
         super().__init__(addr, Handler)
+
+    def server_close(self):
+        """Release all replay generations, not only the current one."""
+        try:
+            for stream in self._streams:
+                stream.shutdown()
+        finally:
+            super().server_close()
 
     def release_get(self, stream: Stream, disconnected: bool):
         """Cancel a CD read ONLY when a broken HTTP connection left no readers.
@@ -301,6 +335,7 @@ class Server(ThreadingHTTPServer):
             # Pin offset zero BEFORE starting cdparanoia, preventing start races.
             reader = replacement.attach()
             self.stream = replacement
+            self._streams.append(replacement)
             self._generation += 1
             replacement.log(f'REPLAY generation={self._generation} sequential CD reread')
             replacement.start()

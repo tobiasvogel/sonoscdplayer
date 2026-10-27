@@ -1,2 +1,18 @@
 [streaming]
 max_buffer_mib = 16
+
+# M0.12b-r3: optional optical drive power management.
+# Safe default: disabled. Enable explicitly after reviewing the test plan.
+[drive_power]
+enabled = true
+strategy = "auto" # off | start | keepalive | power_condition | auto
+keepalive_interval_seconds = 10
+
+# Advanced: only fields advertised as changeable are written.
+# Volatile only; NEVER --save. No writes without explicit overrides.
+# [drive_power.mode_page_overrides]
+# IACT = 0
+
+# M0.12b-r7: on service shutdown, stop ONLY a doubly verified owned PLAYING URI.
+[service]
+shutdown_policy = "stop_owned" # stop_owned | leave_playing

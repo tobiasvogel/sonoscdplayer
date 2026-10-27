@@ -61,11 +61,13 @@ def detect_drive(base: pathlib.Path) -> str:
     return matches[0]
 
 
-def stream_lines(proc: subprocess.Popen, event_queue: queue.Queue, t0: float):
+def stream_lines(proc: subprocess.Popen, event_queue: queue.Queue, t0: float, observer=None):
     try:
         for line in proc.stdout:
             txt = line.rstrip('\n')
             print(f'[server +{time.monotonic()-t0:7.3f}s] {txt}', flush=True)
+            if observer is not None:
+                observer(txt)
             event_queue.put((time.monotonic(), txt))
     finally:
         event_queue.put((time.monotonic(), None))
