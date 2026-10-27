@@ -1,3 +1,8 @@
+# M0.12c-r1: BCM numbers from the original prototype; no direct Sonos actions.
+[gpio]
+numbering = "BCM"
+poll_interval_ms = 2
+
 [buttons]
 power = 17
 connect = 21
@@ -13,3 +18,23 @@ volume_dn = 22
 encoder_a = 6
 encoder_b = 26
 encoder_sw = 5
+
+# For the supplied 3.3V Schmitt-trigger PCB, buttons go HIGH on press.
+# For simple buttons to ground, use pull="up", active_level="low".
+[input_defaults]
+pull = "off"          # off | up | down
+active_level = "high" # high | low
+debounce_ms = 0       # per-button software stabilization, 0 disables
+
+[encoder_input]
+pull = "off"
+active_level = "low" # applies to encoder push switch only
+button_debounce_ms = 0
+steps_per_detent = 4  # count valid quadrature state transitions
+invert_direction = false
+
+# Override each button individually when mixing types of interface.
+# [button_overrides.stop]
+# pull = "up"
+# active_level = "low"
+# debounce_ms = 30

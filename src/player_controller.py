@@ -93,6 +93,22 @@ def routed_source_ip(target_ip):
     return result
 
 
+def ownership_for_transport(player, uid, url, expected):
+    """Read-only, strict identity/topology/URI/transport gate; no automatic adoption."""
+    if player.uid != uid:
+        raise RuntimeError('ownership denied: UID changed')
+    group = player.group
+    members = list(group.members)
+    if len(members) != 1 or members[0].uid != uid or group.coordinator.uid != uid:
+        raise RuntimeError('ownership denied: not solo coordinator')
+    transport = player.get_current_transport_info()['current_transport_state']
+    if transport != expected:
+        raise RuntimeError(f'ownership denied: transport {transport}, expected {expected}')
+    if player.get_current_track_info().get('uri') != url:
+        raise RuntimeError('ownership denied: exact URI mismatch')
+
+
+
 class Controller:
     """A single owner: only this instance's exact URI may be stopped."""
     def __init__(self, state, uid, host, port, server, verify=verify_target, route=None):
@@ -142,7 +158,7 @@ class Controller:
         }
 
     def refresh(self):
-        if self.state.mode not in (Mode.STARTING, Mode.PLAYING):
+        if self.state.mode not in (Mode.STARTING, Mode.PLAYING, Mode.PAUSED):
             return
         if not self.server.alive():
             self._fail('stream server exited while playing')
@@ -157,7 +173,13 @@ class Controller:
                 self.seen_playing = True
                 if self.state.mode == Mode.STARTING:
                     self.state = self.state.playback_confirmed()
+                elif self.state.mode == Mode.PAUSED:
+                    self.state = self.state.resumed()
                     print('[M0.11d] PLAYING confirmed', flush=True)
+            elif transport == 'PAUSED_PLAYBACK' and self.state.mode in (Mode.PLAYING, Mode.PAUSED):
+                ownership_for_transport(player, self.uid, self.owned_url, 'PAUSED_PLAYBACK')
+                if self.state.mode == Mode.PLAYING:
+                    self.state = self.state.paused()
             elif transport == 'STOPPED' and self.state.mode == Mode.STARTING and not self.seen_playing:
                 # Sonos can abort a slow first GET without ever reaching PLAYING.
                 # Require a grace period so a transient STOPPED does not abort startup.
@@ -228,12 +250,44 @@ class Controller:
         self.start_monotonic = time.monotonic()
         self.stopped_since = None
 
-    def _stop_owned(self):
-        if self.state.mode != Mode.PLAYING or not self.seen_playing or not self.owned_url:
-            raise ValueError('STOP/track switch requires confirmed owned PLAYING')
+    def pause(self):
+        if self.state.mode != Mode.PLAYING or not self.seen_playing or not self.owned_url or not self.server.alive():
+            raise ValueError('PAUSE requires confirmed owned PLAYING')
         player = self.verify_existing()
-        ownership_snapshot(player, self.uid, self.owned_url)
-        ownership_snapshot(player, self.uid, self.owned_url)
+        ownership_for_transport(player, self.uid, self.owned_url, 'PLAYING')
+        ownership_for_transport(player, self.uid, self.owned_url, 'PLAYING')
+        player.pause()
+        self.state = self.state.paused()
+        self.last_transport = 'PAUSED_PLAYBACK'
+
+    def resume(self):
+        if self.state.mode != Mode.PAUSED or not self.seen_playing or not self.owned_url or not self.server.alive():
+            raise ValueError('RESUME requires confirmed owned PAUSED')
+        player = self.verify_existing()
+        ownership_for_transport(player, self.uid, self.owned_url, 'PAUSED_PLAYBACK')
+        ownership_for_transport(player, self.uid, self.owned_url, 'PAUSED_PLAYBACK')
+        player.play()
+        self.state = self.state.resumed()
+        self.last_transport = 'PLAYING'
+
+    def playpause(self, uid=None):
+        if self.state.mode == Mode.STOPPED:
+            return self.play(uid)
+        if uid is not None and uid != self.uid:
+            raise ValueError('PLAYPAUSE target UID mismatch')
+        if self.state.mode == Mode.PLAYING:
+            return self.pause()
+        if self.state.mode == Mode.PAUSED:
+            return self.resume()
+        raise ValueError('PLAYPAUSE forbidden in current mode')
+
+    def _stop_owned(self):
+        if self.state.mode not in (Mode.PLAYING, Mode.PAUSED) or not self.seen_playing or not self.owned_url:
+            raise ValueError('STOP/track switch requires confirmed owned playback')
+        player = self.verify_existing()
+        expected = 'PLAYING' if self.state.mode == Mode.PLAYING else 'PAUSED_PLAYBACK'
+        ownership_for_transport(player, self.uid, self.owned_url, expected)
+        ownership_for_transport(player, self.uid, self.owned_url, expected)
         player.stop()  # only destructive action
         self.state = self.state.natural_end()
         self.owned_url, self.player = None, None
@@ -323,8 +377,8 @@ class Controller:
             self.state = (self.state.next_track() if direction == 'next'
                           else self.state.previous_track())
             return
-        if self.state.mode != Mode.PLAYING:
-            raise ValueError('track switch requires STOPPED or confirmed PLAYING')
+        if self.state.mode not in (Mode.PLAYING, Mode.PAUSED):
+            raise ValueError('track switch requires STOPPED or confirmed owned playback')
         old = self.state.selected_track
         numbers = self.state.track_numbers
         pos = numbers.index(old)
@@ -348,6 +402,12 @@ class Controller:
             print(self.status(), flush=True)
         elif name == 'play' and len(tokens) == 1:
             self.play()
+        elif name == 'pause' and len(tokens) == 1:
+            self.pause()
+        elif name == 'resume' and len(tokens) == 1:
+            self.resume()
+        elif name == 'playpause' and len(tokens) == 1:
+            self.playpause()
         elif name == 'stop' and len(tokens) == 1:
             self.stop()
         elif name in ('next', 'previous') and len(tokens) == 1:
@@ -372,12 +432,13 @@ class Controller:
             return {'action': 'left_playing', 'reason': 'configured policy'}
         if not self.owned_url or self.player is None:
             return {'action': 'nothing_to_stop'}
-        if self.state.mode != Mode.PLAYING or not self.seen_playing:
-            return {'action': 'not_stopped', 'reason': 'PLAYING never confirmed'}
+        if self.state.mode not in (Mode.PLAYING, Mode.PAUSED) or not self.seen_playing:
+            return {'action': 'not_stopped', 'reason': 'playback never confirmed'}
         try:
             player = self.verify_existing()
-            ownership_snapshot(player, self.uid, self.owned_url)
-            ownership_snapshot(player, self.uid, self.owned_url)
+            expected = 'PLAYING' if self.state.mode == Mode.PLAYING else 'PAUSED_PLAYBACK'
+            ownership_for_transport(player, self.uid, self.owned_url, expected)
+            ownership_for_transport(player, self.uid, self.owned_url, expected)
             player.stop()
         except Exception as exc:
             return {'action': 'not_stopped',

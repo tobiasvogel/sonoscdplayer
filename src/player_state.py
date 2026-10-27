@@ -14,6 +14,7 @@ class Mode(str, Enum):
     STOPPED = 'STOPPED'
     STARTING = 'STARTING'
     PLAYING = 'PLAYING'
+    PAUSED = 'PAUSED'
     ERROR = 'ERROR'
 
 
@@ -40,14 +41,14 @@ class PlayerState:
             raise ValueError('Selected track not on disc')
 
     def disc_loaded(self, numbers: tuple[int, ...]) -> 'PlayerState':
-        if self.mode in (Mode.STARTING, Mode.PLAYING):
+        if self.mode in (Mode.STARTING, Mode.PLAYING, Mode.PAUSED):
             raise TransitionError('Cannot change disc during active playback')
         if not numbers:
             raise TransitionError('Empty audio disc')
         return PlayerState(Mode.STOPPED, tuple(numbers), numbers[0])
 
     def disc_removed(self) -> 'PlayerState':
-        if self.mode in (Mode.STARTING, Mode.PLAYING):
+        if self.mode in (Mode.STARTING, Mode.PLAYING, Mode.PAUSED):
             raise TransitionError('Cannot remove disc logically while playing; handle transport first')
         return PlayerState()
 
@@ -76,8 +77,18 @@ class PlayerState:
             raise TransitionError('Playback confirmation expected only after STARTING')
         return replace(self, mode=Mode.PLAYING)
 
+    def paused(self) -> 'PlayerState':
+        if self.mode != Mode.PLAYING:
+            raise TransitionError('PAUSE requires PLAYING')
+        return replace(self, mode=Mode.PAUSED)
+
+    def resumed(self) -> 'PlayerState':
+        if self.mode != Mode.PAUSED:
+            raise TransitionError('RESUME requires PAUSED')
+        return replace(self, mode=Mode.PLAYING)
+
     def natural_end(self) -> 'PlayerState':
-        if self.mode not in (Mode.STARTING, Mode.PLAYING):
+        if self.mode not in (Mode.STARTING, Mode.PLAYING, Mode.PAUSED):
             raise TransitionError('No playback underway')
         return replace(self, mode=Mode.STOPPED)
 

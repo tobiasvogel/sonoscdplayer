@@ -75,7 +75,7 @@ class PCMRing:
         self._consumer_wait_seconds = 0.0
         self._consumer_wait_max_seconds = 0.0
 
-    def reset_for_replay(self) -> None:
+    def reset_for_replay(self, offset: int = 0) -> None:
         """Reuse the exact existing PCM allocation for a new track generation.
 
         Caller must hold the generation admission lock and guarantee that the
@@ -84,7 +84,9 @@ class PCMRing:
         with self._cv:
             if not self._finished or self._readers:
                 raise BufferClosed('cannot reset ring while producer or readers active')
-            self._start = self._end = 0
+            if type(offset) is not int or offset < 0 or offset % PCM_FRAME_BYTES:
+                raise ValueError('replay offset must be PCM-frame aligned')
+            self._start = self._end = offset
             self._finished = False
             self._error = None
             self._producer_wait_count = 0

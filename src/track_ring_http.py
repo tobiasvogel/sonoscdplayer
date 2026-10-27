@@ -6,6 +6,7 @@ This server is NOT a seamless concurrent retry implementation.
 """
 from __future__ import annotations
 import argparse
+import re
 from contextlib import nullcontext
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import subprocess
@@ -16,6 +17,7 @@ from cd_toc import read_toc
 from drive_access import drive_lock
 from ram_ring import PCMRing, StreamingConfig, BufferTimeout, BufferClosed, DataExpired
 
+SECTOR = 2352
 CHUNK = 2352 * 25  # 58,800 bytes, 1/3s PCM
 PREBUFFER = 176400  # one second
 RATE = 44100 * 4
@@ -26,15 +28,45 @@ def wav_header(n: int) -> bytes:
             struct.pack('<IHHIIHH', 16, 1, 2, 44100, RATE, 4, 16) +
             b'data' + struct.pack('<I', n))
 
+class ProbeCache:
+    """Bounded copy of the initial CD-DA PCM, budgeted against the ring size."""
+    def __init__(self, size: int):
+        if size < CHUNK or size % 4:
+            raise ValueError('probe cache must hold one complete PCM chunk')
+        self.data = bytearray(size)
+        self.ready = False
+        self.lock = threading.Lock()
+
+    def capture(self, offset: int, block: bytes):
+        if offset != 0 or len(block) < len(self.data):
+            return
+        with self.lock:
+            if not self.ready:
+                self.data[:] = block[:len(self.data)]
+                self.ready = True
+
+    def read(self):
+        with self.lock:
+            return bytes(self.data) if self.ready else None
+
+
 class Stream:
-    def __init__(self, expected: int, capacity: int, command: list[str], write_timeout: float = 30, initial_prebuffer_ms: int = 0, ring: PCMRing | None = None):
+    def __init__(self, expected: int, capacity: int, command: list[str], write_timeout: float = 30, initial_prebuffer_ms: int = 0, ring: PCMRing | None = None, start_offset: int = 0, probe_cache: ProbeCache | None = None):
         if expected < 1 or expected % 4 or expected > (2**32 - 37):
             raise ValueError('Invalid WAV PCM size')
         self.expected = expected
-        self.ring = ring if ring is not None else PCMRing(capacity)
-        if self.ring.capacity != capacity:
+        self.probe_cache = probe_cache
+        ring_capacity = capacity - (len(probe_cache.data) if probe_cache is not None else 0)
+        if ring_capacity < (CHUNK if probe_cache is not None else 4):
+            raise ValueError('PCM RAM budget too small for probe cache')
+        self.ring = ring if ring is not None else PCMRing(ring_capacity)
+        if self.ring.capacity != ring_capacity:
             raise ValueError('reused ring capacity mismatch')
-        self.command = command
+        self.total_ram_budget = capacity
+        if type(start_offset) is not int or not 0 <= start_offset < expected or start_offset % SECTOR:
+            raise ValueError('start_offset must be a sector boundary inside track')
+        self.start_offset = start_offset
+        self.command = list(command)
         self.write_timeout = write_timeout
         if type(initial_prebuffer_ms) is not int or not 0 <= initial_prebuffer_ms <= 30000:
             raise ValueError("initial_prebuffer_ms must be 0..30000")
@@ -42,10 +74,10 @@ class Stream:
         requested = (RATE * initial_prebuffer_ms // 1000) // 4 * 4
         self.initial_prebuffer_bytes = min(max(CHUNK, requested), capacity, expected)
         self.error = None
-        self.written = 0
+        self.written = start_offset
         self.started = time.monotonic()
         # Pin offset 0 until first GET attaches, even if CD reads fast.
-        self.anchor = self.ring.register(0)
+        self.anchor = self.ring.register(start_offset)
         self.lock = threading.Lock()
         self._diag_lock = threading.Lock()
         self._http_clients: dict[int, dict] = {}
@@ -117,9 +149,9 @@ class Stream:
             if d['finished'] and not clients:
                 break
 
-    def attach(self):
+    def attach(self, offset=0):
         with self.lock:
-            reader = self.ring.register(0)  # DataExpired if offset 0 already recycled
+            reader = self.ring.register(offset)  # DataExpired if requested history recycled
             if self.anchor is not None:
                 self.ring.unregister(self.anchor)
                 self.anchor = None
@@ -146,7 +178,7 @@ class Stream:
         proc = None
         err = None
         try:
-            proc = subprocess.Popen(self.command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+            proc = subprocess.Popen(sector_replay_command(self.command, self.start_offset), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
             with self._proc_lock:
                 self._proc = proc
                 if self._cancel.is_set() and proc.poll() is None:
@@ -165,6 +197,8 @@ class Stream:
                 if len(block) % 4:
                     raise IOError('Unaligned PCM read')
                 # Do not retry on BufferTimeout: write() may have partially committed block.
+                if self.probe_cache is not None:
+                    self.probe_cache.capture(self.written, block)
                 self.ring.write(block, timeout=self.write_timeout)
                 self.written += len(block)
             rc = proc.wait(timeout=15)
@@ -186,43 +220,96 @@ class Stream:
             self.ring.finish(error=err)
             self.log(f'READER end written={self.written}/{self.expected} error={err}')
 
+def sector_replay_command(command: list[str], start_offset: int) -> list[str]:
+    """Seek to a sector relative to the selected track; never write PCM to disk.
+
+    A single bracketed start offset without '-' ends at the selected track end.
+    A non-cdparanoia synthetic producer is kept unchanged for unit tests.
+    """
+    result = list(command)
+    if start_offset == 0 or not result or result[0] != 'cdparanoia':
+        return result
+    if start_offset % SECTOR:
+        raise ValueError('sector replay requires sector boundary')
+    try:
+        raw_index = result.index('-r') + 1
+        number = int(result[raw_index].split('[')[0])
+    except (ValueError, IndexError) as exc:
+        raise ValueError('unsupported cdparanoia invocation') from exc
+    sectors = start_offset // SECTOR
+    minutes, remaining = divmod(sectors, 75 * 60)
+    seconds, frames = divmod(remaining, 75)
+    result[raw_index] = f'{number}[{minutes}:{seconds:02d}.{frames:02d}]'
+    return result
+
+
 class ReplayBusy(Exception):
     """The optical drive is still in use by a previous generation."""
 
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
-    def _headers(self, status, length=None, ctype=None):
+
+    def _headers(self, status, length=None, ctype=None, *, content_range=None):
         self.send_response(status)
         if ctype: self.send_header('Content-Type', ctype)
         if length is not None: self.send_header('Content-Length', str(length))
-        self.send_header('Accept-Ranges', 'none')
+        self.send_header('Accept-Ranges', 'bytes')
+        if content_range is not None: self.send_header('Content-Range', content_range)
         self.send_header('Cache-Control', 'no-store')
         self.send_header('Connection', 'close')
         self.end_headers()
         self.close_connection = True
 
-    def _validate(self):
+    def _request_span(self):
+        """Return WAV byte start/end inclusive, or None after writing an error."""
         stream = self.server.stream
+        size = stream.expected + 44
         stream.log(f'{self.command} received client={self.client_address[0]} '
                    f'path={self.path!r} range={self.headers.get("Range")!r} '
                    f'if_range={self.headers.get("If-Range")!r} '
                    f'available={stream.ring.stats["next_offset"]}')
         if urlsplit(self.path).path != self.server.route:
-            self._headers(404, 0); return False
-        if self.headers.get('Range') is not None or self.headers.get('If-Range') is not None:
-            # Explicit refusal rather than pretending to implement byte ranges.
-            self._headers(400, 0); return False
-        return True
+            self._headers(404, 0); return None
+        if self.headers.get('If-Range') is not None:
+            # We have no ETag or Last-Modified validator; do not misinterpret it.
+            self._headers(400, 0); return None
+        value = self.headers.get('Range')
+        if value is None:
+            return (0, size - 1, False)
+        m = re.fullmatch(r'bytes=(\d+)-(\d*)', value.strip())
+        if not m:
+            self._headers(416, 0, content_range=f'bytes */{size}'); return None
+        start = int(m.group(1))
+        end = int(m.group(2)) if m.group(2) else size - 1
+        if start >= size or end < start:
+            self._headers(416, 0, content_range=f'bytes */{size}'); return None
+        return start, min(end, size - 1), True
 
     def do_HEAD(self):
-        if self._validate():
-            self._headers(200, self.server.stream.expected + 44, 'audio/wav')
+        span = self._request_span()
+        if span is None: return
+        start, end, partial = span
+        self._headers(206 if partial else 200, end - start + 1, 'audio/wav',
+                      content_range=f'bytes {start}-{end}/{self.server.stream.expected + 44}' if partial else None)
 
     def do_GET(self):
-        if not self._validate(): return
+        span = self._request_span()
+        if span is None: return
+        start, end, partial = span
+        size = self.server.stream.expected + 44
+        # A Sonos reconnect typically probes the beginning with a plain GET,
+        # immediately disconnects after CHUNK, then issues a seeked Range GET.
+        # Serve that probe from an explicitly budgeted RAM prefix without a CD
+        # restart. This short-body response is Sonos-specific, not a complete
+        # general-purpose HTTP 200 transfer; disabled after one such probe.
+        if not partial and self.server.try_cached_probe(self):
+            return
+        # WAV starts with a 44-byte header; the ring offsets address PCM only.
+        pcm_start = max(0, start - 44)
+        aligned = pcm_start - pcm_start % 4
         try:
-            stream, reader = self.server.acquire_get()
+            stream, reader = self.server.acquire_get(aligned)
         except ReplayBusy:
             self.server.stream.log('GET reject: old generation still active; no concurrent CD reread')
             self._headers(409, 0)
@@ -231,26 +318,42 @@ class Handler(BaseHTTPRequestHandler):
         disconnected = False
         stream.http_begin(reader, self.client_address[0])
         try:
-            # Wait for a real PCM block BEFORE sending 200, so producer failure
-            # while waiting does not masquerade as a successful WAV stream.
-            stream.log(f'GET prebuffer target={stream.initial_prebuffer_bytes} bytes')
-            stream.ring.wait_ahead(reader, stream.initial_prebuffer_bytes, timeout=stream.write_timeout + 5)
-            first = stream.ring.read(reader, min(CHUNK, stream.expected), timeout=stream.write_timeout + 5)
+            header = wav_header(stream.expected)
+            prefix = header[start:min(end + 1, 44)] if start < 44 else b''
+            pcm_end = max(0, end + 1 - 44)
+            pcm_remaining = max(0, pcm_end - pcm_start)
+            if pcm_remaining:
+                # Offset may be unaligned; consume at most three excess bytes
+                # from the aligned ring cursor, then slice the response body.
+                skip = pcm_start - aligned
+                want = min(stream.initial_prebuffer_bytes, stream.expected - aligned)
+                want = max(4, ((want + 3) // 4) * 4)
+                stream.log(f'GET prebuffer target={want} bytes offset={aligned}')
+                stream.ring.wait_ahead(reader, want, timeout=stream.write_timeout + 5)
+                first = stream.ring.read(reader, min(CHUNK, stream.expected - aligned), timeout=stream.write_timeout + 5)
             if not first:
                 self._headers(503, 0); return
-            self._headers(200, stream.expected + 44, 'audio/wav')
-            self.wfile.write(wav_header(stream.expected))
-            self.wfile.write(first)
-            sent += len(first)
+                first = first[skip:skip + pcm_remaining]
+            else:
+                first = b''
+            self._headers(206 if partial else 200, end - start + 1, 'audio/wav',
+                          content_range=f'bytes {start}-{end}/{size}' if partial else None)
+            if prefix: self.wfile.write(prefix)
+            if first: self.wfile.write(first)
+            sent = len(first)
             stream.http_sent(reader, sent)
-            stream.log(f'GET first PCM sent={sent}')
-            while sent < stream.expected:
-                data = stream.ring.read(reader, min(CHUNK, stream.expected - sent), timeout=stream.write_timeout + 5)
+            stream.log(f'GET first PCM sent={sent} range_start={start}')
+            while sent < pcm_remaining:
+                # The ring reader always consumes complete PCM frames.
+                remaining = pcm_remaining - sent
+                amount = min(CHUNK, ((remaining + 3)//4)*4)
+                data = stream.ring.read(reader, amount, timeout=stream.write_timeout + 5)
                 if not data: break
+                data = data[:remaining]
                 self.wfile.write(data)
                 sent += len(data)
                 stream.http_sent(reader, sent)
-            stream.log(f'GET end sent={sent}/{stream.expected}')
+            stream.log(f'GET end sent={sent}/{pcm_remaining} wav_range={start}-{end}')
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError) as exc:
             disconnected = True
             stream.log(f'GET disconnect sent={sent}: {type(exc).__name__}')
@@ -270,6 +373,7 @@ class Server(ThreadingHTTPServer):
         self._generation_lock = threading.Lock()
         self._generation = 1
         self._streams = [stream]
+        self._probe_used = False
         super().__init__(addr, Handler)
 
     def server_close(self):
@@ -279,6 +383,31 @@ class Server(ThreadingHTTPServer):
                 stream.shutdown()
         finally:
             super().server_close()
+
+    def try_cached_probe(self, handler):
+        with self._generation_lock:
+            stream = self.stream
+            cache = stream.probe_cache
+            if cache is None or self._probe_used:
+                return False
+            state = stream.ring.stats
+            if state['oldest_offset'] == 0:
+                return False
+            prefix = cache.read()
+            if prefix is None:
+                return False
+            self._probe_used = True
+        # Do not lie about the WAV file's Content-Length. Sonos is known to
+        # disconnect this probe after 58,800 PCM bytes; intentionally closing
+        # it after that chunk is an experimental compatibility optimization.
+        handler._headers(200, stream.expected + 44, 'audio/wav')
+        try:
+            handler.wfile.write(wav_header(stream.expected))
+            handler.wfile.write(prefix)
+            stream.log(f'GET cached-prefix probe sent={len(prefix)} no CD reread')
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            stream.log('GET cached-prefix probe disconnected')
+        return True
 
     def release_get(self, stream: Stream, disconnected: bool):
         """Cancel a CD read ONLY when a broken HTTP connection left no readers.
@@ -297,7 +426,7 @@ class Server(ThreadingHTTPServer):
             if stream.thread.is_alive():
                 stream.cancel_orphan()
 
-    def acquire_get(self):
+    def acquire_get(self, offset=0):
         """Atomically attach a GET or schedule one SEQUENTIAL reread.
 
         Never start another optical reader while the existing producer is alive
@@ -311,7 +440,7 @@ class Server(ThreadingHTTPServer):
             terminal_error = current._cancel.is_set() or (current.ring.stats['finished'] and current.error is not None)
             if not terminal_error:
                 try:
-                    return current, current.attach()
+                    return current, current.attach(offset)
                 except DataExpired:
                     pass
             # The old anchor exists only before the first GET; an expired
@@ -327,17 +456,22 @@ class Server(ThreadingHTTPServer):
             # Stop old diagnostics and REUSE the same bytearray. No second PCM
             # allocation exists even transiently during an HTTP retry.
             current._diag_stop.set()
-            current.ring.reset_for_replay()
-            replacement = Stream(current.expected, current.ring.capacity,
+            # Only resume from a sector boundary, preserving exact WAV byte
+            # positions by starting the ring at the corresponding PCM offset.
+            # A full GET always restarts at sector zero.
+            seek_offset = (offset // SECTOR) * SECTOR if current.command and current.command[0] == 'cdparanoia' else 0
+            current.ring.reset_for_replay(seek_offset)
+            replacement = Stream(current.expected, current.total_ram_budget,
                                  list(current.command), current.write_timeout,
                                  current.initial_prebuffer_bytes * 1000 // RATE,
-                                 ring=current.ring)
+                                 ring=current.ring, start_offset=seek_offset, probe_cache=current.probe_cache)
             # Pin offset zero BEFORE starting cdparanoia, preventing start races.
-            reader = replacement.attach()
+            reader = replacement.attach(offset)
             self.stream = replacement
             self._streams.append(replacement)
             self._generation += 1
-            replacement.log(f'REPLAY generation={self._generation} sequential CD reread')
+            self._probe_used = False
+            replacement.log(f'REPLAY generation={self._generation} sector_seek_pcm={seek_offset} sequential CD reread')
             replacement.start()
             return replacement, reader
 
@@ -354,7 +488,9 @@ def main():
     cfg = StreamingConfig.load(a.config)
     track = read_toc(a.device).get_track(a.track)
     command = ['cdparanoia', '-q', '-d', a.device, '-r', str(a.track), '-']
-    stream = Stream(track.pcm_bytes, cfg.capacity_bytes, command, a.write_timeout, a.initial_prebuffer_ms)
+    # Reserve 58,800 PCM bytes WITHIN the configured 16 MiB, not on top of it.
+    stream = Stream(track.pcm_bytes, cfg.capacity_bytes, command, a.write_timeout,
+                    a.initial_prebuffer_ms, probe_cache=ProbeCache(CHUNK))
     with Server((a.bind, a.port), stream, a.track) as server:
         print(f'Serving http://{a.bind}:{a.port}{server.route} '
               f'PCM={track.pcm_bytes} RAM={cfg.capacity_bytes} initial_prebuffer_ms={a.initial_prebuffer_ms}', flush=True)

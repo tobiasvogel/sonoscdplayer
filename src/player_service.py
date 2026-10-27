@@ -26,7 +26,7 @@ from player_play import make_url, prepare_selection
 from sonos_parallel_test import detect_drive
 
 MAX_REQUEST = 256
-COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'next', 'previous', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help')
+COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help')
 
 
 def response(controller, *, ok, error=None, commands=None):
@@ -55,11 +55,11 @@ def handle_command(controller, request):
         return response(controller, ok=False, error='invalid UID')
     if force and (command != 'stop' or uid is None):
         return response(controller, ok=False, error='--force permitted only with stop --uid')
-    if command in ('play', 'sonos-status') and uid is None:
+    if command in ('play', 'playpause', 'sonos-status') and uid is None:
         return response(controller, ok=False, error='PLAY requires --uid')
-    if command not in ('play', 'sonos-status') and not (command == 'stop' and force) and uid is not None:
+    if command not in ('play', 'playpause', 'sonos-status') and not (command == 'stop' and force) and uid is not None:
         return response(controller, ok=False, error='UID only accepted with PLAY')
-    if not (command in ('status', 'sonos-status', 'play', 'next', 'previous', 'stop', 'reset', 'help')
+    if not (command in ('status', 'sonos-status', 'play', 'playpause', 'pause', 'resume', 'next', 'previous', 'stop', 'reset', 'help')
             or re.fullmatch(r'select [0-9]{1,3}', command)):
         return response(controller, ok=False, error='unknown command')
     try:
@@ -75,6 +75,8 @@ def handle_command(controller, request):
             controller.reset()
         elif command == 'play':
             controller.play(uid)
+        elif command == 'playpause':
+            controller.playpause(uid)
         elif command != 'status':
             controller.command(command)
         return response(controller, ok=True)
