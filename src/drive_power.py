@@ -24,7 +24,7 @@ def load_config(path):
     raw = tomllib.loads(Path(path).read_text(encoding='utf-8')).get('drive_power', {})
     if not isinstance(raw, dict):
         raise ValueError('drive_power must be a table')
-    enabled = raw.get('enabled', False)
+    enabled = raw.get('enabled', True)
     strategy = raw.get('strategy', 'auto')
     interval = raw.get('keepalive_interval_seconds', 10)
     changes = raw.get('mode_page_overrides', {})

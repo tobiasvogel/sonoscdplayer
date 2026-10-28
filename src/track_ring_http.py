@@ -86,6 +86,7 @@ class Stream:
         self._proc_lock = threading.Lock()
         self._proc = None
         self._diag_thread = None
+        self._startup_ready_sent = False
         self.thread = threading.Thread(target=self._produce, daemon=True, name='cd-reader')
 
     def log(self, msg):
@@ -201,6 +202,9 @@ class Stream:
                     self.probe_cache.capture(self.written, block)
                 self.ring.write(block, timeout=self.write_timeout)
                 self.written += len(block)
+                if not self._startup_ready_sent and self.written - self.start_offset >= min(CHUNK, self.expected - self.start_offset):
+                    self._startup_ready_sent = True
+                    self.log(f'STARTUP_PCM_READY bytes={self.written - self.start_offset}')
             rc = proc.wait(timeout=15)
             if rc != 0:
                 raise IOError(f'cdparanoia returned {rc}')

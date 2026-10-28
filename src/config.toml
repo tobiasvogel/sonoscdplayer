@@ -1,6 +1,10 @@
 [streaming]
 max_buffer_mib = 16
 
+[audio_startup]
+prebuffer_before_sonos = true
+pcm_timeout_seconds = 45
+
 [drive_power]
 enabled = true
 strategy = "auto" # off | start | keepalive | power_condition | auto
@@ -30,10 +34,8 @@ timeout_ms = 150
 poll_ms = 1000
 stale_ms = 5000
 smoothing_ms = 2000
-
 min_brightness = 0.05
 max_brightness = 0.85
 fallback_brightness = 0.70
-
 lux_dark = 1.0
 lux_bright = 100.0

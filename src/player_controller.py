@@ -25,9 +25,11 @@ from sonos_parallel_test import detect_drive, stream_lines, wait_reader
 
 
 class ProcessServer:
-    def __init__(self, base, device, config, port, *, popen=subprocess.Popen):
+    def __init__(self, base, device, config, port, *, popen=subprocess.Popen, startup_prebuffer=True, startup_timeout=45.0):
         self.base, self.device, self.config, self.port = base, device, config, port
         self.popen = popen
+        self.startup_prebuffer = startup_prebuffer
+        self.startup_timeout = startup_timeout
         self.proc = None
         self._reader_active = False
         self._reader_lock = threading.Lock()
@@ -59,6 +61,8 @@ class ProcessServer:
                          args=(p, events, time.monotonic(), self._observe_line), daemon=True).start()
         try:
             wait_reader(events, p, timeout=30)
+            if self.startup_prebuffer:
+                wait_startup_pcm(events, p, timeout=self.startup_timeout)
             if p.poll() is not None:
                 raise RuntimeError('stream server exited at startup')
         except BaseException:
@@ -79,6 +83,23 @@ class ProcessServer:
             except subprocess.TimeoutExpired:
                 p.kill()
                 p.wait()
+
+
+def wait_startup_pcm(events, proc, *, timeout):
+    """Require real PCM before Sonos play_uri; never mistake process start for data."""
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if proc.poll() is not None:
+            raise RuntimeError('stream server exited before PCM became ready')
+        try:
+            _, line = events.get(timeout=min(0.2, max(0.01, end - time.monotonic())))
+        except queue.Empty:
+            continue
+        if line is None or 'READER end written=' in line:
+            raise RuntimeError('CD reader ended before startup PCM became ready')
+        if 'STARTUP_PCM_READY bytes=' in line:
+            return
+    raise TimeoutError('No CD PCM before startup timeout; Sonos PLAY not sent')
 
 
 def routed_source_ip(target_ip):
@@ -122,6 +143,7 @@ class Controller:
         self.seen_playing = False
         self.start_monotonic = None
         self.stopped_since = None
+        self.status_hook = None  # optional read-only snapshot publisher
 
     def _url(self, track):
         return make_url(self.host, self.port, track)
@@ -229,14 +251,18 @@ class Controller:
         host = self.route(target.ip_address) if self.route is not None else self.host
         url = make_url(host, self.port, self.state.selected_track)
         self.server.close()
-        self.server.start(self.state.selected_track)
+        # Publish STARTING before the potentially long, synchronous PCM prebuffer.
+        # No Sonos command has been sent and ownership is not claimed here.
+        self.state = self.state.start_requested()
+        if self.status_hook is not None:
+            self.status_hook()
         try:
+            self.server.start(self.state.selected_track)
             player = self.verify(candidate)  # immediate second STOPPED + solo gate
             if self.route is not None and self.route(player.ip_address) != host:
                 raise RuntimeError('route to target changed during startup')
             if not self.server.alive():
                 raise RuntimeError('server exited before Sonos PLAY')
-            self.state = self.state.start_requested()
             player.play_uri(url, title=f'SonosCDPlayer Track {self.state.selected_track}')
         except BaseException as exc:
             self.server.close()
