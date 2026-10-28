@@ -2,5 +2,6 @@ i2c-tools
 cdparanoia
 libcdio-utils
 python3-venv
+python3-pil
 sg3-utils
 sdparm

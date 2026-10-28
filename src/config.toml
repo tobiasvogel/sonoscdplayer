@@ -1,8 +1,6 @@
 [streaming]
 max_buffer_mib = 16
 
-# M0.12b-r3: optional optical drive power management.
-# Safe default: disabled. Enable explicitly after reviewing the test plan.
 [drive_power]
 enabled = true
 strategy = "auto" # off | start | keepalive | power_condition | auto
@@ -13,6 +11,29 @@ keepalive_interval_seconds = 10
 # [drive_power.mode_page_overrides]
 # IACT = 0
 
-# M0.12b-r7: on service shutdown, stop ONLY a doubly verified owned PLAYING URI.
 [service]
 shutdown_policy = "stop_owned" # stop_owned | leave_playing
+
+[led_outputs]
+power_pin = 12
+connection_pin = 13
+pwm_hz = 200
+tick_ms = 25
+brightness = 0.7
+active_high = true
+error_hold_ms = 3000
+
+[led_outputs.ambient]
+enabled = true
+socket_path = "/run/apds9306.sock"
+timeout_ms = 150
+poll_ms = 1000
+stale_ms = 5000
+smoothing_ms = 2000
+
+min_brightness = 0.05
+max_brightness = 0.85
+fallback_brightness = 0.70
+
+lux_dark = 1.0
+lux_bright = 100.0
