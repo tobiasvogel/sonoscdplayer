@@ -15,9 +15,9 @@ import time
 
 ROOT = Path(__file__).resolve().parent
 MODULES = {
-    'led': 'src.integrations.outputs.led_pwm',
-    'oled': 'src.integrations.outputs.oled_status',
-    'buttons': 'src.integrations.interfaces.interface_input',
+    'led': 'integrations.outputs.led_pwm',
+    'oled': 'integrations.outputs.oled_status',
+    'buttons': 'integrations.interfaces.interface_input',
 }
 
 
