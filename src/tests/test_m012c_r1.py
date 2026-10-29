@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from src.integrations.interfaces.input_core import load_config, InputEngine, Button
 
-PATH = Path(__file__).resolve().parents[1] / 'src/integrations/interfaces/interface.toml'
+PATH = Path(__file__).resolve().parents[1] / 'integrations/interfaces/interface.toml'
 
 class InputTests(unittest.TestCase):
     def setUp(self):

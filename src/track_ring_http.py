@@ -96,7 +96,7 @@ class Stream:
         self.thread.start()
         self._diag_thread = threading.Thread(target=self._diag_loop, daemon=True, name='pcm-diagnostics')
         self._diag_thread.start()
- 
+
     def shutdown(self, *, timeout=4.0):
         """Bounded, idempotent teardown of the reader and diagnostic worker.
 
@@ -335,8 +335,8 @@ class Handler(BaseHTTPRequestHandler):
                 stream.log(f'GET prebuffer target={want} bytes offset={aligned}')
                 stream.ring.wait_ahead(reader, want, timeout=stream.write_timeout + 5)
                 first = stream.ring.read(reader, min(CHUNK, stream.expected - aligned), timeout=stream.write_timeout + 5)
-            if not first:
-                self._headers(503, 0); return
+                if not first:
+                    self._headers(503, 0); return
                 first = first[skip:skip + pcm_remaining]
             else:
                 first = b''

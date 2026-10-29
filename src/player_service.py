@@ -161,9 +161,9 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None):
                 return reply
 
             def refresh():
-            controller.refresh()
-            if power is not None:
-                power.tick(reader_active=controller.server.reader_active())
+                controller.refresh()
+                if power is not None:
+                    power.tick(reader_active=controller.server.reader_active())
                 publisher.publish(controller, power)
 
             busy = None
@@ -183,9 +183,9 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None):
                         busy = executor.submit(refresh)
                         next_refresh = time.monotonic() + poll_seconds
                 readable, _, _ = select.select([server], [], [], min(poll_seconds, 0.1))
-            if not readable:
-                continue
-            conn, _ = server.accept()
+                if not readable:
+                    continue
+                conn, _ = server.accept()
                 try:
                     request = read_request(conn)
                     # Cached status is served while PLAY waits for the CD spindle.
