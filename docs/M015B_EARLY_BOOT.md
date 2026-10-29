@@ -15,6 +15,19 @@ python3 splash_assembler.py /tmp/ssd1327.splash -o /tmp/ssd1327.bin
 
 Inspect the generated source and verify the firmware supports `splash_screen` **before** touching the boot partition. The experimental generator uses SSD1327 SPI0/CE0, DC25, GPIO10/11, 8192 bytes in high-nibble-first order and explicit `0x5c` WRITE_RAM.
 
+## Temporary beta-channel dependency (removal task)
+
+**TODO — M0.15b follow-up / firmware stable-release migration:** `scripts/setup.sh` currently runs `raspi-config nonint do_beta_mode B1` before `apt -y full-upgrade` (introduced by commit `446efbf`). This selects beta software updates for the early SPI/I2C firmware splash feature and must **not** become a permanent installation prerequisite.
+
+When Raspberry Pi officially releases SPI/I2C firmware splash support on its stable update channel:
+1. Confirm support and the necessary firmware/package versions using official Raspberry Pi documentation.
+2. Remove the beta-channel selection command from `scripts/setup.sh`, while keeping normal SPI/I2C setup intact.
+3. Document how existing beta-channel installations can return to stable firmware/software safely; evaluate installed versions before changing channels.
+4. Re-test firmware OLED splash, GPIO12 boot behavior, OLED adoption, and ordinary setup/rollback on the stable channel.
+5. Update this document and close the follow-up only after Raspberry Pi hardware validation.
+
+**Current status:** OPEN — conditional cleanup, not part of the M0.15b hardware acceptance. Installing the beta channel remains an explicit risk and should be limited to deliberately approved test systems.
+
 ## Firmware stage — opt-in, back up first
 
 Back up `/boot/firmware/config.txt`. Check that GPIO24 RESET is reliably HIGH *before* firmware starts SPI transactions; firmware GPIO defaults alone do not prove that the OLED has received a valid reset. An explicit firmware-stage high level (for example `gpio=24=op,dh` where supported) is only a candidate to test, **not** evidence of a valid hardware reset pulse. Do not add it blindly: confirm the board's reset circuit and actual boot behavior first. On appropriate supported firmware, install the assembled `ssd1327.bin` to `/boot/firmware/` and add:
