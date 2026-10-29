@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-usage() { echo 'Usage: sonoscdplayer-launcher {start|stop|restart|status|logs|restart-led|restart-oled|restart-player}'; }
+usage() { echo 'Usage: sonoscdplayer-launcher {start|stop|restart|status|logs|restart-led|restart-oled|restart-player|start-buttons|stop-buttons|restart-buttons|status-buttons}'; }
 case "${1:-}" in
   start) exec sudo systemctl start sonoscdplayer.target ;;
   stop) exec sudo systemctl stop sonoscdplayer.target ;;
@@ -10,5 +10,9 @@ case "${1:-}" in
   restart-led) exec sudo systemctl restart sonoscdplayer-led.service ;;
   restart-oled) exec sudo systemctl restart sonoscdplayer-oled.service ;;
   restart-player) echo 'WARNING: restarting player may affect active Sonos playback.' >&2; exec sudo systemctl restart sonoscdplayer-player.service ;;
+  start-buttons) exec sudo systemctl start sonoscdplayer-buttons.service ;;
+  stop-buttons) exec sudo systemctl stop sonoscdplayer-buttons.service ;;
+  restart-buttons) exec sudo systemctl restart sonoscdplayer-buttons.service ;;
+  status-buttons) exec systemctl status --no-pager sonoscdplayer-buttons.service ;;
   *) usage; exit 2 ;;
 esac
