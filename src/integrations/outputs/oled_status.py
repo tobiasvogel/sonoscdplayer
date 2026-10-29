@@ -140,6 +140,7 @@ def main(argv=None):
     p.add_argument('--execute',action='store_true')
     p.add_argument('--socket',default=DEFAULT_SOCKET)
     p.add_argument('--splash',default=str(DEFAULT_LOGO))
+    p.add_argument('--adopt-boot-splash',action='store_true',help='Adopt firmware-initialized OLED without reset; requires verified firmware splash')
     p.add_argument('--splash-seconds',type=float,default=None,help='Legacy fixed splash duration; default waits for a valid player status')
     p.add_argument('--splash-ready-timeout',type=float,default=30.0,help='Maximum wait for player status, then show SERVICE OFFLINE')
     p.add_argument('--seconds',type=float,default=30)
@@ -174,12 +175,12 @@ def main(argv=None):
     ambient=OLEDContrastControl(ambient_config) if args.ambient_auto else None
     last_contrast=args.contrast
     try:
-        if driver: driver.open()
+        if driver: driver.open(adopt_existing=args.adopt_boot_splash)
         end=time.monotonic()+args.seconds if args.seconds else None
         previous=None
         hold=StatusHold(args.offline_grace_seconds)
         ready_state=None
-        if splash is not None and args.splash_seconds != 0:
+        if not args.adopt_boot_splash and splash is not None and args.splash_seconds != 0:
             print(json.dumps({'screen':'splash','source':args.splash,'hardware':args.execute}),flush=True)
             if driver: driver.show(splash)
             if args.splash_seconds is None:
@@ -188,8 +189,10 @@ def main(argv=None):
                     max_wait_seconds=args.splash_ready_timeout)
             else:
                 time.sleep(args.splash_seconds)
-        elif args.splash_seconds != 0:
+        elif not args.adopt_boot_splash and args.splash_seconds != 0:
             print(json.dumps({'screen':'splash_skipped','reason':'PNG unavailable or invalid'}),flush=True)
+        if args.adopt_boot_splash:
+            ready_state=wait_for_player_ready(request_status,args.socket,max_wait_seconds=args.splash_ready_timeout)
         if ready_state is not None:
             hold.success(ready_state,time.monotonic())
         while end is None or time.monotonic()<end:
