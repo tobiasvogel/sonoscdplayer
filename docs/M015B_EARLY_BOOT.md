@@ -6,7 +6,7 @@ This is **opt-in**. It does not modify Sonos playback, CD streaming, buttons or 
 
 Use the existing repository artwork: `src/data/start_screen.png`. No example PNG or example splash source is included.
 
-Install Pillow (`python3-pil`) and obtain Raspberry Pi's official `splashasm` assembler separately. On a Pi with Python 3.12 or later:
+Install Pillow (`python3-pil`) and obtain Raspberry Pi's official `splashasm` assembler separately. The upstream `splashasm` tool is available from `raspberrypi/utils/splashasm`; the official instructions currently require Python 3.12 or newer. Firmware execution of SPI/I2C splash programs is a beta feature and must be confirmed on the actual bootloader/firmware before installation. On a Pi with Python 3.12 or later:
 
 ```sh
 python3 tools/build_ssd1327_splash.py src/data/start_screen.png -o /tmp/ssd1327.splash
@@ -17,7 +17,7 @@ Inspect the generated source and verify the firmware supports `splash_screen` **
 
 ## Firmware stage — opt-in, back up first
 
-Back up `/boot/firmware/config.txt`. Check that GPIO24 RESET is reliably HIGH *before* firmware starts SPI transactions; firmware GPIO defaults alone do not prove that the OLED has received a valid reset. On appropriate supported firmware, install the assembled `ssd1327.bin` to `/boot/firmware/` and add:
+Back up `/boot/firmware/config.txt`. Check that GPIO24 RESET is reliably HIGH *before* firmware starts SPI transactions; firmware GPIO defaults alone do not prove that the OLED has received a valid reset. An explicit firmware-stage high level (for example `gpio=24=op,dh` where supported) is only a candidate to test, **not** evidence of a valid hardware reset pulse. Do not add it blindly: confirm the board's reset circuit and actual boot behavior first. On appropriate supported firmware, install the assembled `ssd1327.bin` to `/boot/firmware/` and add:
 
 ```ini
 gpio=12=op,dh
@@ -65,7 +65,7 @@ The current `close()` still sends `0xAE` and blanks the screen on exit. It is no
 ## Validation checklist
 
 - [ ] Python syntax and all repository tests (`PYTHONPATH="$PWD:$PWD/src" python3 -m unittest discover -s src/tests -q`)
-- [ ] Validate generated `.splash` with the official splash assembler
+- [ ] Validate generated `.splash` with the official splash assembler, including the complete 8192-byte data payload
 - [ ] Firmware OLED image persists and GPIO24 RESET is valid
 - [ ] OLED adoption leaves the firmware image intact until first valid player status
 - [ ] Power LED steady during firmware, breathes during early Linux; connection LED remains OFF
@@ -73,4 +73,4 @@ The current `close()` still sends `0xAE` and blanks the screen on exit. It is no
 - [ ] Restart/shutdown/failure-recovery and rollback on Raspberry Pi
 - [ ] Existing Sonos, playback and CD-drive hardware regression
 
-**Status:** experimental implementation; Raspberry Pi firmware and integrated hardware validation pending. Do not merge until validated.
+**Status:** experimental implementation. The assembler grammar and DATA_ONLY flag are described in the upstream `raspberrypi/utils/splashasm/README.md`, but successful compilation and execution of this project's generated source have not yet been verified on the target Pi. The firmware currently requires beta access according to Raspberry Pi's official announcement; Raspberry Pi firmware and integrated hardware validation pending. Do not merge until validated.
