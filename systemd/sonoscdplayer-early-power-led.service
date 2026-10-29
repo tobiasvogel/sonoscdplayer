@@ -1,0 +1,16 @@
+[Unit]
+Description=SonosCDPlayer early boot power LED (GPIO12)
+DefaultDependencies=no
+After=local-fs.target systemd-udev-trigger.service
+Before=basic.target
+ConditionPathExists=/dev/gpiomem
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /opt/sonoscdplayer-boot/early_power_led.py --execute
+Restart=no
+TimeoutStopSec=3
+
+[Install]
+WantedBy=basic.target
