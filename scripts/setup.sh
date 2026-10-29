@@ -39,3 +39,13 @@ mkdir -p ~/sonoscdplayer
 python3 -m venv ~/sonoscdplayer/.venv
 ~/sonoscdplayer/.venv/bin/python -m pip install soco
 ~/sonoscdplayer/.venv/bin/python -m pip install Pillow
+
+# build raspberrypi-tools
+mkdir -p ~/src
+cd ~/src
+git clone https://github.com/raspberrypi/utils.git
+cd utils
+sh ./prerequisites.sh
+cmake .
+make
+make install

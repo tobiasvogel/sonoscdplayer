@@ -5,3 +5,11 @@ python3-venv
 python3-pil
 sg3-utils
 sdparm
+git
+build-essential
+cmake
+make
+device-tree-compiler
+libncurses-dev
+libfdt-dev
+libgnutls28-dev
