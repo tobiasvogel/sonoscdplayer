@@ -31,8 +31,12 @@ def build(frame,*,hz=2_000_000,contrast=128,chunk=128):
     for command in INIT:
         vals=list(command)
         if vals[0]==0x81: vals[1]=contrast
-        lines.append('oled '+' '.join(f'0x{v:02x}' for v in vals))
-    lines += ['oled 0x15 0x00 0x3f','oled 0x75 0x00 0x7f','oled 0x5c']
+        # SSD1327 command parameters must also be sent with D/C low.
+        # SplashAsm changes D/C high after the first byte of a normal
+        # transaction, so emit every command byte separately.
+        lines.extend(f'oled 0x{v:02x}' for v in vals)
+    lines += ['oled 0x15','oled 0x00','oled 0x3f',
+              'oled 0x75','oled 0x00','oled 0x7f','oled 0x5c']
     for i in range(0,len(frame),chunk):
         lines.append('oled [DATA_ONLY] '+' '.join(f'0x{v:02x}' for v in frame[i:i+chunk]))
     return '\n'.join(lines)+'\n'
