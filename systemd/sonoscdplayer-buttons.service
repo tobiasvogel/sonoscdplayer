@@ -1,0 +1,18 @@
+[Unit]
+Description=SonosCDPlayer passive GPIO button and encoder diagnostics
+After=local-fs.target
+PartOf=sonoscdplayer.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/src/sonoscdplayer/src
+ExecStart=/usr/bin/python3 -u -m integrations.interfaces.interface_input --config integrations/interfaces/interface.toml --gpio
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=5s
+
+# Intentionally not enabled or WantedBy=sonoscdplayer.target.
+# Observe GPIO events only; no Sonos commands.
