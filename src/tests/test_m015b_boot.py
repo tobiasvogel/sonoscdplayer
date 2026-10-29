@@ -58,3 +58,37 @@ class BootSplashTests(unittest.TestCase):
         self.assertFalse(spi.messages)
         self.assertFalse(any(x[0]=='output' for x in gpio.events))
         # Avoid close() turning display off in this test.
+
+    def test_firmware_frame_payload_is_exact(self):
+        builder=load('splash_builder_payload',Path('tools/build_ssd1327_splash.py'))
+        payload=bytes(range(256))*32
+        source=builder.build(payload)
+        data=[]
+        for line in source.splitlines():
+            if line.startswith('oled [DATA_ONLY] '):
+                data.extend(int(token,16) for token in line.split()[2:])
+        self.assertEqual(bytes(data),payload)
+        self.assertEqual(len(data),8192)
+        self.assertLess(source.index('oled 0x5c\n'),source.index('oled [DATA_ONLY] '))
+
+    def test_normal_display_open_still_resets_and_initializes(self):
+        class GPIO:
+            BCM=11; OUT=1; HIGH=1; LOW=0
+            def __init__(self): self.events=[]
+            def setmode(self,*args): pass
+            def setup(self,*args,**kwargs): self.events.append(('setup',args,kwargs))
+            def output(self,*args): self.events.append(('output',args))
+            def cleanup(self,*args): pass
+        class SPI:
+            def __init__(self): self.messages=[]
+            def writebytes(self,data): self.messages.append(data)
+            def close(self): pass
+        gpio=GPIO(); spi=SPI()
+        driver=SSD1327(DisplayConfig(),gpio=gpio,spi=spi,sleep=lambda _:None)
+        driver.open()
+        self.assertTrue(driver.opened)
+        self.assertIn(('output',(24,0)),gpio.events)
+        self.assertIn(('output',(24,1)),gpio.events)
+        self.assertIn([0xfd,0x12],spi.messages)
+        self.assertIn([0xaf],spi.messages)
+        driver.close()
