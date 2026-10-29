@@ -1,0 +1,22 @@
+[Unit]
+Description=SonosCDPlayer CD / Sonos controller
+After=local-fs.target
+PartOf=sonoscdplayer.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/src/sonoscdplayer/src
+# systemd owns and cleans the private socket directory after a crash/stop.
+RuntimeDirectory=sonoscdplayer
+RuntimeDirectoryMode=0700
+UMask=0077
+ExecStart=/usr/bin/python3 -u player_service.py --config config.toml --socket /run/sonoscdplayer/control.sock
+# Do not automatically restart the Sonos owner until crash/ownership behavior is validated.
+Restart=no
+TimeoutStopSec=15
+
+[Install]
+WantedBy=sonoscdplayer.target
