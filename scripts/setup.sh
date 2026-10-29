@@ -21,7 +21,7 @@ do
 done < ${PACKAGES}
 
 apt-get update
-apt install "${a[@]}"
+apt -y install "${a[@]}"
 
 # set hostname
 raspi-config nonint do_hostname "sonoscdplayer-${WLANMAC}"
@@ -29,8 +29,13 @@ raspi-config nonint do_hostname "sonoscdplayer-${WLANMAC}"
 raspi-config nonint do_i2c 0
 # enable spi
 raspi-config nonint do_spi 0
+# enable beta-access for boot-splash firmware
+raspi-config nonint do_beta_mode B1
+
+apt -y full-upgrade
 
 # setup python venv
 mkdir -p ~/sonoscdplayer
 python3 -m venv ~/sonoscdplayer/.venv
 ~/sonoscdplayer/.venv/bin/python -m pip install soco
+~/sonoscdplayer/.venv/bin/python -m pip install Pillow
