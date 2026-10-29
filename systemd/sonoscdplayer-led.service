@@ -1,0 +1,19 @@
+[Unit]
+Description=SonosCDPlayer regular PWM LED frontend (GPIO12/13)
+After=sonoscdplayer-early-power-led.service
+Conflicts=sonoscdplayer-early-power-led.service
+PartOf=sonoscdplayer.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/src/sonoscdplayer/src
+ExecStart=/usr/bin/python3 -u -m integrations.outputs.led_pwm --config config.toml --socket /run/sonoscdplayer/control.sock --gpio --execute --seconds 0
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=5s
+
+[Install]
+WantedBy=sonoscdplayer.target
