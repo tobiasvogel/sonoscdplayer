@@ -1,0 +1,18 @@
+[Unit]
+Description=SonosCDPlayer OLED status frontend
+After=local-fs.target
+PartOf=sonoscdplayer.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/src/sonoscdplayer/src
+ExecStart=/usr/bin/python3 -u -m integrations.outputs.oled_status --socket /run/sonoscdplayer/control.sock --gpio --execute --seconds 0 --adopt-boot-splash --ambient-auto
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=5s
+
+[Install]
+WantedBy=sonoscdplayer.target
