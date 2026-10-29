@@ -31,6 +31,8 @@ def commands(args):
     oled = base + [MODULES['oled']] + common + hw + [
         '--seconds', '0', '--splash', args.splash, '--ambient-auto']
     button = base + [MODULES['buttons'], '--config', args.interface_config, '--gpio'] + common
+    if args.adopt_boot_splash:
+        oled.append('--adopt-boot-splash')
     if args.commands:
         button += ['--commands', '--execute', '--uid', args.uid]
     return [('led', led), ('oled', oled), ('buttons', button)]
@@ -45,6 +47,7 @@ def parser():
     p.add_argument('--config', default='config.toml')
     p.add_argument('--interface-config', default=str(ROOT / 'integrations/interfaces/interface.toml'))
     p.add_argument('--splash', default=str(ROOT / 'data/start_screen.png'))
+    p.add_argument('--adopt-boot-splash', action='store_true', help='Adopt a verified firmware-initialized OLED; never use without firmware splash')
     p.add_argument('--socket', default='/tmp/sonoscdplayer-control.sock')
     p.add_argument('--seconds', type=float, default=None, help='optional positive test duration; omitted means run until SIGTERM/Ctrl+C')
     p.add_argument('--dry-run', action='store_true', help='print child commands only, never start anything')
