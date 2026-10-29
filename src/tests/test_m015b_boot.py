@@ -52,7 +52,7 @@ class BootSplashTests(unittest.TestCase):
             def writebytes(self,data): self.messages.append(data)
             def close(self): pass
         gpio=GPIO(); spi=SPI()
-        driver=SSD1327(DisplayConfig(),gpio_module=gpio,spi_device=spi)
+        driver=SSD1327(DisplayConfig(),gpio=gpio,spi=spi)
         driver.open(adopt_existing=True)
         self.assertTrue(driver.opened)
         self.assertFalse(spi.messages)
