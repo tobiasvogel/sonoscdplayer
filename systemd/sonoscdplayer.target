@@ -1,6 +1,6 @@
 [Unit]
 Description=SonosCDPlayer runtime components
-Wants=sonoscdplayer-player.service sonoscdplayer-led.service sonoscdplayer-oled.service
+Wants=sonoscdplayer-player.service sonoscdplayer-led.service sonoscdplayer-oled.service sonoscdplayer-buttons.service
 After=local-fs.target
 
 [Install]
