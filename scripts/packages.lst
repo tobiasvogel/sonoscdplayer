@@ -13,3 +13,4 @@ device-tree-compiler
 libncurses-dev
 libfdt-dev
 libgnutls28-dev
+fonts-dejavu-core
