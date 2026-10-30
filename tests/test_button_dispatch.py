@@ -19,13 +19,19 @@ class DispatchTests(unittest.TestCase):
             handle_event('playpause', 'pressed', commands=True)
         send.assert_not_called()
 
-    @patch('integrations.interfaces.interface_input.send_command')
-    def test_execute_only_on_supported_press(self, send):
+    def test_execute_only_on_supported_press(self):
+        calls = []
+        class Stub:
+            def submit(self, command):
+                calls.append(command)
         with contextlib.redirect_stdout(io.StringIO()):
-            handle_event('skip', 'pressed', commands=True, execute=True, uid='RINCON_TEST')
-            handle_event('skip', 'released', commands=True, execute=True, uid='RINCON_TEST')
-            handle_event('encoder', 'right', commands=True, execute=True, uid='RINCON_TEST')
-        send.assert_called_once_with('/run/sonoscdplayer/control.sock', 'next', 'RINCON_TEST')
+            handle_event('skip', 'pressed', commands=True, execute=True,
+                         uid='RINCON_TEST', dispatcher=Stub())
+            handle_event('skip', 'released', commands=True, execute=True,
+                         uid='RINCON_TEST', dispatcher=Stub())
+            handle_event('encoder', 'right', commands=True, execute=True,
+                         uid='RINCON_TEST', dispatcher=Stub())
+        self.assertEqual(calls, ['next'])
 
     @patch('integrations.interfaces.interface_input.send_command')
     def test_playpause_without_uid_skipped(self, send):
