@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""M0.12c-r1: passive GPIO diagnostic and reproducible simulation; never controls Sonos."""
+"""GPIO diagnostic with explicit opt-in, bounded one-shot player commands."""
 import argparse
 import json
 import socket
 import stat
+import threading
 import time
 from pathlib import Path
 
@@ -58,7 +59,48 @@ def send_command(socket_path, command, uid=None):
     return True
 
 
-def handle_event(name, event, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None):
+class CommandDispatcher:
+    """At most one in-flight command; never queue, block GPIO, or retry.
+
+    A daemon worker is intentionally abandoned at shutdown. The player may already
+    have accepted a command when the local socket times out: never resend it.
+    """
+    def __init__(self, socket_path=DEFAULT_SOCKET, uid=None, sender=send_command):
+        self.socket_path = socket_path
+        self.uid = uid
+        self.sender = sender
+        self._lock = threading.Lock()
+        self._busy = False
+
+    def submit(self, command):
+        if command == 'playpause' and self.uid is None:
+            print('command skipped: playpause UID unavailable', flush=True)
+            return False
+        with self._lock:
+            if self._busy:
+                print(f'command dropped ({command}): dispatcher busy', flush=True)
+                return False
+            self._busy = True
+
+        def perform():
+            try:
+                self.sender(self.socket_path, command, self.uid)
+            except Exception as exc:
+                print(f'command failed ({command}): {type(exc).__name__}; not retrying', flush=True)
+            finally:
+                with self._lock:
+                    self._busy = False
+
+        try:
+            threading.Thread(target=perform, name='button-command', daemon=True).start()
+        except Exception:
+            with self._lock:
+                self._busy = False
+            raise
+        return True
+
+
+def handle_event(name, event, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None, dispatcher=None):
     command = map_event(name, event)
     print(f'{name}: {event}' + (f' -> {command}' if command else ''), flush=True)
     if not command or not commands:
@@ -68,6 +110,9 @@ def handle_event(name, event, *, commands=False, execute=False, socket_path=DEFA
         return
     if command == 'playpause' and uid is None:
         print('command skipped: playpause UID unavailable', flush=True)
+        return
+    if dispatcher is not None:
+        dispatcher.submit(command)
         return
     try:
         send_command(socket_path, command, uid)
@@ -116,10 +161,11 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
             GPIO.setup(pin, GPIO.IN, pull_up_down=pulls[pull])
         sample = lambda: {pin: GPIO.input(pin) for pin in pins}
         engine = InputEngine(cfg, sample(), time.monotonic_ns() // 1_000_000)
-        print('GPIO diagnostics active; Ctrl+C to exit. No Sonos commands.', flush=True)
+        dispatcher = CommandDispatcher(socket_path, uid) if execute else None
+        print('GPIO command mode active.' if execute else 'GPIO diagnostics active; Ctrl+C to exit. No Sonos commands.', flush=True)
         while True:
             for name, event in engine.sample(sample(), time.monotonic_ns() // 1_000_000):
-                handle_event(name, event, commands=commands, execute=execute, socket_path=socket_path, uid=uid)
+                handle_event(name, event, commands=commands, execute=execute, socket_path=socket_path, uid=uid, dispatcher=dispatcher)
             time.sleep(cfg.poll_interval_ms / 1000)
     except KeyboardInterrupt:
         pass
@@ -138,8 +184,8 @@ def main():
     p.add_argument('--socket', default=DEFAULT_SOCKET)
     p.add_argument('--uid-file', type=Path, help='private 0600 file for playpause UID; never logged')
     args = p.parse_args()
-    if args.execute and (not args.commands or not args.gpio or args.uid_file is None):
-        p.error('--execute requires --commands --gpio --uid-file')
+    if args.execute and (not args.commands or not args.gpio):
+        p.error('--execute requires --commands --gpio')
     if args.uid_file and not args.execute:
         p.error('--uid-file is only used with --execute')
     cfg = load_config(args.config)
