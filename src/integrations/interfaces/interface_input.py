@@ -24,6 +24,8 @@ DEFAULT_SOCKET = '/run/sonoscdplayer/control.sock'
 
 def read_uid(path):
     """Read a private per-device UID file, never place the UID in argv or logs."""
+    if path.is_symlink():
+        raise ValueError('UID file must not be a symlink')
     info = path.stat()
     if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
         raise ValueError('UID file must be regular and inaccessible to group/others')
@@ -114,10 +116,7 @@ def handle_event(name, event, *, commands=False, execute=False, socket_path=DEFA
     if dispatcher is not None:
         dispatcher.submit(command)
         return
-    try:
-        send_command(socket_path, command, uid)
-    except (OSError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
-        print(f'command failed ({command}): {type(exc).__name__}; not retrying', flush=True)
+    raise RuntimeError('executing commands requires a nonblocking dispatcher')
 
 
 
