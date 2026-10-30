@@ -114,7 +114,7 @@ class SSD1327:
         for at in range(0,len(payload),4096):
             self.spi.writebytes(list(payload[at:at+4096]))
 
-    def open(self):
+    def open(self, *, adopt_existing=False):
         if self.opened: return
         try:
             if self.gpio is None:
@@ -129,6 +129,11 @@ class SSD1327:
             self.gpio.setmode(self.gpio.BCM)
             self.gpio.setup(self.config.dc_pin,self.gpio.OUT,initial=self.gpio.LOW)
             self.gpio.setup(self.config.rst_pin,self.gpio.OUT,initial=self.gpio.HIGH)
+            if adopt_existing:
+                # Firmware owns the initialized display RAM: no RESET or init.
+                # The caller must confirm firmware splash actually ran.
+                self.opened=True
+                return
             self.gpio.output(self.config.rst_pin,self.gpio.LOW)
             self.sleep(.05)
             self.gpio.output(self.config.rst_pin,self.gpio.HIGH)
