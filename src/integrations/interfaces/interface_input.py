@@ -2,7 +2,6 @@
 """M0.12c-r1: passive GPIO diagnostic and reproducible simulation; never controls Sonos."""
 import argparse
 import json
-import os
 import socket
 import stat
 import time
@@ -13,7 +12,10 @@ try:
 except ImportError:
     from input_core import load_config, InputEngine
 
-from .button_commands import map_event
+try:
+    from .button_commands import map_event
+except ImportError:
+    from button_commands import map_event
 
 DEFAULT_CONFIG = Path(__file__).with_name('interface.toml')
 DEFAULT_SOCKET = '/run/sonoscdplayer/control.sock'
@@ -41,16 +43,16 @@ def send_command(socket_path, command, uid=None):
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         client.settimeout(1.0)
         client.connect(socket_path)
-        client.sendall((json.dumps(request) + '\\n').encode('utf-8'))
+        client.sendall((json.dumps(request) + '\n').encode('utf-8'))
         data = bytearray()
-        while b'\\n' not in data and len(data) <= 16384:
+        while b'\n' not in data and len(data) <= 16384:
             chunk = client.recv(4096)
             if not chunk:
                 break
             data.extend(chunk)
-    if b'\\n' not in data or len(data) > 16384:
+    if b'\n' not in data or len(data) > 16384:
         raise ValueError('invalid player response')
-    reply = json.loads(data.split(b'\\n', 1)[0])
+    reply = json.loads(data.split(b'\n', 1)[0])
     if not isinstance(reply, dict) or reply.get('ok') is not True:
         raise ValueError('player rejected command')
     return True
