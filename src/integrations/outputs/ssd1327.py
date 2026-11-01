@@ -130,8 +130,11 @@ class SSD1327:
             self.gpio.setup(self.config.dc_pin,self.gpio.OUT,initial=self.gpio.LOW)
             self.gpio.setup(self.config.rst_pin,self.gpio.OUT,initial=self.gpio.HIGH)
             if adopt_existing:
-                # Firmware owns the initialized display RAM: no RESET or init.
-                # The caller must confirm firmware splash actually ran.
+                # Firmware initialized display RAM: do not RESET or clear it.
+                # A previous process may have sent AE (DISPLAY OFF) in close().
+                # AF resumes that controller without disturbing the splash RAM.
+                # SPI write success cannot prove the panel is connected or lit.
+                self._cmd(0xaf)
                 self.opened=True
                 return
             self.gpio.output(self.config.rst_pin,self.gpio.LOW)
