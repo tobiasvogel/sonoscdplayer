@@ -11,10 +11,12 @@ import time
 from .multi_target import MultiSelection, discover_targets
 from .multi_render import MultiRenderer
 from .i18n import Translator
+from .single_target import select_one, TargetSelectionError
+from .target_rpc_client import submit_target
 
 
 class InteractiveMenu:
-    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de'):
+    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None):
         self.state = MultiSelection()
         self.language = Translator(language).language
         self.language_picker = False
@@ -27,6 +29,11 @@ class InteractiveMenu:
         self._lock = threading.Lock()
         self._worker = None
         self.renderer = MultiRenderer(language=self.language)
+        self._target_rpc = target_rpc
+        self._target_pending = False
+        self._target_result = None
+        self._target_generation = 0
+        self._target_worker = None
 
     def _start_discovery(self, now):
         if self._worker is not None and self._worker.is_alive():
@@ -43,6 +50,31 @@ class InteractiveMenu:
         self._worker = threading.Thread(target=work, name='ui-discovery', daemon=True)
         self._worker.start()
 
+    def _send_target(self):
+        """Off-display worker, one request only, no UID in logs or UI state."""
+        if self._target_pending:
+            return
+        try:
+            intent = select_one(self.state)
+        except (TargetSelectionError, TypeError):
+            self.state = replace(self.state, notice='status.target_rejected')
+            return
+        self._target_pending = True
+        self._target_generation += 1
+        generation = self._target_generation
+        uid = intent.uid
+        def work():
+            try:
+                self._target_rpc(uid)
+                result = 'status.target_accepted'
+            except Exception:
+                result = 'status.target_rejected'
+            with self._lock:
+                self._target_result = (generation, result)
+        self.state = replace(self.state, notice='status.target_pending')
+        self._target_worker = threading.Thread(target=work, name='ui-target-selection',daemon=True)
+        self._target_worker.start()
+
     def poll(self, now=None):
         """Accept one completed discovery and periodically refresh while open."""
         now = time.monotonic() if now is None else now
@@ -50,6 +82,13 @@ class InteractiveMenu:
         with self._lock:
             new = self._pending
             self._pending = None
+        with self._lock:
+            result = self._target_result
+            self._target_result = None
+        if result is not None and result[0] == self._target_generation:
+            self._target_pending = False
+            self.state = replace(self.state,notice=result[1])
+            changed = True
         if new is not None:
             # Revalidation may invalidate the review; never blindly apply old IDs.
             self.state = self.state.update(new)
@@ -73,6 +112,8 @@ class InteractiveMenu:
             return True
         if not self.active:
             return False
+        if self._target_pending:
+            return False
         if self.language_picker:
             if (name, event) == ('encoder','right'):
                 self.language_focus = min(1, self.language_focus+1)
@@ -91,7 +132,12 @@ class InteractiveMenu:
                   ('encoder_sw','pressed'): 'confirm'}.get((name,event))
         if action is None:
             return False
+        was_reviewing = self.state.reviewing
         self.state = self.state.action(action)
+        if (was_reviewing and action == 'confirm'
+                and self.state.notice == 'status.local_applied'
+                and self._target_rpc is not None):
+            self._send_target()
         if self.state.notice == 'menu.back':
             self.active = False
             self.state = replace(self.state, notice='')
