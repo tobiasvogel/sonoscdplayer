@@ -2,7 +2,14 @@
 import tempfile
 import unittest
 from pathlib import Path
-from tools.migrate_ui_config import install_configs, PAIRS
+import importlib.util
+
+MODULE_PATH = Path(__file__).resolve().parents[1] / 'tools/migrate_ui_config.py'
+spec = importlib.util.spec_from_file_location('config_migration', MODULE_PATH)
+migration = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(migration)
+install_configs = migration.install_configs
+PAIRS = migration.PAIRS
 
 
 class ConfigMigrationTests(unittest.TestCase):
