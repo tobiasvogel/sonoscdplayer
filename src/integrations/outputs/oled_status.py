@@ -170,6 +170,8 @@ def main(argv=None):
     p.add_argument('--offline-grace-seconds',type=float,default=4.0)
     p.add_argument('--spi-hz',type=int,default=2_000_000)
     p.add_argument('--contrast',type=int,default=128)
+    p.add_argument('--oled-recover-on-error',action='store_true',
+                   help='opt-in: one full reinitialization after a reported SPI OSError')
     p.add_argument('--ambient-auto',action='store_true',help='Enable independent APDS9306 OLED contrast control')
     p.add_argument('--ambient-socket',default='/run/apds9306.sock')
     p.add_argument('--ambient-timeout-ms',type=int,default=150)
@@ -198,6 +200,34 @@ def main(argv=None):
     splash=load_splash(args.splash)
     ambient=OLEDContrastControl(ambient_config) if args.ambient_auto else None
     last_contrast=args.contrast
+    recovery = None
+    last_frame = None
+    if args.oled_recover_on_error and args.execute:
+        from .oled_recovery import RecoveryBudget
+        recovery = RecoveryBudget(attempts=1)
+
+    def write_frame(frame, *, force=False):
+        nonlocal last_frame
+        if driver is None:
+            return
+        try:
+            driver.show(frame)
+            last_frame = frame
+        except OSError:
+            if recovery is None or not recovery.run(driver, frame, contrast=last_contrast):
+                raise
+            last_frame = frame
+
+    def adjust_contrast(value):
+        if driver is None:
+            return
+        try:
+            driver.set_contrast(value)
+        except OSError:
+            if recovery is None or last_frame is None or not recovery.run(
+                    driver, last_frame, contrast=value):
+                raise
+
     menu = None
     receiver_context = nullcontext(None)
     if args.ui_events_socket:
@@ -213,7 +243,7 @@ def main(argv=None):
         ready_state=None
         if not args.adopt_boot_splash and splash is not None and args.splash_seconds != 0:
             print(json.dumps({'screen':'splash','source':args.splash,'hardware':args.execute}),flush=True)
-            if driver: driver.show(splash)
+            write_frame(splash)
             if args.splash_seconds is None:
                 # The display changes on real status readiness, not an arbitrary delay.
                 ready_state=wait_for_player_ready(request_status, args.socket,
@@ -238,7 +268,7 @@ def main(argv=None):
                 if ambient is not None:
                     new_contrast=ambient.tick(time.monotonic()*1000)
                     if new_contrast != last_contrast:
-                        if driver: driver.set_contrast(new_contrast)
+                        adjust_contrast(new_contrast)
                         print(json.dumps({'oled_contrast':new_contrast,'mode':'ambient','hardware':args.execute}),flush=True)
                         last_contrast=new_contrast
                 try:
@@ -264,7 +294,7 @@ def main(argv=None):
                         label={'screen':'service_offline','error':type(exc).__name__,'hardware':args.execute}
                 current=bytes(frame.data)
                 if current!=previous:
-                    if driver: driver.show(frame)
+                    write_frame(frame)
                     print(json.dumps(label,ensure_ascii=False),flush=True)
                     previous=current
                 time.sleep(args.refresh_ms/1000 if end is None else min(args.refresh_ms/1000,max(0,end-time.monotonic())))
