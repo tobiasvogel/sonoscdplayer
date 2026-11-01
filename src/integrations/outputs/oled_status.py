@@ -96,7 +96,7 @@ def status_frame(state=None, error=None):
     return image_to_frame(img)
 
 
-def modern_status_frame(state=None, error=None, *, cover_mode='auto'):
+def modern_status_frame(state=None, error=None, *, cover_mode='auto', language='de'):
     """Opt-in 128x128 Modern Hi-Fi frame, reusing the existing OLED lifecycle.
 
     This adapter is intentionally read-only. No discovery, GPIO listening,
@@ -107,7 +107,7 @@ def modern_status_frame(state=None, error=None, *, cover_mode='auto'):
     from sonos_ui.player_adapter import project_status
     from sonos_ui.render import Renderer
     display = project_status(state)
-    image = Renderer(cover_mode=cover_mode).render(display, grayscale=True)
+    image = Renderer(cover_mode=cover_mode,language=language).render(display, grayscale=True)
     return image_to_frame(image)
 
 
@@ -153,7 +153,9 @@ def wait_for_player_ready(status_request, socket_path, *, max_wait_seconds=30.0,
 def main(argv=None):
     p=argparse.ArgumentParser(description='M0.14b read-only SSD1327 OLED status')
     p.add_argument('--gpio',action='store_true')
-    p.add_argument('--cover',choices=('auto','on','off'),default='auto',
+    p.add_argument('--ui-config',type=Path,default=None,
+                   help='read-only UI TOML; defaults to /home/pi/sonoscdplayer/ui.toml')
+    p.add_argument('--cover',choices=('auto','on','off'),default=None,
                    help='Modern Hi-Fi cover layout: auto (off for 128x128), on, off')
     p.add_argument('--ui-modern',action='store_true',
                    help='opt-in Modern Hi-Fi read-only player status rendering')
@@ -180,6 +182,13 @@ def main(argv=None):
     p.add_argument('--ambient-smoothing-ms',type=int,default=2000)
     p.add_argument('--ambient-fallback-contrast',type=int,default=128)
     args=p.parse_args(argv)
+    from sonos_ui.ui_config import load_ui_config, DEFAULT_CONFIG
+    try:
+        ui_config = load_ui_config(args.ui_config or DEFAULT_CONFIG)
+    except (ValueError, OSError) as exc:
+        p.error('invalid UI configuration: '+str(exc))
+    cover_mode = args.cover if args.cover is not None else ui_config.cover_mode
+    language = ui_config.language
     if args.gpio != args.execute: p.error('--gpio and --execute must be given together')
     if args.ui_events_socket and not args.ui_modern:
         p.error('--ui-events-socket requires --ui-modern')
@@ -233,7 +242,7 @@ def main(argv=None):
     if args.ui_events_socket:
         from sonos_ui.interactive_menu import InteractiveMenu
         from sonos_ui.ui_event_bridge import EventReceiver
-        menu = InteractiveMenu()
+        menu = InteractiveMenu(language=language)
         receiver_context = EventReceiver(args.ui_events_socket)
     try:
         if driver: driver.open(adopt_existing=args.adopt_boot_splash)
@@ -275,7 +284,7 @@ def main(argv=None):
                     state=hold.success(ready_state if ready_state is not None else request_status(args.socket), time.monotonic())
                     ready_state=None
                     frame=(menu.frame(image_to_frame) if menu is not None and menu.active else
-                           modern_status_frame(state, cover_mode=args.cover) if args.ui_modern else status_frame(state))
+                           modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state))
                     label={'screen':'status','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
                 except (OSError,ValueError,TimeoutError,TypeError) as exc:
                     # The player_service socket is single-threaded. While PLAY waits
@@ -286,7 +295,7 @@ def main(argv=None):
                     state=hold.failure(time.monotonic(), 50.0 if busy else None)
                     if state is not None:
                         frame=(menu.frame(image_to_frame) if menu is not None and menu.active else
-                               modern_status_frame(state, cover_mode=args.cover) if args.ui_modern else status_frame(state))
+                               modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state))
                         label={'screen':'status_cached','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
                     else:
                         frame=(menu.frame(image_to_frame) if menu is not None and menu.active
