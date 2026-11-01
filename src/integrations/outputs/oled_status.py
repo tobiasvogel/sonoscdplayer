@@ -5,6 +5,7 @@ loaded once, optionally; if absent a plain status screen is shown.
 """
 from __future__ import annotations
 import argparse
+from contextlib import nullcontext
 import math
 import json
 from pathlib import Path
@@ -95,6 +96,21 @@ def status_frame(state=None, error=None):
     return image_to_frame(img)
 
 
+def modern_status_frame(state=None, error=None, *, cover_mode='auto', language='de'):
+    """Opt-in 128x128 Modern Hi-Fi frame, reusing the existing OLED lifecycle.
+
+    This adapter is intentionally read-only. No discovery, GPIO listening,
+    player writes or speculative album/cover/target metadata.
+    """
+    if error is not None or state is None:
+        return status_frame(error=error or 'No local status')
+    from sonos_ui.player_adapter import project_status
+    from sonos_ui.render import Renderer
+    display = project_status(state)
+    image = Renderer(cover_mode=cover_mode,language=language).render(display, grayscale=True)
+    return image_to_frame(image)
+
+
 class StatusHold:
     """Keep last good snapshot briefly across a temporary local socket failure."""
     def __init__(self, grace_seconds=4.0):
@@ -137,7 +153,15 @@ def wait_for_player_ready(status_request, socket_path, *, max_wait_seconds=30.0,
 def main(argv=None):
     p=argparse.ArgumentParser(description='M0.14b read-only SSD1327 OLED status')
     p.add_argument('--gpio',action='store_true')
+    p.add_argument('--ui-config',type=Path,default=None,
+                   help='read-only UI TOML; defaults to /home/pi/sonoscdplayer/ui.toml')
+    p.add_argument('--cover',choices=('auto','on','off'),default=None,
+                   help='Modern Hi-Fi cover layout: auto (off for 128x128), on, off')
+    p.add_argument('--ui-modern',action='store_true',
+                   help='opt-in Modern Hi-Fi read-only player status rendering')
     p.add_argument('--execute',action='store_true')
+    p.add_argument('--ui-events-socket',default=None,
+                   help='private encoder event socket; requires --ui-modern')
     p.add_argument('--socket',default=DEFAULT_SOCKET)
     p.add_argument('--splash',default=str(DEFAULT_LOGO))
     p.add_argument('--adopt-boot-splash',action='store_true',help='Adopt firmware-initialized OLED without reset; requires verified firmware splash')
@@ -148,6 +172,8 @@ def main(argv=None):
     p.add_argument('--offline-grace-seconds',type=float,default=4.0)
     p.add_argument('--spi-hz',type=int,default=2_000_000)
     p.add_argument('--contrast',type=int,default=128)
+    p.add_argument('--oled-recover-on-error',action='store_true',
+                   help='opt-in: one full reinitialization after a reported SPI OSError')
     p.add_argument('--ambient-auto',action='store_true',help='Enable independent APDS9306 OLED contrast control')
     p.add_argument('--ambient-socket',default='/run/apds9306.sock')
     p.add_argument('--ambient-timeout-ms',type=int,default=150)
@@ -156,7 +182,16 @@ def main(argv=None):
     p.add_argument('--ambient-smoothing-ms',type=int,default=2000)
     p.add_argument('--ambient-fallback-contrast',type=int,default=128)
     args=p.parse_args(argv)
+    from sonos_ui.ui_config import load_ui_config, DEFAULT_CONFIG
+    try:
+        ui_config = load_ui_config(args.ui_config or DEFAULT_CONFIG)
+    except (ValueError, OSError) as exc:
+        p.error('invalid UI configuration: '+str(exc))
+    cover_mode = args.cover if args.cover is not None else ui_config.cover_mode
+    language = ui_config.language
     if args.gpio != args.execute: p.error('--gpio and --execute must be given together')
+    if args.ui_events_socket and not args.ui_modern:
+        p.error('--ui-events-socket requires --ui-modern')
     try:
         ambient_config=OLEDAmbientConfig(socket_path=args.ambient_socket,
             timeout_ms=args.ambient_timeout_ms,poll_ms=args.ambient_poll_ms,
@@ -174,6 +209,41 @@ def main(argv=None):
     splash=load_splash(args.splash)
     ambient=OLEDContrastControl(ambient_config) if args.ambient_auto else None
     last_contrast=args.contrast
+    recovery = None
+    last_frame = None
+    if args.oled_recover_on_error and args.execute:
+        from .oled_recovery import RecoveryBudget
+        recovery = RecoveryBudget(attempts=1)
+
+    def write_frame(frame, *, force=False):
+        nonlocal last_frame
+        if driver is None:
+            return
+        try:
+            driver.show(frame)
+            last_frame = frame
+        except OSError:
+            if recovery is None or not recovery.run(driver, frame, contrast=last_contrast):
+                raise
+            last_frame = frame
+
+    def adjust_contrast(value):
+        if driver is None:
+            return
+        try:
+            driver.set_contrast(value)
+        except OSError:
+            if recovery is None or last_frame is None or not recovery.run(
+                    driver, last_frame, contrast=value):
+                raise
+
+    menu = None
+    receiver_context = nullcontext(None)
+    if args.ui_events_socket:
+        from sonos_ui.interactive_menu import InteractiveMenu
+        from sonos_ui.ui_event_bridge import EventReceiver
+        menu = InteractiveMenu(language=language)
+        receiver_context = EventReceiver(args.ui_events_socket)
     try:
         if driver: driver.open(adopt_existing=args.adopt_boot_splash)
         end=time.monotonic()+args.seconds if args.seconds else None
@@ -182,7 +252,7 @@ def main(argv=None):
         ready_state=None
         if not args.adopt_boot_splash and splash is not None and args.splash_seconds != 0:
             print(json.dumps({'screen':'splash','source':args.splash,'hardware':args.execute}),flush=True)
-            if driver: driver.show(splash)
+            write_frame(splash)
             if args.splash_seconds is None:
                 # The display changes on real status readiness, not an arbitrary delay.
                 ready_state=wait_for_player_ready(request_status, args.socket,
@@ -195,37 +265,48 @@ def main(argv=None):
             ready_state=wait_for_player_ready(request_status,args.socket,max_wait_seconds=args.splash_ready_timeout)
         if ready_state is not None:
             hold.success(ready_state,time.monotonic())
-        while end is None or time.monotonic()<end:
-            if ambient is not None:
-                new_contrast=ambient.tick(time.monotonic()*1000)
-                if new_contrast != last_contrast:
-                    if driver: driver.set_contrast(new_contrast)
-                    print(json.dumps({'oled_contrast':new_contrast,'mode':'ambient','hardware':args.execute}),flush=True)
-                    last_contrast=new_contrast
-            try:
-                state=hold.success(ready_state if ready_state is not None else request_status(args.socket), time.monotonic())
-                ready_state=None
-                frame=status_frame(state)
-                label={'screen':'status','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
-            except (OSError,ValueError,TimeoutError,TypeError) as exc:
-                # The player_service socket is single-threaded. While PLAY waits
-                # for initial PCM, status requests can queue for up to 45s.
-                # Keep a previously validated screen temporarily on socket
-                # congestion, but not on missing/refused/unauthorized service.
-                busy = isinstance(exc, (BlockingIOError, TimeoutError, socket.timeout))
-                state=hold.failure(time.monotonic(), 50.0 if busy else None)
-                if state is not None:
-                    frame=status_frame(state)
-                    label={'screen':'status_cached','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
-                else:
-                    frame=status_frame(error=str(exc))
-                    label={'screen':'service_offline','error':type(exc).__name__,'hardware':args.execute}
-            current=bytes(frame.data)
-            if current!=previous:
-                if driver: driver.show(frame)
-                print(json.dumps(label,ensure_ascii=False),flush=True)
-                previous=current
-            time.sleep(args.refresh_ms/1000 if end is None else min(args.refresh_ms/1000,max(0,end-time.monotonic())))
+        with receiver_context as ui_events:
+            while end is None or time.monotonic()<end:
+                if menu is not None:
+                    menu.poll()
+                    for _ in range(16):
+                        received = ui_events.receive()
+                        if received is None:
+                            break
+                        menu.event(*received)
+                if ambient is not None:
+                    new_contrast=ambient.tick(time.monotonic()*1000)
+                    if new_contrast != last_contrast:
+                        adjust_contrast(new_contrast)
+                        print(json.dumps({'oled_contrast':new_contrast,'mode':'ambient','hardware':args.execute}),flush=True)
+                        last_contrast=new_contrast
+                try:
+                    state=hold.success(ready_state if ready_state is not None else request_status(args.socket), time.monotonic())
+                    ready_state=None
+                    frame=(menu.frame(image_to_frame) if menu is not None and menu.active else
+                           modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state))
+                    label={'screen':'status','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
+                except (OSError,ValueError,TimeoutError,TypeError) as exc:
+                    # The player_service socket is single-threaded. While PLAY waits
+                    # for initial PCM, status requests can queue for up to 45s.
+                    # Keep a previously validated screen temporarily on socket
+                    # congestion, but not on missing/refused/unauthorized service.
+                    busy = isinstance(exc, (BlockingIOError, TimeoutError, socket.timeout))
+                    state=hold.failure(time.monotonic(), 50.0 if busy else None)
+                    if state is not None:
+                        frame=(menu.frame(image_to_frame) if menu is not None and menu.active else
+                               modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state))
+                        label={'screen':'status_cached','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
+                    else:
+                        frame=(menu.frame(image_to_frame) if menu is not None and menu.active
+                               else status_frame(error=str(exc)))
+                        label={'screen':'service_offline','error':type(exc).__name__,'hardware':args.execute}
+                current=bytes(frame.data)
+                if current!=previous:
+                    write_frame(frame)
+                    print(json.dumps(label,ensure_ascii=False),flush=True)
+                    previous=current
+                time.sleep(args.refresh_ms/1000 if end is None else min(args.refresh_ms/1000,max(0,end-time.monotonic())))
     finally:
         if driver: driver.close()
 

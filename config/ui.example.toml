@@ -1,0 +1,6 @@
+# Optional SonosCDPlayer interface preferences. Independent of Linux locale.
+[ui]
+language = "de" # de | en
+
+[ui.cover]
+mode = "auto" # auto | on | off

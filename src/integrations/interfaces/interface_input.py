@@ -147,13 +147,19 @@ def run_sim(cfg, input_file):
                     print(f'{step["ms"]}ms {name}: {event}', flush=True)
 
 
-def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None):
+def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None, ui_events_socket=None):
     try:
         import RPi.GPIO as GPIO
     except ImportError as exc:
         raise RuntimeError('RPi.GPIO not installed; use --simulate FILE on other systems') from exc
     pulls = {'off': GPIO.PUD_OFF, 'up': GPIO.PUD_UP, 'down': GPIO.PUD_DOWN}
     pins = pins_for(cfg)
+    # Optional UI transport is started once, outside the GPIO sampling loop.
+    # The producer uses put_nowait only; the worker owns all socket I/O.
+    publisher = None
+    if ui_events_socket is not None:
+        from sonos_ui.ui_event_bridge import AsyncEventPublisher
+        publisher = AsyncEventPublisher(ui_events_socket)
     try:
         GPIO.setmode(GPIO.BCM)
         for pin, pull in pins.items():
@@ -161,14 +167,20 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
         sample = lambda: {pin: GPIO.input(pin) for pin in pins}
         engine = InputEngine(cfg, sample(), time.monotonic_ns() // 1_000_000)
         dispatcher = CommandDispatcher(socket_path, uid) if execute else None
+        if publisher is not None:
+            publisher.start()
         print('GPIO command mode active.' if execute else 'GPIO diagnostics active; Ctrl+C to exit. No Sonos commands.', flush=True)
         while True:
             for name, event in engine.sample(sample(), time.monotonic_ns() // 1_000_000):
+                if publisher is not None:
+                    publisher.enqueue(name, event)
                 handle_event(name, event, commands=commands, execute=execute, socket_path=socket_path, uid=uid, dispatcher=dispatcher)
             time.sleep(cfg.poll_interval_ms / 1000)
     except KeyboardInterrupt:
         pass
     finally:
+        if publisher is not None:
+            publisher.close()
         GPIO.cleanup()
 
 
@@ -181,18 +193,23 @@ def main():
     p.add_argument('--commands', action='store_true', help='show allowed command mappings')
     p.add_argument('--execute', action='store_true', help='explicitly send mapped commands (requires --commands)')
     p.add_argument('--socket', default=DEFAULT_SOCKET)
+    p.add_argument('--ui-events-socket', default=None,
+                   help='optional nonblocking read-only UI event observer')
     p.add_argument('--uid-file', type=Path, help='private 0600 file for playpause UID; never logged')
     args = p.parse_args()
     if args.execute and (not args.commands or not args.gpio):
         p.error('--execute requires --commands --gpio')
     if args.uid_file and not args.execute:
         p.error('--uid-file is only used with --execute')
+    if args.ui_events_socket is not None and not args.gpio:
+        p.error('--ui-events-socket requires --gpio')
     cfg = load_config(args.config)
     if args.simulate:
         run_sim(cfg, args.simulate)
     else:
         uid = read_uid(args.uid_file) if args.uid_file else None
-        run_gpio(cfg, commands=args.commands, execute=args.execute, socket_path=args.socket, uid=uid)
+        run_gpio(cfg, commands=args.commands, execute=args.execute, socket_path=args.socket,
+                 uid=uid, ui_events_socket=args.ui_events_socket)
 
 
 if __name__ == '__main__':

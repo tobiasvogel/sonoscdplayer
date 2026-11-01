@@ -130,8 +130,11 @@ class SSD1327:
             self.gpio.setup(self.config.dc_pin,self.gpio.OUT,initial=self.gpio.LOW)
             self.gpio.setup(self.config.rst_pin,self.gpio.OUT,initial=self.gpio.HIGH)
             if adopt_existing:
-                # Firmware owns the initialized display RAM: no RESET or init.
-                # The caller must confirm firmware splash actually ran.
+                # Firmware initialized display RAM: do not RESET or clear it.
+                # A previous process may have sent AE (DISPLAY OFF) in close().
+                # AF resumes that controller without disturbing the splash RAM.
+                # SPI write success cannot prove the panel is connected or lit.
+                self._cmd(0xaf)
                 self.opened=True
                 return
             self.gpio.output(self.config.rst_pin,self.gpio.LOW)
@@ -168,6 +171,21 @@ class SSD1327:
         if not self.opened:
             raise RuntimeError('display not opened')
         self._cmd(0x81, value)
+
+    def recover_once(self, frame, *, contrast=None):
+        """Explicit full reinitialization after a reported SPI I/O error.
+
+        The caller must enforce the recovery budget. No panel-health polling
+        is possible over this write-only SPI link. Never invoked on normal
+        startup or firmware-splash adoption.
+        """
+        if not isinstance(frame, Framebuffer) or len(frame.data) != FRAME_BYTES:
+            raise ValueError('recovery needs a valid last framebuffer')
+        self.close()
+        self.open(adopt_existing=False)
+        if contrast is not None:
+            self.set_contrast(contrast)
+        self.show(frame)
 
     def close(self):
         try:
