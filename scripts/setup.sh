@@ -36,7 +36,7 @@ apt -y full-upgrade
 
 # setup python venv
 mkdir -p ~/sonoscdplayer
-python3 -m venv ~/sonoscdplayer/.venv
+python3 -m venv --system-site-packages ~/sonoscdplayer/.venv
 ~/sonoscdplayer/.venv/bin/python -m pip install soco
 ~/sonoscdplayer/.venv/bin/python -m pip install Pillow
 
