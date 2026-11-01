@@ -91,8 +91,8 @@ class MultiSelection:
         missing=(self.draft|self.applied)-keys
         return replace(self,topology=topology,draft=self.draft & keys,
                        applied=self.applied & keys,reviewing=False,review_valid=False,
-                       focus=min(self.focus,len(topology.targets)),
-                       notice='Ziele nicht mehr verfügbar' if missing else '')
+                       focus=min(self.focus,len(topology.targets)+1),
+                       notice='status.missing_targets' if missing else '')
 
     def action(self,action):
         if action not in ('next','previous','confirm','back'):
@@ -101,14 +101,16 @@ class MultiSelection:
             return replace(self,reviewing=False,review_valid=False,draft=self.applied,notice='')
         if self.reviewing:
             if action=='confirm':
-                return replace(self,applied=self.draft,reviewing=False,review_valid=False,notice='Lokal übernommen') if self.review_valid else self
+                return replace(self,applied=self.draft,reviewing=False,review_valid=False,notice='status.local_applied') if self.review_valid else self
             return replace(self,reviewing=False,review_valid=False) if action=='previous' else self
         n=len(self.topology.targets)
         if action in ('next','previous'):
-            return replace(self,focus=max(0,min(n,self.focus+(1 if action=='next' else -1))))
+            return replace(self,focus=max(0,min(n+1,self.focus+(1 if action=='next' else -1))))
+        if self.focus==n+1:
+            return replace(self,draft=self.applied,reviewing=False,review_valid=False,notice='menu.back')
         if self.focus==n:
             if self.topology.error or not self.draft:
-                return replace(self,notice='Keine gültige Auswahl')
+                return replace(self,notice='status.invalid_selection')
             return replace(self,reviewing=True,review_valid=True,notice='')
         if not self.topology.error and 0<=self.focus<n:
             key=self.topology.targets[self.focus].key
