@@ -25,11 +25,12 @@ import tomllib
 from cd_toc import read_toc
 from drive_power import DrivePowerManager, load_config
 from player_controller import Controller, ProcessServer, routed_source_ip
+from player_target_selection import SelectedTarget
 from player_play import make_url, prepare_selection
 from sonos_parallel_test import detect_drive
 
 MAX_REQUEST = 256
-COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help')
+COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target')
 
 
 def response(controller, *, ok, error=None, commands=None):
@@ -42,7 +43,7 @@ def response(controller, *, ok, error=None, commands=None):
     return result
 
 
-def handle_command(controller, request):
+def handle_command(controller, request, selection=None):
     """UID is command-scoped; never include it in a reply."""
     if not isinstance(request, dict) or not set(request).issubset({'command', 'uid', 'force'}) or 'command' not in request:
         return response(controller, ok=False, error='invalid request keys')
@@ -58,16 +59,26 @@ def handle_command(controller, request):
         return response(controller, ok=False, error='invalid UID')
     if force and (command != 'stop' or uid is None):
         return response(controller, ok=False, error='--force permitted only with stop --uid')
-    if command in ('play', 'playpause', 'sonos-status') and uid is None:
+    if command in ('play', 'playpause', 'sonos-status', 'set-target') and uid is None:
         return response(controller, ok=False, error='PLAY requires --uid')
-    if command not in ('play', 'playpause', 'sonos-status') and not (command == 'stop' and force) and uid is not None:
+    if command not in ('play', 'playpause', 'sonos-status', 'set-target') and not (command == 'stop' and force) and uid is not None:
         return response(controller, ok=False, error='UID only accepted with PLAY')
-    if not (command in ('status', 'sonos-status', 'play', 'playpause', 'pause', 'resume', 'next', 'previous', 'stop', 'reset', 'help')
+    if not (command in ('status', 'sonos-status', 'play', 'playpause', 'pause', 'resume', 'next', 'previous', 'stop', 'reset', 'help', 'set-target', 'get-target', 'clear-target')
             or re.fullmatch(r'select [0-9]{1,3}', command)):
         return response(controller, ok=False, error='unknown command')
     try:
         if command == 'help':
             return response(controller, ok=True, commands=COMMANDS)
+        if command in ('set-target', 'get-target', 'clear-target'):
+            if selection is None:
+                raise RuntimeError('target selection unavailable')
+            if command == 'set-target':
+                selection.set(controller, uid)
+            elif command == 'clear-target':
+                selection.clear(controller)
+            reply = response(controller, ok=True)
+            reply['target_selection'] = selection.summary()
+            return reply
         if command == 'sonos-status':
             reply = response(controller, ok=True)
             reply['live_sonos'] = controller.sonos_live_status(uid)
@@ -145,6 +156,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None):
         os.umask(original_umask)
     bound_inode = os.lstat(path).st_ino
     publisher = StatusPublisher(controller, power)
+    selection = SelectedTarget()
     if hasattr(controller, 'status_hook'):
         controller.status_hook = lambda: publisher.publish(controller, power)
     pending = []
@@ -156,7 +168,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None):
         # Only this one worker ever touches controller, Sonos, reader and drive power.
         with concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='player-control') as executor:
             def operate(request):
-                reply = handle_command(controller, request)
+                reply = handle_command(controller, request, selection)
                 publisher.publish(controller, power)
                 return reply
 
