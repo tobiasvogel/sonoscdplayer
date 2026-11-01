@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 from .model import DisplayModel
 from .theme import MODERN_HIFI, ssd1327_gray
 from .marquee import Marquee
+from .layout_config import DisplayProfile, show_cover
 
 SIZE=(128,128)
 FONT_DIR=Path('/usr/share/fonts/truetype/dejavu')
@@ -32,9 +33,10 @@ def font(size=9,bold=False):
         ) from exc
 
 class Renderer:
-    def __init__(self,theme=MODERN_HIFI):
+    def __init__(self,theme=MODERN_HIFI,*,cover_mode='auto',display_profile=DisplayProfile()):
         self.theme=theme
         self.marquee=Marquee()
+        self.cover_enabled=show_cover(cover_mode,display_profile)
 
     def text(self,canvas,xy,value,*,fill,size=9,bold=False,width=None,height=None,time=0,scroll=False):
         """Draw top-ink-aligned text, clipped to an explicit rectangular viewport."""
@@ -96,10 +98,15 @@ class Renderer:
             self.text(canvas,(10,53),'Keine CD eingelegt',fill=t.secondary,size=10,width=110,height=14)
             self.bottom(canvas,status='Bereit',footer='Drücken: Menü')
             return
-        self.cover(canvas,m.cover)
-        self.text(canvas,(44,18),m.album or 'Audio-CD',fill=t.primary,bold=True,size=9,width=80,height=12,time=elapsed,scroll=True)
-        self.text(canvas,(44,32),m.artist or 'Interpret unbekannt',fill=t.secondary,size=8,width=80,height=11)
-        self.text(canvas,(44,45),f'{m.track_count or "?"} Tracks',fill=t.muted,size=8,width=80,height=9)
+        if self.cover_enabled:
+            self.cover(canvas,m.cover)
+            self.text(canvas,(44,18),m.album or 'Audio-CD',fill=t.primary,bold=True,size=9,width=80,height=12,time=elapsed,scroll=True)
+            self.text(canvas,(44,32),m.artist or 'Interpret unbekannt',fill=t.secondary,size=8,width=80,height=11)
+            self.text(canvas,(44,45),f'{m.track_count or "?"} Tracks',fill=t.muted,size=8,width=80,height=9)
+        else:
+            self.text(canvas,(6,18),m.album or 'Audio-CD',fill=t.primary,bold=True,size=12,width=116,height=17,time=elapsed,scroll=True)
+            self.text(canvas,(6,36),m.artist or 'Interpret unbekannt',fill=t.secondary,size=10,width=116,height=15,time=elapsed,scroll=True)
+            self.text(canvas,(6,51),f'{m.track_count or "?"} Tracks',fill=t.muted,size=8,width=116,height=8)
         d.line((5,59,123,59),fill=t.muted)
         self.text(canvas,(6,65),'01',fill=t.accent,size=11,bold=True,width=19,height=15)
         self.text(canvas,(28,65),m.title or 'Track 1',fill=t.primary,size=11,bold=True,width=96,height=15,scroll=False)
@@ -108,10 +115,15 @@ class Renderer:
     def playback(self,canvas,m,elapsed):
         t=self.theme;d=ImageDraw.Draw(canvas)
         self.shell(canvas,'PAUSE' if m.playback=='paused' else 'PLAYING')
-        self.cover(canvas,m.cover)
-        self.text(canvas,(44,16),f'{m.track:02d}/{m.track_count:02d}',fill=t.accent,size=9,bold=True,width=80,height=11)
-        self.text(canvas,(44,29),m.title or f'Track {m.track}',fill=t.primary,size=9,bold=True,width=80,height=12,time=elapsed,scroll=True)
-        self.text(canvas,(44,43),m.album or 'Audio-CD',fill=t.secondary,size=8,width=80,height=10,time=elapsed,scroll=True)
+        if self.cover_enabled:
+            self.cover(canvas,m.cover)
+            self.text(canvas,(44,16),f'{m.track:02d}/{m.track_count:02d}',fill=t.accent,size=9,bold=True,width=80,height=11)
+            self.text(canvas,(44,29),m.title or f'Track {m.track}',fill=t.primary,size=9,bold=True,width=80,height=12,time=elapsed,scroll=True)
+            self.text(canvas,(44,43),m.album or 'Audio-CD',fill=t.secondary,size=8,width=80,height=10,time=elapsed,scroll=True)
+        else:
+            self.text(canvas,(6,16),f'{m.track:02d}/{m.track_count:02d}',fill=t.accent,size=10,bold=True,width=116,height=13)
+            self.text(canvas,(6,30),m.title or f'Track {m.track}',fill=t.primary,size=12,bold=True,width=116,height=16,time=elapsed,scroll=True)
+            self.text(canvas,(6,47),m.album or 'Audio-CD',fill=t.secondary,size=9,width=116,height=11,time=elapsed,scroll=True)
         d.line((5,59,123,59),fill=t.muted)
         def fmt(s):
             return '--:--' if s is None else f'{s//60:02d}:{s%60:02d}'
