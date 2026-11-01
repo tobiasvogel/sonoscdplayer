@@ -95,6 +95,21 @@ def status_frame(state=None, error=None):
     return image_to_frame(img)
 
 
+def modern_status_frame(state=None, error=None):
+    """Opt-in 128x128 Modern Hi-Fi frame, reusing the existing OLED lifecycle.
+
+    This adapter is intentionally read-only. No discovery, GPIO listening,
+    player writes or speculative album/cover/target metadata.
+    """
+    if error is not None or state is None:
+        return status_frame(error=error or 'No local status')
+    from sonos_ui.player_adapter import project_status
+    from sonos_ui.render import Renderer
+    display = project_status(state)
+    image = Renderer().render(display, grayscale=True)
+    return image_to_frame(image)
+
+
 class StatusHold:
     """Keep last good snapshot briefly across a temporary local socket failure."""
     def __init__(self, grace_seconds=4.0):
@@ -137,6 +152,8 @@ def wait_for_player_ready(status_request, socket_path, *, max_wait_seconds=30.0,
 def main(argv=None):
     p=argparse.ArgumentParser(description='M0.14b read-only SSD1327 OLED status')
     p.add_argument('--gpio',action='store_true')
+    p.add_argument('--ui-modern',action='store_true',
+                   help='opt-in Modern Hi-Fi read-only player status rendering')
     p.add_argument('--execute',action='store_true')
     p.add_argument('--socket',default=DEFAULT_SOCKET)
     p.add_argument('--splash',default=str(DEFAULT_LOGO))
@@ -205,7 +222,7 @@ def main(argv=None):
             try:
                 state=hold.success(ready_state if ready_state is not None else request_status(args.socket), time.monotonic())
                 ready_state=None
-                frame=status_frame(state)
+                frame=modern_status_frame(state) if args.ui_modern else status_frame(state)
                 label={'screen':'status','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
             except (OSError,ValueError,TimeoutError,TypeError) as exc:
                 # The player_service socket is single-threaded. While PLAY waits
@@ -215,7 +232,7 @@ def main(argv=None):
                 busy = isinstance(exc, (BlockingIOError, TimeoutError, socket.timeout))
                 state=hold.failure(time.monotonic(), 50.0 if busy else None)
                 if state is not None:
-                    frame=status_frame(state)
+                    frame=modern_status_frame(state) if args.ui_modern else status_frame(state)
                     label={'screen':'status_cached','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
                 else:
                     frame=status_frame(error=str(exc))
