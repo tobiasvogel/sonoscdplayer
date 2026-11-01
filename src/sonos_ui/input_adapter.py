@@ -7,6 +7,4 @@ def to_ui_action(name, event):
         return None
     if name == 'encoder_sw':
         return 'confirm'
-    if name == 'connect':
-        return 'open_speakers'
     return None
