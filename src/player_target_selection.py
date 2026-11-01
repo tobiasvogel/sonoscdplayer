@@ -6,9 +6,24 @@ All methods are invoked by the player service's serialized control worker.
 from player_state import Mode
 
 
+def verify_solo_stopped(uid):
+    from sonos_parallel_test import find_target
+    player = find_target(uid)
+    if player.uid != uid:
+        raise RuntimeError('target identity mismatch')
+    group = player.group
+    members = list(group.members)
+    if len(members) != 1 or members[0].uid != uid or group.coordinator.uid != uid:
+        raise RuntimeError('target is not solo coordinator')
+    if player.get_current_transport_info()['current_transport_state'] != 'STOPPED':
+        raise RuntimeError('target is not stopped')
+    return True
+
+
 class SelectedTarget:
-    def __init__(self):
+    def __init__(self, verify=verify_solo_stopped):
         self._uid = None
+        self._verify = verify
 
     def summary(self):
         # Do not disclose a private Sonos UID through status/read-only RPC.
@@ -22,7 +37,7 @@ class SelectedTarget:
             raise ValueError('target selection requires stopped, unowned player')
         # Reuse the same live verification performed before existing PLAY.
         # Validates STOPPED solo coordinator and does not send Sonos writes.
-        controller.verify(uid)
+        self._verify(uid)
         self._uid = uid
 
     def clear(self, controller):
