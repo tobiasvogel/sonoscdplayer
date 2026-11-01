@@ -172,6 +172,21 @@ class SSD1327:
             raise RuntimeError('display not opened')
         self._cmd(0x81, value)
 
+    def recover_once(self, frame, *, contrast=None):
+        """Explicit full reinitialization after a reported SPI I/O error.
+
+        The caller must enforce the recovery budget. No panel-health polling
+        is possible over this write-only SPI link. Never invoked on normal
+        startup or firmware-splash adoption.
+        """
+        if not isinstance(frame, Framebuffer) or len(frame.data) != FRAME_BYTES:
+            raise ValueError('recovery needs a valid last framebuffer')
+        self.close()
+        self.open(adopt_existing=False)
+        if contrast is not None:
+            self.set_contrast(contrast)
+        self.show(frame)
+
     def close(self):
         try:
             if self.spi is not None and self.gpio is not None:
