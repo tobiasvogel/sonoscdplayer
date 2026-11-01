@@ -65,7 +65,8 @@ class InteractiveMenu:
         uid = intent.uid
         def work():
             try:
-                self._target_rpc(uid)
+                if self._target_rpc(uid) is not True:
+                    raise RuntimeError('target was not acknowledged')
                 result = 'status.target_accepted'
             except Exception:
                 result = 'status.target_rejected'
