@@ -1,6 +1,6 @@
 # M0.16b — acceptance and release notes
 
-Status: **feature-branch acceptance completed for OLED and GPIO UI; PR review pending**.
+Status: **M0.16b hardware acceptance completed; PR review and merge approval pending**.
 This milestone intentionally does **not** enable Sonos transport commands from physical buttons.
 
 ## Accepted on Raspberry Pi
@@ -29,8 +29,10 @@ This milestone intentionally does **not** enable Sonos transport commands from p
 - Play/Pause requires an explicitly authorized, private UID; there is no automatic
   selection from UI checkboxes or from existing Sonos groups.
 - No spontaneous Sonos grouping changes, ownership takeover, or autoplay.
-- Player unit config-path cutover and reboot acceptance were prepared but not
-  independently confirmed; keep these tracked as operational follow-ups.
+- Player/LED configuration paths were confirmed in effective systemd ExecStart.
+- Reboot acceptance: all four player/LED/OLED/buttons units reported active;
+  encoder navigation worked after restart. Boot error-log inspection was not
+  separately reported.
 - Removal of legacy `src/config.toml` and
   `src/integrations/interfaces/interface.toml` awaits migration acceptance.
 - Language changes made through the device menu are session-only, not persistent.
@@ -44,6 +46,6 @@ Avoid merging private hardware notes or local configuration into a public reposi
 
 ## Review before main
 
-Confirm branch/test CI, inspect systemd effective `ExecStart`, verify no
+Confirm branch/test CI, inspect boot error logs, verify no
 unintended player commands and preserve a rollback path. Merge into `main`
 only after explicit approval. Do not tag as a completed mainline release yet.
