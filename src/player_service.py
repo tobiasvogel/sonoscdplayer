@@ -26,10 +26,11 @@ from cd_toc import read_toc
 from drive_power import DrivePowerManager, load_config
 from player_controller import Controller, ProcessServer, routed_source_ip
 from player_target_selection import SelectedTarget
+from sonos_group import normalize_members
 from player_play import make_url, prepare_selection
 from sonos_parallel_test import detect_drive
 
-MAX_REQUEST = 256
+MAX_REQUEST = 1024
 COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target')
 
 
@@ -45,7 +46,7 @@ def response(controller, *, ok, error=None, commands=None):
 
 def handle_command(controller, request, selection=None):
     """UID is command-scoped; never include it in a reply."""
-    if not isinstance(request, dict) or not set(request).issubset({'command', 'uid', 'force'}) or 'command' not in request:
+    if not isinstance(request, dict) or not set(request).issubset({'command', 'uid', 'force', 'members'}) or 'command' not in request:
         return response(controller, ok=False, error='invalid request keys')
     raw = request['command']
     if not isinstance(raw, str) or len(raw) > 80:
@@ -57,6 +58,14 @@ def handle_command(controller, request, selection=None):
         return response(controller, ok=False, error='invalid force flag')
     if uid is not None and (not isinstance(uid, str) or not 1 <= len(uid) <= 128 or not re.fullmatch(r'[A-Za-z0-9_:-]+', uid)):
         return response(controller, ok=False, error='invalid UID')
+    members = request.get('members')
+    if members is not None:
+        if command != 'set-target':
+            return response(controller, ok=False, error='members only allowed with set-target')
+        try:
+            members = tuple(sorted(normalize_members(uid, members)))
+        except ValueError:
+            return response(controller, ok=False, error='invalid members')
     if force and (command != 'stop' or uid is None):
         return response(controller, ok=False, error='--force permitted only with stop --uid')
     if command in ('play', 'playpause', 'sonos-status', 'set-target') and uid is None:
@@ -73,7 +82,7 @@ def handle_command(controller, request, selection=None):
             if selection is None:
                 raise RuntimeError('target selection unavailable')
             if command == 'set-target':
-                selection.set(controller, uid)
+                selection.set(controller, uid, members)
             elif command == 'clear-target':
                 selection.clear(controller)
             reply = response(controller, ok=True)
