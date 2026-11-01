@@ -6,6 +6,7 @@ A future settings writer must be explicitly enabled and atomically persist.
 from dataclasses import dataclass
 from pathlib import Path
 import tomllib
+import logging
 from .i18n import available_languages
 
 DEFAULT_CONFIG = Path('/home/pi/sonoscdplayer/ui.toml')
@@ -34,4 +35,8 @@ def load_ui_config(path=DEFAULT_CONFIG):
     cover = ui.get('cover', {})
     if not isinstance(cover, dict):
         raise ValueError('invalid [ui.cover] configuration')
-    return UIConfig(language=ui.get('language', 'de'), cover_mode=cover.get('mode', 'auto'))
+    language = ui.get('language', 'de')
+    if language not in available_languages():
+        logging.warning('Unsupported UI language in configuration; using English fallback')
+        language = 'en'
+    return UIConfig(language=language, cover_mode=cover.get('mode', 'auto'))
