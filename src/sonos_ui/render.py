@@ -9,6 +9,7 @@ from .model import DisplayModel
 from .theme import MODERN_HIFI, ssd1327_gray
 from .marquee import Marquee
 from .layout_config import DisplayProfile, show_cover
+from .i18n import Translator
 
 SIZE=(128,128)
 FONT_DIR=Path('/usr/share/fonts/truetype/dejavu')
@@ -33,9 +34,11 @@ def font(size=9,bold=False):
         ) from exc
 
 class Renderer:
-    def __init__(self,theme=MODERN_HIFI,*,cover_mode='auto',display_profile=DisplayProfile()):
+    def __init__(self,theme=MODERN_HIFI,*,cover_mode='auto',display_profile=DisplayProfile(),language='de'):
         self.theme=theme
         self.marquee=Marquee()
+        self.translator=Translator(language)
+        self.tr=self.translator.tr
         self.cover_enabled=show_cover(cover_mode,display_profile)
 
     def text(self,canvas,xy,value,*,fill,size=9,bold=False,width=None,height=None,time=0,scroll=False):
@@ -93,37 +96,37 @@ class Renderer:
 
     def idle(self,canvas,m,elapsed):
         t=self.theme;d=ImageDraw.Draw(canvas)
-        self.shell(canvas,'CD EINGELEGT' if m.disc_present else 'KEINE CD')
+        self.shell(canvas,self.tr('header.disc') if m.disc_present else self.tr('header.no_disc'))
         if not m.disc_present:
-            self.text(canvas,(10,53),'Keine CD eingelegt',fill=t.secondary,size=10,width=110,height=14)
-            self.bottom(canvas,status='Bereit',footer='Drücken: Menü')
+            self.text(canvas,(10,53),self.tr('status.no_disc'),fill=t.secondary,size=10,width=110,height=14)
+            self.bottom(canvas,status=self.tr('status.ready'),footer=self.tr('footer.open_menu'))
             return
         if self.cover_enabled:
             self.cover(canvas,m.cover)
-            self.text(canvas,(44,18),m.album or 'Audio-CD',fill=t.primary,bold=True,size=9,width=80,height=12,time=elapsed,scroll=True)
-            self.text(canvas,(44,32),m.artist or 'Interpret unbekannt',fill=t.secondary,size=8,width=80,height=11)
-            self.text(canvas,(44,45),f'{m.track_count or "?"} Tracks',fill=t.muted,size=8,width=80,height=9)
+            self.text(canvas,(44,18),m.album or self.tr('label.audio_cd'),fill=t.primary,bold=True,size=9,width=80,height=12,time=elapsed,scroll=True)
+            self.text(canvas,(44,32),m.artist or self.tr('label.unknown_artist'),fill=t.secondary,size=8,width=80,height=11)
+            self.text(canvas,(44,45),self.tr('label.tracks',count=m.track_count or '?'),fill=t.muted,size=8,width=80,height=9)
         else:
-            self.text(canvas,(6,18),m.album or 'Audio-CD',fill=t.primary,bold=True,size=12,width=116,height=17,time=elapsed,scroll=True)
-            self.text(canvas,(6,36),m.artist or 'Interpret unbekannt',fill=t.secondary,size=10,width=116,height=15,time=elapsed,scroll=True)
-            self.text(canvas,(6,51),f'{m.track_count or "?"} Tracks',fill=t.muted,size=8,width=116,height=8)
+            self.text(canvas,(6,18),m.album or self.tr('label.audio_cd'),fill=t.primary,bold=True,size=12,width=116,height=17,time=elapsed,scroll=True)
+            self.text(canvas,(6,36),m.artist or self.tr('label.unknown_artist'),fill=t.secondary,size=10,width=116,height=15,time=elapsed,scroll=True)
+            self.text(canvas,(6,51),self.tr('label.tracks',count=m.track_count or '?'),fill=t.muted,size=8,width=116,height=8)
         d.line((5,59,123,59),fill=t.muted)
         self.text(canvas,(6,65),'01',fill=t.accent,size=11,bold=True,width=19,height=15)
-        self.text(canvas,(28,65),m.title or 'Track 1',fill=t.primary,size=11,bold=True,width=96,height=15,scroll=False)
-        self.bottom(canvas,status='Bereit' if m.speaker else 'Ziel wählen',footer='Drücken: Menü',status_fill=t.playing if m.speaker else t.warning)
+        self.text(canvas,(28,65),m.title or self.tr('label.track',number=1),fill=t.primary,size=11,bold=True,width=96,height=15,scroll=False)
+        self.bottom(canvas,status=self.tr('status.ready') if m.speaker else self.tr('status.choose_target'),footer=self.tr('footer.open_menu'),status_fill=t.playing if m.speaker else t.warning)
 
     def playback(self,canvas,m,elapsed):
         t=self.theme;d=ImageDraw.Draw(canvas)
-        self.shell(canvas,'PAUSE' if m.playback=='paused' else 'PLAYING')
+        self.shell(canvas,self.tr('header.pause') if m.playback=='paused' else self.tr('header.playing'))
         if self.cover_enabled:
             self.cover(canvas,m.cover)
             self.text(canvas,(44,16),f'{m.track:02d}/{m.track_count:02d}',fill=t.accent,size=9,bold=True,width=80,height=11)
-            self.text(canvas,(44,29),m.title or f'Track {m.track}',fill=t.primary,size=9,bold=True,width=80,height=12,time=elapsed,scroll=True)
-            self.text(canvas,(44,43),m.album or 'Audio-CD',fill=t.secondary,size=8,width=80,height=10,time=elapsed,scroll=True)
+            self.text(canvas,(44,29),m.title or self.tr('label.track',number=m.track),fill=t.primary,size=9,bold=True,width=80,height=12,time=elapsed,scroll=True)
+            self.text(canvas,(44,43),m.album or self.tr('label.audio_cd'),fill=t.secondary,size=8,width=80,height=10,time=elapsed,scroll=True)
         else:
             self.text(canvas,(6,16),f'{m.track:02d}/{m.track_count:02d}',fill=t.accent,size=10,bold=True,width=116,height=13)
-            self.text(canvas,(6,30),m.title or f'Track {m.track}',fill=t.primary,size=12,bold=True,width=116,height=16,time=elapsed,scroll=True)
-            self.text(canvas,(6,47),m.album or 'Audio-CD',fill=t.secondary,size=9,width=116,height=11,time=elapsed,scroll=True)
+            self.text(canvas,(6,30),m.title or self.tr('label.track',number=m.track),fill=t.primary,size=12,bold=True,width=116,height=16,time=elapsed,scroll=True)
+            self.text(canvas,(6,47),m.album or self.tr('label.audio_cd'),fill=t.secondary,size=9,width=116,height=11,time=elapsed,scroll=True)
         d.line((5,59,123,59),fill=t.muted)
         def fmt(s):
             return '--:--' if s is None else f'{s//60:02d}:{s%60:02d}'
@@ -133,15 +136,15 @@ class Renderer:
         if m.elapsed_seconds is not None and m.duration_seconds and m.duration_seconds>0:
             progress=max(0,min(1,m.elapsed_seconds/m.duration_seconds))
             d.rectangle((6,84,6+int(116*progress),87),fill=t.playing)
-        self.bottom(canvas,status=m.speaker or 'Kein Lautsprecher',footer='Drücken: Menü')
+        self.bottom(canvas,status=m.speaker or self.tr('status.no_speaker'),footer=self.tr('footer.open_menu'))
 
     def menu(self,canvas,m,elapsed):
         t=self.theme; d=ImageDraw.Draw(canvas)
-        self.shell(canvas,'Lautsprecher')
-        self.text(canvas,(6,16),'Ziel auswählen',fill=t.secondary,size=8,width=116,height=10)
+        self.shell(canvas,self.tr('header.speakers'))
+        self.text(canvas,(6,16),self.tr('menu.choose_target'),fill=t.secondary,size=8,width=116,height=10)
         count=len(m.speakers)
         if not count:
-            label='Suche Lautsprecher …' if m.speakers_searching else 'Keine Lautsprecher gefunden'
+            label=self.tr('menu.choose_target') if m.speakers_searching else self.tr('status.no_targets')
             self.text(canvas,(8,45),label,fill=t.secondary,size=9,width=112,height=30)
         else:
             top=max(0,min(max(0,count-4),m.focus_index-1))
@@ -160,5 +163,5 @@ class Renderer:
                     self.text(canvas,(111,y+1),'✓',fill=color,size=9,bold=True,
                               width=12,height=14)
         current=(m.speakers[m.selected_index] if m.selected_index is not None
-                 and 0<=m.selected_index<count else 'Keine Auswahl')
-        self.bottom(canvas,status='Aktuell: '+current,footer='Drehen / Drücken')
+                 and 0<=m.selected_index<count else self.tr('status.no_speaker'))
+        self.bottom(canvas,status=self.tr('status.current',name=current),footer=self.tr('footer.turn_press'))
