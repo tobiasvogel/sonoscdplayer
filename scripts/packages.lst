@@ -14,3 +14,4 @@ libncurses-dev
 libfdt-dev
 libgnutls28-dev
 fonts-dejavu-core
+python3-rpi.gpio
