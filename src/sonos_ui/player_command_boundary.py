@@ -13,7 +13,9 @@ from dataclasses import dataclass
 
 from .single_target import TargetIntent, TargetSelectionError, select_one
 
-_ALLOWED = frozenset(('playpause', 'next', 'previous', 'stop'))
+_ALLOWED = frozenset(('playpause',))
+# Other transport RPCs lack a target UID in the existing player protocol.
+# Do not permit them until the player can bind them to the selected owner.
 _UID_PATTERN = re.compile(r'[A-Za-z0-9_:-]{1,128}\Z')
 DEFAULT_SOCKET = '/run/sonoscdplayer/control.sock'
 
@@ -28,8 +30,7 @@ def request_for(action: str, target: TargetIntent) -> dict:
         raise ValueError('unsupported transport action')
     if not isinstance(target, TargetIntent) or not _UID_PATTERN.fullmatch(target.uid):
         raise TransportRejected('missing or invalid single target')
-    # UID is accepted only for playpause by the existing player RPC.
-    return {'command':action, 'uid':target.uid} if action == 'playpause' else {'command':action}
+    return {'command':action, 'uid':target.uid}
 
 
 def send_player_request(request: dict, socket_path=DEFAULT_SOCKET):
