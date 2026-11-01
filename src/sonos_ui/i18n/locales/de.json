@@ -35,5 +35,8 @@
   "footer.turn_press": "Drehen / Drücken",
   "footer.mark": "Drücken: Markieren",
   "footer.confirm": "Drücken: Bestätigen",
-  "footer.select": "Drücken: Wählen"
+  "footer.select": "Drücken: Wählen",
+  "status.target_pending": "Ziel wird geprüft",
+  "status.target_accepted": "Ziel übernommen",
+  "status.target_rejected": "Ziel abgelehnt"
 }
