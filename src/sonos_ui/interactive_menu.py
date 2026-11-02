@@ -83,16 +83,16 @@ class InteractiveMenu:
         with self._lock:
             new = self._pending
             self._pending = None
+        if new is not None:
+            # Topology refresh must not erase a completed target-RPC notice.
+            self.state = self.state.update(new)
+            changed = True
         with self._lock:
             result = self._target_result
             self._target_result = None
         if result is not None and result[0] == self._target_generation:
             self._target_pending = False
-            self.state = replace(self.state,notice=result[1])
-            changed = True
-        if new is not None:
-            # Revalidation may invalidate the review; never blindly apply old IDs.
-            self.state = self.state.update(new)
+            self.state = replace(self.state, notice=result[1])
             changed = True
         if self.active and now >= self._next_refresh:
             self._start_discovery(now)
