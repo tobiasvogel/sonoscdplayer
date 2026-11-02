@@ -14,8 +14,8 @@ class EarlySocketGuardTests(unittest.TestCase):
             config.write_text('', encoding='utf-8')
             occupied = Path(directory) / 'control.sock'
             occupied.touch()
-            with patch('player_service.detect_drive', side_effect=AssertionError('drive touched')), \\
-                 patch('player_service.read_toc', side_effect=AssertionError('CD read')):
+            with (patch('player_service.detect_drive', side_effect=AssertionError('drive touched')),
+                  patch('player_service.read_toc', side_effect=AssertionError('CD read'))):
                 self.assertEqual(run(['--config', str(config), '--socket', str(occupied)]), 1)
             self.assertTrue(occupied.exists())
 
