@@ -134,3 +134,51 @@ def form(coordinator, members, *, settle=3.0, sleep=time.sleep, clock=time.monot
         if remaining:
             raise GroupRollbackIncomplete(remaining) from exc
         raise
+
+def inspect_recovery(coordinator, joined):
+    """Read-only, conservative inspection of tracked members.
+
+    No UID is returned to clients. A standalone member is already resolved;
+    an exact residual group may be eligible for separately confirmed release.
+    """
+    if not joined:
+        return {'state': 'clear', 'standalone': (), 'attached': (), 'blocked': ()}
+    standalone, attached, blocked = [], [], []
+    try:
+        if coordinator is None:
+            raise RuntimeError('missing coordinator')
+        refresh_topology(coordinator)
+        group = coordinator.group
+        actual = [p.uid for p in group.members]
+        exact = (group.coordinator.uid == coordinator.uid and
+                 len(actual) == len(set(actual)) and
+                 set(actual).issubset({coordinator.uid, *joined}))
+    except Exception:
+        exact = False
+    for uid, player in joined.items():
+        try:
+            if player.uid != uid:
+                raise RuntimeError('member identity changed')
+            refresh_topology(player)
+            if is_expected_group(player, uid):
+                standalone.append(uid)
+            elif exact and player.group.coordinator.uid == coordinator.uid:
+                attached.append(uid)
+            else:
+                blocked.append(uid)
+        except Exception:
+            blocked.append(uid)
+    # The coordinator's exact group may omit already-standalone tracked
+    # members. Check its complete membership again against attached members.
+    if attached and not blocked:
+        try:
+            refresh_topology(coordinator)
+            if not is_expected_group(coordinator, coordinator.uid, attached):
+                blocked.extend(attached)
+                attached.clear()
+        except Exception:
+            blocked.extend(attached)
+            attached.clear()
+    state = ('blocked' if blocked else 'attached' if attached else 'clear')
+    return {'state': state, 'standalone': tuple(standalone),
+            'attached': tuple(attached), 'blocked': tuple(blocked)}
