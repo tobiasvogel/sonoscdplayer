@@ -322,6 +322,7 @@ class Controller:
     def _fail(self, message):
         self.state = self.state.failed(message)
         print(f'[M0.11d] ERROR: {message}; no Sonos STOP sent', flush=True)
+        url = self.owned_url
         self.owned_url = None
         self.player = None
         self.server.close()
