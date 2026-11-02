@@ -77,7 +77,7 @@ def handle_command(controller, request, selection=None):
         return response(controller, ok=False, error='PLAY requires --uid')
     if command not in ('play', 'playpause', 'sonos-status', 'set-target') and not (command == 'stop' and force) and uid is not None:
         return response(controller, ok=False, error='UID only accepted with PLAY')
-    if not (command in ('status', 'sonos-status', 'play', 'playpause', 'pause', 'resume', 'next', 'previous', 'stop', 'reset', 'help', 'set-target', 'get-target', 'clear-target', 'play-selected')
+    if not (command in ('status', 'sonos-status', 'play', 'playpause', 'pause', 'resume', 'next', 'previous', 'stop', 'reset', 'help', 'set-target', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery')
             or re.fullmatch(r'select [0-9]{1,3}', command)):
         return response(controller, ok=False, error='unknown command')
     try:
