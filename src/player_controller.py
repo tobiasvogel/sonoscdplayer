@@ -328,8 +328,10 @@ class Controller:
             player.play_uri(url, title=f'SonosCDPlayer Track {self.state.selected_track}')
         except BaseException as exc:
             self.server.close()
+            # A failed/ambiguous play_uri may already have changed the coordinator.
+            # Never unjoin after an uncertain Sonos write without URI proof.
             if self._joined and not self._group_uncertain:
-                self._release_group()
+                self._group_uncertain = True
             self.owned_url, self.player = None, None
             self.state = self.state.failed(f'PLAY failed: {type(exc).__name__}: {exc}')
             raise
