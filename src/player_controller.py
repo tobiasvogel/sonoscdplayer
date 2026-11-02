@@ -548,8 +548,12 @@ class Controller:
         try:
             self.play(members=members)
         except BaseException:
-            if self._joined and not self._group_uncertain:
-                self._release_group()
+            # The previous track has already been stopped. The next PLAY may
+            # have failed before or after a Sonos write; never blindly unjoin.
+            # Preserve every joined member for explicit recovery inspection.
+            if self._joined:
+                self._group_uncertain = True
+                self._recovery_url = None
             raise
 
     def command(self, line):
