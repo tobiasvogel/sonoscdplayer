@@ -63,6 +63,16 @@ class ReconnectTests(unittest.TestCase):
                 restore_drive_for_explicit_action(controller,power,original,'original')
         self.assertEqual(server.device,'/dev/sr0')
 
+    def test_unresolved_group_recovery_blocks_rebind(self):
+        server = NS(device='/dev/sr0', alive=lambda: False,
+                    reader_active=lambda: False)
+        controller = NS(state=NS(mode=Mode.ERROR), owned_url=None,
+                        server=server, _joined={}, _group_uncertain=True)
+        with patch('player_service.recovered_device',
+                   side_effect=AssertionError('recovery must not run')):
+            self.assertFalse(restore_drive_for_explicit_action(
+                controller, None, UsbDriveId('0e8d', '1836', 'RC6U504'), 'toc'))
+
     def test_active_reader_blocks_rebind(self):
         server=NS(device='/dev/sr0',alive=lambda:True,reader_active=lambda:True)
         controller=NS(state=NS(mode=Mode.PLAYING),owned_url='owned',server=server,_joined={})
