@@ -10,7 +10,7 @@ class DriveDisappearanceTests(unittest.TestCase):
             'enabled': True, 'strategy': 'keepalive',
             'interval': 10.0, 'overrides': {},
         })
-        with patch('drive_power.subprocess.run', side_effect=AssertionError('SCSI command called')):
+        with patch.object(manager, '_command', side_effect=AssertionError('SCSI command called')):
             with self.assertRaisesRegex(RuntimeError, 'device disappeared'):
                 manager._start_motor()
 
