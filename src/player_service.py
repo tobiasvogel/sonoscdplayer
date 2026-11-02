@@ -253,6 +253,13 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None):
             pass
 
 
+def refuse_existing_control_socket(socket_path):
+    """Fail early before any drive access; serve() still checks before bind."""
+    path = Path(socket_path).expanduser().absolute()
+    if path.exists() or path.is_symlink():
+        raise FileExistsError(f'refusing existing socket/path: {path}')
+
+
 def run(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--device', default='auto')
@@ -272,6 +279,7 @@ def run(argv=None):
     power = None
     shutdown_policy = 'stop_owned'
     try:
+        refuse_existing_control_socket(ns.socket)
         device = detect_drive(base) if ns.device == 'auto' else ns.device
         state = prepare_selection(read_toc(device), 1)
         with conf.open('rb') as handle:
