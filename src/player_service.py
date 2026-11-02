@@ -31,7 +31,7 @@ from player_play import make_url, prepare_selection
 from sonos_parallel_test import detect_drive
 
 MAX_REQUEST = 1024
-COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected')
+COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery')
 
 
 def response(controller, *, ok, error=None, commands=None):
@@ -87,6 +87,14 @@ def handle_command(controller, request, selection=None):
                 selection.clear(controller)
             reply = response(controller, ok=True)
             reply['target_selection'] = selection.summary()
+            return reply
+        if command in ('inspect-group-recovery', 'resolve-group-recovery'):
+            if command == 'inspect-group-recovery':
+                inspected = controller.inspect_group_recovery()
+            else:
+                inspected = controller.resolve_group_recovery()
+            reply = response(controller, ok=True)
+            reply['group_recovery'] = inspected
             return reply
         if command == 'play-selected':
             if selection is None or selection.uid_for_explicit_action() is None:
