@@ -4,7 +4,9 @@ from player_state import Mode
 from player_service import handle_command
 from test_m017a_group_lifecycle import LifecycleTests
 
-class RecoveryTests(LifecycleTests):
+class RecoveryTests(unittest.TestCase):
+    setUp = LifecycleTests.setUp
+    start = LifecycleTests.start
     def test_partial_unjoin_failure_requires_confirmation(self):
         self.start()
         self.b.unjoin = lambda: (_ for _ in ()).throw(OSError('offline'))
