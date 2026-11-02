@@ -236,7 +236,31 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 publisher.publish(controller, power)
                 return reply
 
+            # Retry only when the old optical path disappears/changes. Avoid
+            # probing healthy drives and preserve the normal keepalive cadence.
+            next_drive_recovery = 0.0
+
             def refresh():
+                nonlocal next_drive_recovery
+                from player_state import Mode
+                if (drive_toc is not None and power is not None
+                        and controller.state.mode in (Mode.STOPPED, Mode.ERROR)
+                        and not controller.owned_url and not controller.server.alive()
+                        and not controller._joined and not controller._group_uncertain
+                        and not controller.server.reader_active()):
+                    old = controller.server.device
+                    missing = not Path(old).exists()
+                    changed = (not missing and drive_id is not None
+                               and usb_identity(old) != drive_id)
+                    now = time.monotonic()
+                    if (missing or changed) and now >= next_drive_recovery:
+                        next_drive_recovery = now + max(10.0, power.config['interval'])
+                        try:
+                            restore_drive_for_explicit_action(
+                                controller, power, drive_id, drive_toc)
+                        except (OSError, RuntimeError, ValueError) as exc:
+                            print(f'[drive] idle USB recovery deferred: {type(exc).__name__}: {exc}',
+                                  flush=True)
                 controller.refresh()
                 if power is not None:
                     power.tick(reader_active=controller.server.reader_active())
