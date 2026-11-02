@@ -46,7 +46,7 @@ def response(controller, *, ok, error=None, commands=None):
 
 def handle_command(controller, request, selection=None):
     """UID is command-scoped; never include it in a reply."""
-    if not isinstance(request, dict) or not set(request).issubset({'command', 'uid', 'force', 'members'}) or 'command' not in request:
+    if not isinstance(request, dict) or not set(request).issubset({'command', 'uid', 'force', 'members', 'confirm'}) or 'command' not in request:
         return response(controller, ok=False, error='invalid request keys')
     raw = request['command']
     if not isinstance(raw, str) or len(raw) > 80:
@@ -58,6 +58,11 @@ def handle_command(controller, request, selection=None):
         return response(controller, ok=False, error='invalid force flag')
     if uid is not None and (not isinstance(uid, str) or not 1 <= len(uid) <= 128 or not re.fullmatch(r'[A-Za-z0-9_:-]+', uid)):
         return response(controller, ok=False, error='invalid UID')
+    confirmed = request.get('confirm', None)
+    if confirmed is not None and (command != 'resolve-group-recovery' or confirmed is not True):
+        return response(controller, ok=False, error='confirmation only accepted for recovery')
+    if command == 'resolve-group-recovery' and confirmed is not True:
+        return response(controller, ok=False, error='explicit confirmation required')
     members = request.get('members')
     if members is not None:
         if command != 'set-target':
