@@ -177,6 +177,7 @@ class Controller:
                 'target_uid': self.uid if owned else None,
                 'transport': self.last_transport,
                 'owned': owned,
+                'group_cleanup_pending': bool(self._joined or self._group_uncertain) and self._group_uncertain,
             },
             'stream': {
                 'active': active,
@@ -270,11 +271,13 @@ class Controller:
     def _fail(self, message):
         self.state = self.state.failed(message)
         print(f'[M0.11d] ERROR: {message}; no Sonos STOP sent', flush=True)
-        url = self.owned_url
         self.owned_url = None
         self.player = None
         self.server.close()
-        self._release_group(owned_url=url)
+        # An error here may mean the topology, URI or transport could not be
+        # verified. Never issue unjoin on an ambiguous observation.
+        if self._joined:
+            self._group_uncertain = True
 
     def play(self, uid=None, members=None):
         if self.state.mode != Mode.STOPPED:
