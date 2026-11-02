@@ -148,6 +148,7 @@ class Controller:
         self._group_coord = None
         self._group_members = frozenset()
         self._group_uncertain = False
+        self._recovery_url = None
 
     def _url(self, track):
         return make_url(self.host, self.port, track)
@@ -195,10 +196,60 @@ class Controller:
         remaining = sonos_group.unresolved_members(self._joined, result)
         self._joined = remaining
         self._group_uncertain = bool(remaining)
+        if remaining and owned_url is not None:
+            self._recovery_url = owned_url
         if not remaining:
             self._group_coord = None
             self._group_members = frozenset()
+            self._recovery_url = None
         return not remaining
+
+    def inspect_group_recovery(self):
+        """Read-only status; no Sonos mutations or hidden retry."""
+        if not self._joined:
+            return {'state': 'clear', 'remaining': 0, 'can_resolve': False}
+        result = sonos_group.inspect_recovery(self._group_coord, self._joined)
+        return {'state': result['state'], 'remaining': len(self._joined),
+                'standalone': len(result['standalone']),
+                'attached': len(result['attached']),
+                'blocked': len(result['blocked']),
+                'can_resolve': (result['state'] == 'attached'
+                                and bool(self._recovery_url)
+                                and self.state.mode in (Mode.STOPPED, Mode.ERROR)
+                                and not self.owned_url)}
+
+    def resolve_group_recovery(self):
+        """Explicit recovery only; never adopt an unknown or foreign session."""
+        if self.state.mode not in (Mode.STOPPED, Mode.ERROR) or self.owned_url:
+            raise RuntimeError('recovery requires inactive player')
+        if not self._joined:
+            return self.inspect_group_recovery()
+        observed = sonos_group.inspect_recovery(self._group_coord, self._joined)
+        if observed['state'] == 'blocked':
+            raise RuntimeError('recovery blocked by unknown topology')
+        for uid in observed['standalone']:
+            self._joined.pop(uid)
+        if observed['state'] == 'clear':
+            self._joined.clear()
+            self._group_uncertain = False
+            self._group_coord = None
+            self._group_members = frozenset()
+            self._recovery_url = None
+            return self.inspect_group_recovery()
+        if not self._recovery_url:
+            raise RuntimeError('recovery has no verified owned stream')
+        # Recheck the coordinator URI before issuing any group mutation.
+        if self._group_coord.get_current_track_info().get('uri') != self._recovery_url:
+            raise RuntimeError('recovery stream ownership changed')
+        result = sonos_group.release(self._group_coord, self._joined,
+                                     owned_url=self._recovery_url)
+        self._joined = sonos_group.unresolved_members(self._joined, result)
+        self._group_uncertain = bool(self._joined)
+        if not self._joined:
+            self._group_coord = None
+            self._group_members = frozenset()
+            self._recovery_url = None
+        return self.inspect_group_recovery()
 
     def _verify_retained_group(self, uid):
         coordinator = self._group_coord
@@ -278,6 +329,7 @@ class Controller:
         # verified. Never issue unjoin on an ambiguous observation.
         if self._joined:
             self._group_uncertain = True
+            self._recovery_url = url
 
     def play(self, uid=None, members=None):
         if self.state.mode != Mode.STOPPED:
@@ -327,6 +379,7 @@ class Controller:
                     self._group_coord = player
                     self._group_members = wanted
                     self._group_uncertain = True
+                    self._recovery_url = None
                     raise
             player.play_uri(url, title=f'SonosCDPlayer Track {self.state.selected_track}')
         except BaseException as exc:
@@ -335,6 +388,7 @@ class Controller:
             # Never unjoin after an uncertain Sonos write without URI proof.
             if self._joined and not self._group_uncertain:
                 self._group_uncertain = True
+                self._recovery_url = None  # play_uri outcome is ambiguous
             self.owned_url, self.player = None, None
             self.state = self.state.failed(f'PLAY failed: {type(exc).__name__}: {exc}')
             raise
