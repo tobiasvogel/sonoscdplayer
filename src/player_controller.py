@@ -406,7 +406,7 @@ class Controller:
             raise ValueError('PAUSE requires confirmed owned PLAYING')
         player = self.verify_existing()
         self._ownership(player, 'PLAYING')
-        ownership_for_transport(player, self.uid, self.owned_url, 'PLAYING')
+        self._ownership(player, 'PLAYING')
         player.pause()
         self.state = self.state.paused()
         self.last_transport = 'PAUSED_PLAYBACK'
@@ -415,8 +415,8 @@ class Controller:
         if self.state.mode != Mode.PAUSED or not self.seen_playing or not self.owned_url or not self.server.alive():
             raise ValueError('RESUME requires confirmed owned PAUSED')
         player = self.verify_existing()
-        ownership_for_transport(player, self.uid, self.owned_url, 'PAUSED_PLAYBACK')
-        ownership_for_transport(player, self.uid, self.owned_url, 'PAUSED_PLAYBACK')
+        self._ownership(player, 'PAUSED_PLAYBACK')
+        self._ownership(player, 'PAUSED_PLAYBACK')
         player.play()
         self.state = self.state.resumed()
         self.last_transport = 'PLAYING'
