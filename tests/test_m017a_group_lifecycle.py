@@ -127,6 +127,51 @@ class LifecycleTests(unittest.TestCase):
         self.assertFalse(self.player.status_snapshot()['sonos']['group_cleanup_pending'])
         self.assertEqual(self.player._joined, {})
 
+    def test_track_switch_new_uri_failure_preserves_group(self):
+        self.start()
+        previous_uri = self.a.uri
+        def fail_new_uri(url, title):
+            if url != previous_uri:
+                raise OSError('ambiguous new track write')
+        self.a.play_uri = fail_new_uri
+        with self.assertRaises(OSError):
+            self.player.change('next')
+        self.assertEqual(self.a.stop_calls, 1)
+        self.assertEqual(self.topo.leaders['B'], 'A')
+        self.assertEqual(self.b.unjoin_calls, 0)
+        self.assertTrue(self.player._group_uncertain)
+        self.assertIsNone(self.player._recovery_url)
+        self.assertTrue(self.player.status_snapshot()['sonos']['group_cleanup_pending'])
+        with self.assertRaises(RuntimeError):
+            self.player.play('A', ['B'])
+
+    def test_track_switch_preflight_failure_keeps_group(self):
+        self.start()
+        original = self.player._verify_retained_group
+        calls = [0]
+        def fail_on_recheck(uid):
+            calls[0] += 1
+            if calls[0] >= 2:
+                raise RuntimeError('topology unreadable')
+            return original(uid)
+        self.player._verify_retained_group = fail_on_recheck
+        with self.assertRaises(RuntimeError):
+            self.player.change('next')
+        self.assertEqual(self.a.stop_calls, 1)
+        self.assertEqual(self.topo.leaders['B'], 'A')
+        self.assertEqual(self.b.unjoin_calls, 0)
+        self.assertTrue(self.player._group_uncertain)
+
+    def test_track_switch_does_not_detach_when_stream_server_fails(self):
+        self.start()
+        self.server.start = lambda track: (_ for _ in ()).throw(OSError('reader unavailable'))
+        with self.assertRaises(OSError):
+            self.player.change('next')
+        self.assertEqual(self.a.stop_calls, 1)
+        self.assertEqual(self.topo.leaders['B'], 'A')
+        self.assertEqual(self.b.unjoin_calls, 0)
+        self.assertTrue(self.player._group_uncertain)
+
     def test_solo_play_unchanged(self):
         self.player.play('A')
         self.assertEqual(self.topo.leaders,{'A':'A','B':'B','C':'C'})
