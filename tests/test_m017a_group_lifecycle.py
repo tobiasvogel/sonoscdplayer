@@ -101,6 +101,32 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.b.unjoin_calls,0)
         with self.assertRaises(RuntimeError):
             self.player.reset()
+    def test_refresh_failure_preserves_group_and_reports_recovery(self):
+        self.start()
+        self.a.uri = 'x-sonos-spotify:foreign'
+        self.player.refresh()
+        self.assertEqual(self.player.state.mode, Mode.ERROR)
+        self.assertEqual(self.topo.leaders['B'], 'A')
+        self.assertEqual(self.b.unjoin_calls, 0)
+        self.assertTrue(self.player.status_snapshot()['sonos']['group_cleanup_pending'])
+        with self.assertRaises(RuntimeError):
+            self.player.reset()
+
+    def test_member_identity_mismatch_never_unjoins(self):
+        from sonos_group import release, unresolved_members
+        self.start()
+        self.b.uid = 'SPOOFED'
+        result = release(self.a, {'B': self.b}, owned_url=self.a.uri)
+        self.assertNotEqual(result['B'], 'released')
+        self.assertEqual(self.b.unjoin_calls, 0)
+        self.assertIn('B', unresolved_members({'B': self.b}, result))
+
+    def test_successful_release_has_no_pending_cleanup(self):
+        self.start()
+        self.player.stop()
+        self.assertFalse(self.player.status_snapshot()['sonos']['group_cleanup_pending'])
+        self.assertEqual(self.player._joined, {})
+
     def test_solo_play_unchanged(self):
         self.player.play('A')
         self.assertEqual(self.topo.leaders,{'A':'A','B':'B','C':'C'})
