@@ -380,7 +380,7 @@ class Controller:
         player = self.verify_existing()
         expected = 'PLAYING' if self.state.mode == Mode.PLAYING else 'PAUSED_PLAYBACK'
         self._ownership(player, expected)
-        ownership_for_transport(player, self.uid, self.owned_url, expected)
+        self._ownership(player, expected)
         player.stop()  # only destructive action
         old_url = self.owned_url
         self.state = self.state.natural_end()
@@ -540,8 +540,8 @@ class Controller:
         try:
             player = self.verify_existing()
             expected = 'PLAYING' if self.state.mode == Mode.PLAYING else 'PAUSED_PLAYBACK'
-            ownership_for_transport(player, self.uid, self.owned_url, expected)
-            ownership_for_transport(player, self.uid, self.owned_url, expected)
+            self._ownership(player, expected)
+            self._ownership(player, expected)
             player.stop()
         except Exception as exc:
             return {'action': 'not_stopped',
