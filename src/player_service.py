@@ -31,7 +31,7 @@ from player_play import make_url, prepare_selection
 from sonos_parallel_test import detect_drive
 
 MAX_REQUEST = 1024
-COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target')
+COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected')
 
 
 def response(controller, *, ok, error=None, commands=None):
@@ -72,7 +72,7 @@ def handle_command(controller, request, selection=None):
         return response(controller, ok=False, error='PLAY requires --uid')
     if command not in ('play', 'playpause', 'sonos-status', 'set-target') and not (command == 'stop' and force) and uid is not None:
         return response(controller, ok=False, error='UID only accepted with PLAY')
-    if not (command in ('status', 'sonos-status', 'play', 'playpause', 'pause', 'resume', 'next', 'previous', 'stop', 'reset', 'help', 'set-target', 'get-target', 'clear-target')
+    if not (command in ('status', 'sonos-status', 'play', 'playpause', 'pause', 'resume', 'next', 'previous', 'stop', 'reset', 'help', 'set-target', 'get-target', 'clear-target', 'play-selected')
             or re.fullmatch(r'select [0-9]{1,3}', command)):
         return response(controller, ok=False, error='unknown command')
     try:
@@ -88,6 +88,14 @@ def handle_command(controller, request, selection=None):
             reply = response(controller, ok=True)
             reply['target_selection'] = selection.summary()
             return reply
+        if command == 'play-selected':
+            if selection is None or selection.uid_for_explicit_action() is None:
+                raise ValueError('no confirmed target')
+            # This is the ONLY new route for group PLAY. It requires a separate
+            # explicit command; selecting targets cannot start music.
+            controller.play(selection.uid_for_explicit_action(),
+                            members=selection.members_for_explicit_action())
+            return response(controller, ok=True)
         if command == 'sonos-status':
             reply = response(controller, ok=True)
             reply['live_sonos'] = controller.sonos_live_status(uid)
