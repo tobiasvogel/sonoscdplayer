@@ -24,6 +24,7 @@ import tomllib
 
 from cd_toc import read_toc
 from drive_power import DrivePowerManager, load_config
+from drive_identity import usb_identity, recovered_device
 from player_controller import Controller, ProcessServer, routed_source_ip
 from player_target_selection import SelectedTarget
 from sonos_group import normalize_members
@@ -172,7 +173,32 @@ def send_reply(conn, reply):
         conn.close()
 
 
-def serve(controller, socket_path, *, poll_seconds=0.5, power=None):
+def restore_drive_for_explicit_action(controller, power, original_id, original_toc):
+    """Rebind only the original USB drive/disc on an explicit idle action."""
+    from player_state import Mode
+    if controller.state.mode not in (Mode.STOPPED, Mode.ERROR):
+        return False
+    if controller.owned_url or controller.server.alive() or controller._joined:
+        return False
+    old = controller.server.device
+    if Path(old).exists():
+        if original_id is None or usb_identity(old) == original_id:
+            return False
+    if original_id is None:
+        raise RuntimeError('original USB identity unavailable; restart required')
+    new = recovered_device(original_id)
+    if usb_identity(new) != original_id:
+        raise RuntimeError('replacement USB drive identity changed')
+    if read_toc(new) != original_toc:
+        raise RuntimeError('reconnected optical drive contains different or unreadable disc')
+    if power is not None:
+        power.rebind_device(new, reader_active=controller.server.reader_active())
+    controller.server.device = new
+    print('[drive] verified USB reconnect; reader and keepalive rebound', flush=True)
+    return True
+
+
+def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None):
     path = Path(socket_path).expanduser().absolute()
     if not path.parent.is_dir():
         raise ValueError('socket parent directory does not exist')
@@ -198,6 +224,14 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None):
         # Only this one worker ever touches controller, Sonos, reader and drive power.
         with concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='player-control') as executor:
             def operate(request):
+                if (drive_toc is not None and isinstance(request, dict)
+                        and request.get('command') in ('play', 'play-selected', 'playpause', 'reset')):
+                    try:
+                        restore_drive_for_explicit_action(controller, power, drive_id, drive_toc)
+                    except Exception as exc:
+                        reply = response(controller, ok=False, error=f'drive unavailable: {type(exc).__name__}: {exc}')
+                        publisher.publish(controller, power)
+                        return reply
                 reply = handle_command(controller, request, selection)
                 publisher.publish(controller, power)
                 return reply
@@ -281,7 +315,9 @@ def run(argv=None):
     try:
         refuse_existing_control_socket(ns.socket)
         device = detect_drive(base) if ns.device == 'auto' else ns.device
-        state = prepare_selection(read_toc(device), 1)
+        toc = read_toc(device)
+        identity = usb_identity(device)
+        state = prepare_selection(toc, 1)
         with conf.open('rb') as handle:
             settings = tomllib.load(handle)
             shutdown_policy = settings.get('service', {}).get('shutdown_policy', 'stop_owned')
@@ -301,7 +337,7 @@ def run(argv=None):
         power = DrivePowerManager(device, load_config(conf))
         power.start()
         print('[M0.12b-r7] ready; no Sonos action until explicit PLAY', flush=True)
-        serve(ctrl, ns.socket, power=power)
+        serve(ctrl, ns.socket, power=power, drive_id=identity, drive_toc=toc)
     except KeyboardInterrupt:
         print('\n[M0.12b-r7] shutdown requested', flush=True)
     except Exception as exc:
