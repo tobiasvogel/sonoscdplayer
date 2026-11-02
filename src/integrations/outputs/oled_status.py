@@ -249,9 +249,13 @@ def main(argv=None):
         if args.ui_target_rpc:
             from sonos_ui.target_rpc_client import submit_target
             sender = lambda uid: submit_target(uid, socket_path=args.socket)
+            group_sender = lambda uid, members: submit_target(
+                uid, members=members, socket_path=args.socket)
         else:
             sender = None
-        menu = InteractiveMenu(language=language, target_rpc=sender)
+            group_sender = None
+        menu = InteractiveMenu(language=language, target_rpc=sender,
+                               group_target_rpc=group_sender)
         receiver_context = EventReceiver(args.ui_events_socket)
     try:
         if driver: driver.open(adopt_existing=args.adopt_boot_splash)
