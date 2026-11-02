@@ -371,6 +371,8 @@ class Handler(BaseHTTPRequestHandler):
 class Server(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+    ORPHAN_GRACE_SECONDS = 0.75
+
     def __init__(self, addr, stream, track):
         self.stream = stream
         self.route = f'/track/{track}.wav'
@@ -378,10 +380,13 @@ class Server(ThreadingHTTPServer):
         self._generation = 1
         self._streams = [stream]
         self._probe_used = False
+        self._orphan_timer = None
         super().__init__(addr, Handler)
 
     def server_close(self):
         """Release all replay generations, not only the current one."""
+        with self._generation_lock:
+            self._clear_orphan_timer()
         try:
             for stream in self._streams:
                 stream.shutdown()
@@ -413,22 +418,42 @@ class Server(ThreadingHTTPServer):
             stream.log('GET cached-prefix probe disconnected')
         return True
 
-    def release_get(self, stream: Stream, disconnected: bool):
-        """Cancel a CD read ONLY when a broken HTTP connection left no readers.
+    def _clear_orphan_timer(self):
+        # Caller holds _generation_lock. Cancel is also safe after firing.
+        if self._orphan_timer is not None:
+            self._orphan_timer.cancel()
+            self._orphan_timer = None
 
-        The generation lock serializes this decision with admissions, preventing
-        a restart and a newly attached HTTP reader from racing the cancel.
+    def _expire_orphan(self, stream: Stream):
+        # A reconnect and the delayed cancellation are serialized by the same
+        # generation lock. Never cancel a replacement or an attached reader.
+        with self._generation_lock:
+            if stream is not self.stream or stream.ring.stats['readers'] != 0:
+                return
+            self._orphan_timer = None
+            if stream.thread.is_alive():
+                stream.cancel_orphan()
+
+    def release_get(self, stream: Stream, disconnected: bool):
+        """Allow a brief HTTP reconnect before cancelling the orphaned CD read.
+
+        Sonos may reset a probe GET and immediately reconnect. Keep the
+        bounded ring producer alive for a short grace period, but cancel it if
+        no new HTTP reader attaches. No Sonos actions are performed here.
         """
         if not disconnected:
             return
         with self._generation_lock:
-            if stream is not self.stream:
-                return
-            if stream.ring.stats['readers'] != 0:
-                stream.log('GET disconnect: other readers still attached; keep CD reader')
+            if stream is not self.stream or stream.ring.stats['readers'] != 0:
                 return
             if stream.thread.is_alive():
-                stream.cancel_orphan()
+                self._clear_orphan_timer()
+                timer = threading.Timer(self.ORPHAN_GRACE_SECONDS,
+                                        self._expire_orphan, args=(stream,))
+                timer.daemon = True
+                self._orphan_timer = timer
+                timer.start()
+                stream.log('GET disconnect: grace period for HTTP reconnect')
 
     def acquire_get(self, offset=0):
         """Atomically attach a GET or schedule one SEQUENTIAL reread.
@@ -444,9 +469,12 @@ class Server(ThreadingHTTPServer):
             terminal_error = current._cancel.is_set() or (current.ring.stats['finished'] and current.error is not None)
             if not terminal_error:
                 try:
-                    return current, current.attach(offset)
+                    reader = current.attach(offset)
                 except DataExpired:
                     pass
+                else:
+                    self._clear_orphan_timer()
+                    return current, reader
             # The old anchor exists only before the first GET; an expired
             # beginning implies it was removed. Count readers under ring lock.
             state = current.ring.stats
@@ -457,6 +485,7 @@ class Server(ThreadingHTTPServer):
             current.thread.join(timeout=2.0)
             if current.thread.is_alive() or not current.ring.stats['finished']:
                 raise ReplayBusy()
+            self._clear_orphan_timer()
             # Stop old diagnostics and REUSE the same bytearray. No second PCM
             # allocation exists even transiently during an HTTP retry.
             current._diag_stop.set()
