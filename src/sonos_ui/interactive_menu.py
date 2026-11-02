@@ -13,10 +13,11 @@ from .multi_render import MultiRenderer
 from .i18n import Translator
 from .single_target import select_one, TargetSelectionError
 from .target_rpc_client import submit_target
+from .selection_plan import plan_from_applied
 
 
 class InteractiveMenu:
-    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None):
+    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None):
         self.state = MultiSelection()
         self.language = Translator(language).language
         self.language_picker = False
@@ -30,6 +31,7 @@ class InteractiveMenu:
         self._worker = None
         self.renderer = MultiRenderer(language=self.language)
         self._target_rpc = target_rpc
+        self._group_target_rpc = group_target_rpc
         self._target_pending = False
         self._target_result = None
         self._target_generation = 0
@@ -55,17 +57,24 @@ class InteractiveMenu:
         if self._target_pending:
             return
         try:
-            intent = select_one(self.state)
-        except (TargetSelectionError, TypeError):
+            if self.state.topology.error or self.state.reviewing or self.state.review_valid or self.state.draft != self.state.applied:
+                raise ValueError('selection not confirmed')
+            intent = plan_from_applied(self.state.topology.targets, self.state.applied)
+            if intent.members and self._group_target_rpc is None:
+                raise ValueError('group target RPC disabled')
+        except (ValueError, TypeError):
             self.state = replace(self.state, notice='status.target_rejected')
             return
         self._target_pending = True
         self._target_generation += 1
         generation = self._target_generation
-        uid = intent.uid
+        uid = intent.coordinator
+        members = intent.members
         def work():
             try:
-                if self._target_rpc(uid) is not True:
+                acknowledged = (self._group_target_rpc(uid, members) if members
+                                else self._target_rpc(uid))
+                if acknowledged is not True:
                     raise RuntimeError('target was not acknowledged')
                 result = 'status.target_accepted'
             except Exception:
