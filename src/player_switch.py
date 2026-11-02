@@ -17,17 +17,16 @@ import time
 from cd_toc import read_toc
 from player_play import make_url, prepare_selection, verify_target
 from player_state import Mode
+from sonos_group import is_expected_group
 from sonos_parallel_test import detect_drive, stream_lines, wait_reader, READER_DONE
 
 
-def ownership_snapshot(player, expected_uid: str, expected_url: str) -> None:
+def ownership_snapshot(player, expected_uid: str, expected_url: str, members=frozenset()) -> None:
     """Fail closed if transport/group/URI does not prove our own stream."""
     if player.uid != expected_uid:
         raise RuntimeError('ownership denied: target UID mismatch')
-    group = player.group
-    members = list(group.members)
-    if len(members) != 1 or members[0].uid != expected_uid or group.coordinator.uid != expected_uid:
-        raise RuntimeError('ownership denied: not a solo coordinator')
+    if not is_expected_group(player, expected_uid, members):
+        raise RuntimeError('ownership denied: unexpected group topology')
     transport = player.get_current_transport_info()['current_transport_state']
     if transport != 'PLAYING':
         raise RuntimeError(f'ownership denied: transport {transport}, expected PLAYING')
