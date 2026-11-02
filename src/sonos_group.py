@@ -83,6 +83,9 @@ def release(coordinator, joined, *, owned_url=None):
     outcome = {}
     for uid, player in joined.items():
         try:
+            if player.uid != uid or uid == coordinator.uid:
+                outcome[uid] = 'kept: member identity changed'
+                continue
             refresh_topology(player)
             expected = {coordinator.uid} | {
                 k for k in joined if outcome.get(k) != 'released'
