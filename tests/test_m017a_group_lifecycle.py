@@ -73,6 +73,41 @@ class LifecycleTests(unittest.TestCase):
         self.start()
         self.assertEqual((self.a.play_calls,self.b.play_calls),(1,0))
         self.assertEqual(self.topo.leaders['B'],'A')
+    def test_pause_resume_owned_temporary_group(self):
+        self.start()
+        self.player.pause()
+        self.assertEqual(self.player.state.mode, Mode.PAUSED)
+        self.assertEqual(self.a.transport, 'PAUSED_PLAYBACK')
+        self.assertEqual(self.topo.leaders['B'], 'A')
+        self.player.resume()
+        self.assertEqual(self.player.state.mode, Mode.PLAYING)
+        self.assertEqual(self.a.transport, 'PLAYING')
+        self.assertEqual(self.topo.leaders['B'], 'A')
+
+    def test_pause_blocks_unexpected_member_without_sonos_write(self):
+        self.start()
+        self.topo.leaders['C'] = 'A'
+        with self.assertRaisesRegex(RuntimeError, 'unexpected topology'):
+            self.player.pause()
+        self.assertEqual(self.a.transport, 'PLAYING')
+        self.assertEqual(self.player.state.mode, Mode.PLAYING)
+
+    def test_resume_blocks_unexpected_member_without_sonos_write(self):
+        self.start()
+        self.player.pause()
+        self.topo.leaders['C'] = 'A'
+        with self.assertRaisesRegex(RuntimeError, 'unexpected topology'):
+            self.player.resume()
+        self.assertEqual(self.a.transport, 'PAUSED_PLAYBACK')
+        self.assertEqual(self.player.state.mode, Mode.PAUSED)
+
+    def test_pause_blocks_foreign_uri_without_sonos_write(self):
+        self.start()
+        self.a.uri = 'x-sonos-spotify:foreign'
+        with self.assertRaisesRegex(RuntimeError, 'exact URI mismatch'):
+            self.player.pause()
+        self.assertEqual(self.a.transport, 'PLAYING')
+
     def test_stop_releases_only_owned_group(self):
         self.start()
         self.player.stop()
