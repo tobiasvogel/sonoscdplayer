@@ -72,6 +72,8 @@ class DrivePowerManager:
         return p.stdout
 
     def _start_motor(self):
+        if not Path(self.device).exists():
+            raise RuntimeError('optical drive device disappeared')
         self._command(['sg_start', '--start', self.device])
         self.supported['start_stop_unit'] = True
         self.last_start = self.clock()
