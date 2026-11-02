@@ -18,6 +18,17 @@ class RecoveryTests(unittest.TestCase):
         self.assertFalse(bad['ok'])
         self.assertEqual(self.topo.leaders['B'], 'A')
 
+    def test_confirmed_release_finishes_recovery(self):
+        self.start()
+        original = self.b.unjoin
+        self.b.unjoin = lambda: (_ for _ in ()).throw(OSError('offline'))
+        self.player.stop()
+        self.b.unjoin = original
+        reply = handle_command(self.player, {'command':'resolve-group-recovery','confirm':True})
+        self.assertTrue(reply['ok'], reply)
+        self.assertEqual(self.topo.leaders['B'], 'B')
+        self.assertEqual(reply['group_recovery']['state'], 'clear')
+
     def test_external_manual_detach_can_clear_without_write(self):
         self.start()
         self.b.unjoin = lambda: (_ for _ in ()).throw(OSError('offline'))
