@@ -178,7 +178,8 @@ def restore_drive_for_explicit_action(controller, power, original_id, original_t
     from player_state import Mode
     if controller.state.mode not in (Mode.STOPPED, Mode.ERROR):
         return False
-    if controller.owned_url or controller.server.alive() or controller._joined:
+    if (controller.owned_url or controller.server.alive() or controller._joined
+            or getattr(controller, '_group_uncertain', False)):
         return False
     old = controller.server.device
     if Path(old).exists():
