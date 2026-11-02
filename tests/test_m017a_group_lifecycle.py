@@ -142,8 +142,11 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(self.player._group_uncertain)
         self.assertIsNone(self.player._recovery_url)
         self.assertTrue(self.player.status_snapshot()['sonos']['group_cleanup_pending'])
-        with self.assertRaises(RuntimeError):
+        self.assertEqual(self.player.state.mode, Mode.ERROR)
+        with self.assertRaises(ValueError):
             self.player.play('A', ['B'])
+        with self.assertRaises(RuntimeError):
+            self.player.reset()
 
     def test_track_switch_preflight_failure_keeps_group(self):
         self.start()
