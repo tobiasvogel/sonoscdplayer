@@ -24,8 +24,13 @@ def topology(grouped=False):
 def menu_confirm(menu):
     menu.event('encoder_sw','pressed',now=0)
     menu.state=menu.state.update(topology())
+    # Speakers are sorted by display name (Kitchen precedes Office).
+    # Explicitly focus the Office target rather than assuming index zero.
+    office_focus = next(i for i, target in enumerate(menu.state.topology.targets)
+                        if target.key == 'RINCON_X1')
+    menu.state=replace(menu.state,focus=office_focus)
     menu.event('encoder_sw','pressed')
-    menu.state=replace(menu.state,focus=2)
+    menu.state=replace(menu.state,focus=len(menu.state.topology.targets))
     menu.event('encoder_sw','pressed')
     menu.event('encoder_sw','pressed')
 
