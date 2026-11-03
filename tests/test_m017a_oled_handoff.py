@@ -38,7 +38,8 @@ class MenuTargetRPCTests(unittest.TestCase):
     def test_opt_in_disabled_never_sends(self):
         menu=InteractiveMenu(discover=lambda **kw: topology())
         menu_confirm(menu)
-        self.assertEqual(menu.state.notice,'status.target_rejected')\n        self.assertFalse(menu.state.applied)
+        self.assertEqual(menu.state.notice,'status.target_rejected')
+        self.assertFalse(menu.state.applied)
 
     def test_exactly_one_confirmed_uid_sent_once(self):
         sent=[]
@@ -92,6 +93,7 @@ class MenuTargetRPCTests(unittest.TestCase):
         menu.event('encoder','right')
         menu.event('encoder_sw','pressed')
         menu.state=replace(menu.state,focus=2)
+        menu.event('encoder_sw','pressed')
         self.assertEqual(sent,[])
         self.assertEqual(menu.state.notice,'status.target_rejected')
 
