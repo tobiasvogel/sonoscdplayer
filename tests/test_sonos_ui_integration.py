@@ -32,25 +32,24 @@ class UIIntegrationTests(unittest.TestCase):
         self.assertEqual(topology.targets[0].members, topology.targets[1].members)
         self.assertFalse(any('+N' in t.label for t in topology.targets))
 
-    def test_marking_is_local_until_review(self):
+    def test_marking_is_local_until_apply(self):
         state = MultiSelection().update(group_snapshot(self.grouped_devices()))
         marked = state.action('confirm')
         self.assertEqual(len(marked.draft), 1)
         self.assertFalse(marked.applied)
         self.assertFalse(marked.reviewing)
 
-    def test_review_still_has_no_sonos_effect(self):
+    def test_apply_request_still_has_no_sonos_effect(self):
         state = MultiSelection().update(group_snapshot(self.grouped_devices()))
         state = state.action('confirm').action('next').action('next').action('next').action('confirm')
-        self.assertTrue(state.reviewing)
-        confirmed = state.action('confirm')
-        self.assertEqual(len(confirmed.applied), 1)
-        self.assertFalse(confirmed.reviewing)
+        self.assertFalse(state.reviewing)
+        self.assertEqual(state.notice, 'status.apply_requested')
+        self.assertFalse(state.applied)
 
-    def test_missing_target_drops_draft(self):
+    def test_missing_target_retains_draft_and_fails_closed(self):
         state = MultiSelection().update(group_snapshot(self.grouped_devices())).action('confirm')
         refreshed = state.update(group_snapshot(()))
-        self.assertFalse(refreshed.draft)
+        self.assertEqual(refreshed.draft, state.draft)\n        self.assertEqual(refreshed.notice, 'status.missing_targets')
 
     def test_speaker_discovery_keeps_unicode_names(self):
         snapshot = speaker_snapshot(self.grouped_devices())
