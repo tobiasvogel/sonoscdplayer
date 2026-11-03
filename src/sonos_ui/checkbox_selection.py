@@ -25,9 +25,9 @@ class TargetChoice:
 class CheckboxSelection:
     """Keep focus, checkbox order, and last acknowledged target independent.
 
-    The first *checked* UID is the coordinator; discovery reorder does not
-    change it. An unavailable UID is retained as a draft item, never silently
-    replaced with another speaker or submitted to the player.
+    The alphabetically first selected speaker (name, then UID) coordinates,
+    regardless of checkbox order or discovery order, matching the OLED menu.
+    An unavailable UID remains in the draft and cannot be submitted.
     """
     def __init__(self):
         self._checked = ()
@@ -86,7 +86,11 @@ class CheckboxSelection:
                 raise RuntimeError('selected speaker no longer available')
             if not speaker.solo or not speaker.stopped:
                 raise RuntimeError('selected speaker is grouped or active')
-        self._last_preview = TargetChoice(self._checked[0], self._checked[1:])
+        selected = sorted((by_uid[uid] for uid in self._checked),
+                          key=lambda speaker: (speaker.name.casefold(), speaker.uid))
+        coordinator = selected[0].uid
+        members = tuple(sorted(speaker.uid for speaker in selected[1:]))
+        self._last_preview = TargetChoice(coordinator, members)
         return self._last_preview
 
     def acknowledge(self, plan):
@@ -96,6 +100,6 @@ class CheckboxSelection:
         """
         if not isinstance(plan, TargetChoice):
             raise ValueError('invalid selection confirmation')
-        if not self._checked or self._last_preview != plan or plan != TargetChoice(self._checked[0], self._checked[1:]):
+        if not self._checked or self._last_preview != plan or set(self._checked) != {plan.coordinator_uid, *plan.member_uids}:
             raise RuntimeError('checkbox selection changed before acknowledgment')
         self._confirmed = plan
