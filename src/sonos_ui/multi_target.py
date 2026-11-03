@@ -93,7 +93,7 @@ class MultiSelection:
         # a speaker. Never silently shrink or replace the player's target.
         return replace(self,topology=topology,reviewing=False,review_valid=False,
                        focus=min(self.focus,len(topology.targets)+2),
-                       notice='status.missing_targets' if missing else '')
+                       notice='status.missing_targets' if missing else self.notice)
 
     def action(self,action):
         if action not in ('next','previous','confirm','back'):
