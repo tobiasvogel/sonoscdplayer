@@ -82,8 +82,6 @@ class MultiSelection:
     draft: frozenset[str] = frozenset()
     applied: frozenset[str] = frozenset()
     focus: int = 0
-    reviewing: bool = False
-    review_valid: bool = False
     notice: str = ''
 
     def update(self,topology):
@@ -91,7 +89,7 @@ class MultiSelection:
         missing=(self.draft|self.applied)-keys
         # Keep the last acknowledged target even when discovery temporarily loses
         # a speaker. Never silently shrink or replace the player's target.
-        return replace(self,topology=topology,reviewing=False,review_valid=False,
+        return replace(self,topology=topology,
                        focus=min(self.focus,len(topology.targets)+2),
                        notice='status.missing_targets' if missing else self.notice)
 
@@ -99,17 +97,13 @@ class MultiSelection:
         if action not in ('next','previous','confirm','back'):
             raise ValueError('unknown action')
         if action=='back':
-            return replace(self,reviewing=False,review_valid=False,draft=self.applied,notice='')
-        if self.reviewing:
-            if action=='confirm':
-                return replace(self,applied=self.draft,reviewing=False,review_valid=False,notice='status.local_applied') if self.review_valid else self
-            return replace(self,reviewing=False,review_valid=False) if action=='previous' else self
+            return replace(self,draft=self.applied,notice='')
         n=len(self.topology.targets)
         if action in ('next','previous'):
             return replace(self,focus=max(0,min(n+2,self.focus+(1 if action=='next' else -1))),
                            notice='')
         if self.focus==n+2:
-            return replace(self,draft=self.applied,reviewing=False,review_valid=False,notice='menu.back')
+            return replace(self,draft=self.applied,notice='menu.back')
         if self.focus==n+1:
             return replace(self,notice='menu.language')
         if self.focus==n:
