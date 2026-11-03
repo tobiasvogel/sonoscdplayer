@@ -57,7 +57,7 @@ class SingleTargetTests(unittest.TestCase):
         with self.assertRaises(TargetSelectionError):
             select_one(replace(state,topology=Topology((), 'DiscoveryError')))
 
-    def test_reviewing_is_not_confirmation(self):
+    def test_apply_request_is_not_confirmation(self):
         state=MultiSelection().update(target_topology()).action('confirm')
         # The menu's one-click apply request is not a successful player ACK.
         state=replace(state,focus=2).action('confirm')
