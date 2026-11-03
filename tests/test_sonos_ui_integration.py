@@ -49,7 +49,8 @@ class UIIntegrationTests(unittest.TestCase):
     def test_missing_target_retains_draft_and_fails_closed(self):
         state = MultiSelection().update(group_snapshot(self.grouped_devices())).action('confirm')
         refreshed = state.update(group_snapshot(()))
-        self.assertEqual(refreshed.draft, state.draft)\n        self.assertEqual(refreshed.notice, 'status.missing_targets')
+        self.assertEqual(refreshed.draft, state.draft)
+        self.assertEqual(refreshed.notice, 'status.missing_targets')
 
     def test_speaker_discovery_keeps_unicode_names(self):
         snapshot = speaker_snapshot(self.grouped_devices())
