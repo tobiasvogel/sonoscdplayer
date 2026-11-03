@@ -78,7 +78,7 @@ class ApplyFeedbackTests(unittest.TestCase):
         )
         self.assertTrue(menu.event('encoder_sw', 'pressed', 1))
         self.assertFalse(menu._target_pending)
-        self.assertEqual(menu.state.notice, 'status.target_rejected')
+        self.assertEqual(menu.state.notice, 'status.target_unavailable')
         self.assertEqual(menu.state.applied, frozenset({'A'}))
 
 
