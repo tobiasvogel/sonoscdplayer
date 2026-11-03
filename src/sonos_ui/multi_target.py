@@ -77,7 +77,7 @@ def discover_targets(*,timeout=3,discover_fn=None):
 
 @dataclass(frozen=True)
 class MultiSelection:
-    """All state is local. A confirmed selection is still NOT applied to Sonos."""
+    """Checkbox draft and last player-acknowledged target remain separate."""
     topology: Topology = Topology(())
     draft: frozenset[str] = frozenset()
     applied: frozenset[str] = frozenset()
@@ -89,8 +89,9 @@ class MultiSelection:
     def update(self,topology):
         keys=topology.keys()
         missing=(self.draft|self.applied)-keys
-        return replace(self,topology=topology,draft=self.draft & keys,
-                       applied=self.applied & keys,reviewing=False,review_valid=False,
+        # Keep the last acknowledged target even when discovery temporarily loses
+        # a speaker. Never silently shrink or replace the player's target.
+        return replace(self,topology=topology,reviewing=False,review_valid=False,
                        focus=min(self.focus,len(topology.targets)+2),
                        notice='status.missing_targets' if missing else '')
 
@@ -113,7 +114,7 @@ class MultiSelection:
         if self.focus==n:
             if self.topology.error or not self.draft:
                 return replace(self,notice='status.invalid_selection')
-            return replace(self,reviewing=True,review_valid=True,notice='')
+            return replace(self,notice='status.apply_requested')
         if not self.topology.error and 0<=self.focus<n:
             key=self.topology.targets[self.focus].key
             draft=self.draft ^ {key}
