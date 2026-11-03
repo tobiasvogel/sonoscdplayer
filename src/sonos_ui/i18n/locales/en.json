@@ -38,6 +38,7 @@
   "footer.select": "Press: Select",
   "status.target_pending": "Checking selection",
   "status.target_accepted": "Selection applied",
-  "status.target_rejected": "Target rejected",
-  "status.selection_no_play": "PLAY is separate"
+  "status.target_rejected": "Selection rejected",
+  "status.selection_no_play": "PLAY is separate",
+  "status.apply_requested": "Applying selection"
 }
