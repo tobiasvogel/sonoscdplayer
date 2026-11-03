@@ -40,5 +40,6 @@
   "status.target_accepted": "Selection applied",
   "status.target_rejected": "Selection rejected",
   "status.selection_no_play": "PLAY is separate",
-  "status.apply_requested": "Applying selection"
+  "status.apply_requested": "Applying selection",
+  "status.target_unavailable": "Player link disabled"
 }
