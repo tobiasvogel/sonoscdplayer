@@ -256,8 +256,8 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.topo.leaders['B'], 'A')
         self.assertTrue(self.player.status_snapshot()['sonos']['group_cleanup_pending'])
         self.assertEqual(self.player._joined.keys(), {'B'})
-        with self.assertRaises(RuntimeError):
-            self.player.reset() if self.player.state.mode == Mode.ERROR else self.player.play('A', ['C'])
+        with self.assertRaisesRegex(RuntimeError, 'retained group must be resolved'):
+            self.player.play('A', ['C'])
 
     def test_shutdown_paused_owned_group_stops_and_releases(self):
         self.start()
