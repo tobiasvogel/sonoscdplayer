@@ -61,12 +61,14 @@ class InteractiveMenu:
             if self.state.topology.error:
                 raise ValueError('topology unavailable')
             intent = plan_from_applied(self.state.topology.targets, self.state.draft)
-            if intent.members and self._group_target_rpc is None:
-                raise ValueError('group target RPC disabled')
-            if not intent.members and self._target_rpc is None:
-                raise ValueError('solo target RPC disabled')
         except (ValueError, TypeError):
             self.state = replace(self.state, notice='status.target_rejected')
+            return
+        if (intent.members and self._group_target_rpc is None) or (
+                not intent.members and self._target_rpc is None):
+            # In the safe read-only OLED mode, no player target RPC is enabled.
+            # This is not evidence of an invalid speaker selection.
+            self.state = replace(self.state, notice='status.target_unavailable')
             return
         self._target_pending = True
         self._target_generation += 1
