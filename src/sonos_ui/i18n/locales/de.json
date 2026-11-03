@@ -38,6 +38,7 @@
   "footer.select": "Drücken: Wählen",
   "status.target_pending": "Auswahl wird geprüft",
   "status.target_accepted": "Auswahl übernommen",
-  "status.target_rejected": "Ziel abgelehnt",
-  "status.selection_no_play": "PLAY startet separat"
+  "status.target_rejected": "Auswahl abgelehnt",
+  "status.selection_no_play": "PLAY startet separat",
+  "status.apply_requested": "Auswahl wird übernommen"
 }
