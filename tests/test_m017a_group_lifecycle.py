@@ -210,6 +210,71 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.b.unjoin_calls, 0)
         self.assertTrue(self.player._group_uncertain)
 
+    def test_paused_stop_releases_exact_owned_group(self):
+        self.start()
+        self.player.pause()
+        self.player.stop()
+        self.assertEqual(self.player.state.mode, Mode.STOPPED)
+        self.assertEqual((self.a.stop_calls, self.b.unjoin_calls), (1, 1))
+        self.assertEqual(self.topo.leaders['B'], 'B')
+        self.assertFalse(self.player.status_snapshot()['sonos']['group_cleanup_pending'])
+
+    def test_paused_stop_rejects_foreign_uri_without_writes(self):
+        self.start()
+        self.player.pause()
+        self.a.uri = 'x-sonos-spotify:foreign'
+        with self.assertRaisesRegex(RuntimeError, 'exact URI mismatch'):
+            self.player.stop()
+        self.assertEqual((self.a.stop_calls, self.b.unjoin_calls), (0, 0))
+        self.assertEqual(self.topo.leaders['B'], 'A')
+
+    def test_resume_rejects_foreign_uri_without_writes(self):
+        self.start()
+        self.player.pause()
+        self.a.uri = 'x-sonos-spotify:foreign'
+        with self.assertRaisesRegex(RuntimeError, 'exact URI mismatch'):
+            self.player.resume()
+        self.assertEqual(self.a.transport, 'PAUSED_PLAYBACK')
+        self.assertEqual(self.player.state.mode, Mode.PAUSED)
+
+    def test_paused_stop_rejects_external_group_member(self):
+        self.start()
+        self.player.pause()
+        self.topo.leaders['C'] = 'A'
+        with self.assertRaisesRegex(RuntimeError, 'unexpected topology'):
+            self.player.stop()
+        self.assertEqual((self.a.stop_calls, self.b.unjoin_calls), (0, 0))
+
+    def test_stop_does_not_unjoin_after_member_release_failure(self):
+        self.start()
+        def fail_unjoin():
+            self.b.unjoin_calls += 1
+            raise OSError('simulated Sonos unjoin failure')
+        self.b.unjoin = fail_unjoin
+        self.player.stop()
+        self.assertEqual(self.a.stop_calls, 1)
+        self.assertEqual(self.topo.leaders['B'], 'A')
+        self.assertTrue(self.player.status_snapshot()['sonos']['group_cleanup_pending'])
+        self.assertEqual(self.player._joined.keys(), {'B'})
+        with self.assertRaises(RuntimeError):
+            self.player.reset() if self.player.state.mode == Mode.ERROR else self.player.play('A', ['C'])
+
+    def test_shutdown_paused_owned_group_stops_and_releases(self):
+        self.start()
+        self.player.pause()
+        result = self.player.shutdown_owned('stop_owned')
+        self.assertEqual(result['action'], 'stopped_owned')
+        self.assertEqual((self.a.stop_calls, self.b.unjoin_calls), (1, 1))
+        self.assertEqual(self.topo.leaders['B'], 'B')
+
+    def test_shutdown_changed_uri_leaves_group_untouched(self):
+        self.start()
+        self.a.uri = 'x-sonos-spotify:foreign'
+        result = self.player.shutdown_owned('stop_owned')
+        self.assertEqual(result['action'], 'not_stopped')
+        self.assertEqual((self.a.stop_calls, self.b.unjoin_calls), (0, 0))
+        self.assertEqual(self.topo.leaders['B'], 'A')
+
     def test_solo_play_unchanged(self):
         self.player.play('A')
         self.assertEqual(self.topo.leaders,{'A':'A','B':'B','C':'C'})
