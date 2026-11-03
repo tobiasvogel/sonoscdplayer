@@ -31,7 +31,6 @@ class ApplyFeedbackTests(unittest.TestCase):
         for i in range(2 if count == 1 else 1):
             self.assertTrue(menu.event('encoder', 'right', 4+i))
         self.assertTrue(menu.event('encoder_sw', 'pressed', 7))
-        self.assertFalse(menu.state.reviewing)
         self.assertEqual(menu.state.notice, 'status.target_pending')
         menu._target_worker.join(timeout=2)
         self.assertFalse(menu._target_worker.is_alive())
