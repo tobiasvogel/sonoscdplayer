@@ -32,6 +32,7 @@ class CheckboxSelection:
     def __init__(self):
         self._checked = ()
         self._confirmed = None
+        self._last_preview = None
 
     @property
     def checked_uids(self):
@@ -44,6 +45,7 @@ class CheckboxSelection:
     def toggle(self, uid):
         if not isinstance(uid, str) or not uid:
             raise ValueError('nonempty speaker UID required')
+        self._last_preview = None
         if uid in self._checked:
             self._checked = tuple(x for x in self._checked if x != uid)
         else:
@@ -52,6 +54,7 @@ class CheckboxSelection:
 
     def begin(self, *, preserve_confirmed=True):
         """Opening the menu may restore the last acknowledged checkbox state."""
+        self._last_preview = None
         if preserve_confirmed and self._confirmed is not None:
             self._checked = (self._confirmed.coordinator_uid,
                              *self._confirmed.member_uids)
@@ -83,7 +86,8 @@ class CheckboxSelection:
                 raise RuntimeError('selected speaker no longer available')
             if not speaker.solo or not speaker.stopped:
                 raise RuntimeError('selected speaker is grouped or active')
-        return TargetChoice(self._checked[0], self._checked[1:])
+        self._last_preview = TargetChoice(self._checked[0], self._checked[1:])
+        return self._last_preview
 
     def acknowledge(self, plan):
         """Call ONLY after the application worker receives positive RPC ACK.
@@ -92,6 +96,6 @@ class CheckboxSelection:
         """
         if not isinstance(plan, TargetChoice):
             raise ValueError('invalid selection confirmation')
-        if plan != TargetChoice(self._checked[0], self._checked[1:]):
+        if not self._checked or self._last_preview != plan or plan != TargetChoice(self._checked[0], self._checked[1:]):
             raise RuntimeError('checkbox selection changed before acknowledgment')
         self._confirmed = plan
