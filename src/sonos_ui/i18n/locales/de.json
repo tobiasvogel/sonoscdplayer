@@ -40,5 +40,6 @@
   "status.target_accepted": "Auswahl übernommen",
   "status.target_rejected": "Auswahl abgelehnt",
   "status.selection_no_play": "PLAY startet separat",
-  "status.apply_requested": "Auswahl wird übernommen"
+  "status.apply_requested": "Auswahl wird übernommen",
+  "status.target_unavailable": "Player-Anbindung inaktiv"
 }
