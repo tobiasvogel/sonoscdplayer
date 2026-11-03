@@ -22,7 +22,8 @@ def topology(grouped=False):
 
 def confirmed():
     state=MultiSelection().update(topology()).action('confirm')
-    # Model the independent positive player ACK; menu click alone never confirms.\n    return replace(state,applied=state.draft)
+    # Model the independent positive player ACK; menu click alone never confirms.
+    return replace(state,applied=state.draft)
 
 
 class PlayerCommandBoundaryTests(unittest.TestCase):
