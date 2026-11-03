@@ -25,7 +25,7 @@ def select_one(state: MultiSelection) -> TargetIntent:
         raise TypeError('expected MultiSelection')
     if state.topology.error:
         raise TargetSelectionError('incomplete speaker topology')
-    if state.reviewing or state.review_valid or state.draft != state.applied:
+    if state.draft != state.applied:
         raise TargetSelectionError('selection not confirmed')
     if len(state.applied) != 1:
         raise TargetSelectionError('exactly one speaker required')
