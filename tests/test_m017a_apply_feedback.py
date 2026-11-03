@@ -28,7 +28,7 @@ class ApplyFeedbackTests(unittest.TestCase):
         if count == 2:
             self.assertTrue(menu.event('encoder', 'right', 2))
             self.assertTrue(menu.event('encoder_sw', 'pressed', 3))
-        for i in range(2 - (1 if count == 1 else 0)):
+        for i in range(2 if count == 1 else 1):
             self.assertTrue(menu.event('encoder', 'right', 4+i))
         self.assertTrue(menu.event('encoder_sw', 'pressed', 7))
         self.assertFalse(menu.state.reviewing)
