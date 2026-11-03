@@ -106,7 +106,8 @@ class MultiSelection:
             return replace(self,reviewing=False,review_valid=False) if action=='previous' else self
         n=len(self.topology.targets)
         if action in ('next','previous'):
-            return replace(self,focus=max(0,min(n+2,self.focus+(1 if action=='next' else -1))))
+            return replace(self,focus=max(0,min(n+2,self.focus+(1 if action=='next' else -1))),
+                           notice='')
         if self.focus==n+2:
             return replace(self,draft=self.applied,reviewing=False,review_valid=False,notice='menu.back')
         if self.focus==n+1:
