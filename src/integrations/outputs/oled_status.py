@@ -160,6 +160,8 @@ def main(argv=None):
     p.add_argument('--ui-modern',action='store_true',
                    help='opt-in Modern Hi-Fi read-only player status rendering')
     p.add_argument('--execute',action='store_true')
+    p.add_argument('--ui-target-rpc',action='store_true',
+                   help='experimental: explicitly enable set-target on menu confirmation')
     p.add_argument('--ui-events-socket',default=None,
                    help='private encoder event socket; requires --ui-modern')
     p.add_argument('--socket',default=DEFAULT_SOCKET)
@@ -190,6 +192,8 @@ def main(argv=None):
     cover_mode = args.cover if args.cover is not None else ui_config.cover_mode
     language = ui_config.language
     if args.gpio != args.execute: p.error('--gpio and --execute must be given together')
+    if args.ui_target_rpc and not (args.ui_events_socket and args.ui_modern):
+        p.error('--ui-target-rpc requires --ui-modern and --ui-events-socket')
     if args.ui_events_socket and not args.ui_modern:
         p.error('--ui-events-socket requires --ui-modern')
     try:
@@ -242,7 +246,16 @@ def main(argv=None):
     if args.ui_events_socket:
         from sonos_ui.interactive_menu import InteractiveMenu
         from sonos_ui.ui_event_bridge import EventReceiver
-        menu = InteractiveMenu(language=language)
+        if args.ui_target_rpc:
+            from sonos_ui.target_rpc_client import submit_target
+            sender = lambda uid: submit_target(uid, socket_path=args.socket)
+            group_sender = lambda uid, members: submit_target(
+                uid, members=members, socket_path=args.socket)
+        else:
+            sender = None
+            group_sender = None
+        menu = InteractiveMenu(language=language, target_rpc=sender,
+                               group_target_rpc=group_sender)
         receiver_context = EventReceiver(args.ui_events_socket)
     try:
         if driver: driver.open(adopt_existing=args.adopt_boot_splash)

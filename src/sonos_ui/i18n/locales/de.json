@@ -24,7 +24,7 @@
   "label.tracks": "{count} Tracks",
   "menu.choose_target": "Ziel auswählen",
   "menu.targets": "Wiedergabeziele",
-  "menu.review": "Auswahl prüfen",
+  "menu.review": "Auswahl übernehmen",
   "menu.back": "Zurück",
   "menu.settings": "Einstellungen",
   "menu.language": "Sprache",
@@ -34,6 +34,12 @@
   "footer.open_menu": "Drücken: Menü",
   "footer.turn_press": "Drehen / Drücken",
   "footer.mark": "Drücken: Markieren",
-  "footer.confirm": "Drücken: Bestätigen",
-  "footer.select": "Drücken: Wählen"
+  "footer.confirm": "Drücken: Übernehmen",
+  "footer.select": "Drücken: Wählen",
+  "status.target_pending": "Auswahl wird geprüft",
+  "status.target_accepted": "Auswahl übernommen",
+  "status.target_rejected": "Auswahl abgelehnt",
+  "status.selection_no_play": "PLAY startet separat",
+  "status.apply_requested": "Auswahl wird übernommen",
+  "status.target_unavailable": "Player-Anbindung inaktiv"
 }

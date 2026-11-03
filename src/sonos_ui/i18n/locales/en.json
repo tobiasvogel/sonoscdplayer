@@ -24,7 +24,7 @@
   "label.tracks": "{count} tracks",
   "menu.choose_target": "Choose target",
   "menu.targets": "Playback targets",
-  "menu.review": "Review selection",
+  "menu.review": "Apply selection",
   "menu.back": "Back",
   "menu.settings": "Settings",
   "menu.language": "Language",
@@ -34,6 +34,12 @@
   "footer.open_menu": "Press: Menu",
   "footer.turn_press": "Turn / Press",
   "footer.mark": "Press: Mark",
-  "footer.confirm": "Press: Confirm",
-  "footer.select": "Press: Select"
+  "footer.confirm": "Press: Apply",
+  "footer.select": "Press: Select",
+  "status.target_pending": "Checking selection",
+  "status.target_accepted": "Selection applied",
+  "status.target_rejected": "Selection rejected",
+  "status.selection_no_play": "PLAY is separate",
+  "status.apply_requested": "Applying selection",
+  "status.target_unavailable": "Player link disabled"
 }

@@ -153,15 +153,27 @@ class Renderer:
                 if index>=count: break
                 y=27+local_index*18
                 focused=index==m.focus_index
-                selected=index==m.selected_index
+                selected=(index in m.checked_indices if m.checkbox_mode else index==m.selected_index)
                 if focused:
                     d.rounded_rectangle((4,y,123,y+15),radius=2,fill=t.accent)
                 color=t.selection_text if focused else t.primary
                 self.text(canvas,(8,y+1),m.speakers[index],fill=color,size=9,
                           bold=focused,width=99,height=14,time=elapsed,scroll=focused)
-                if selected:
+                if m.checkbox_mode:
+                    # A visible checkbox for every row, distinct from focus.
+                    d.rectangle((109,y+3,120,y+13),outline=color,width=1)
+                    if selected:
+                        self.text(canvas,(110,y+2),'✓',fill=color,size=9,bold=True,
+                                  width=11,height=12)
+                elif selected:
                     self.text(canvas,(111,y+1),'✓',fill=color,size=9,bold=True,
                               width=12,height=14)
-        current=(m.speakers[m.selected_index] if m.selected_index is not None
-                 and 0<=m.selected_index<count else self.tr('status.no_speaker'))
-        self.bottom(canvas,status=self.tr('status.current',name=current),footer=self.tr('footer.turn_press'))
+        if m.checkbox_mode:
+            # No false claim of an acknowledged target from draft checkboxes.
+            self.bottom(canvas,status=f'{len(m.checked_indices)} markiert',
+                        footer=self.tr('footer.turn_press'))
+        else:
+            current=(m.speakers[m.selected_index] if m.selected_index is not None
+                     and 0<=m.selected_index<count else self.tr('status.no_speaker'))
+            self.bottom(canvas,status=self.tr('status.current',name=current),
+                        footer=self.tr('footer.turn_press'))

@@ -72,6 +72,8 @@ class DrivePowerManager:
         return p.stdout
 
     def _start_motor(self):
+        if self.runner is subprocess.run and not Path(self.device).exists():
+            raise RuntimeError('optical drive device disappeared')
         self._command(['sg_start', '--start', self.device])
         self.supported['start_stop_unit'] = True
         self.last_start = self.clock()
@@ -147,6 +149,24 @@ class DrivePowerManager:
                 self.active_strategy = 'start' if strategy == 'start' else 'keepalive'
             except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
                 self.last_error = f'motor start: {type(exc).__name__}: {exc}'
+
+    def rebind_device(self, device, *, reader_active=False):
+        """Switch only after caller verified the same physical optical drive.
+
+        Preserve the configured polling strategy and interval. No motor STOP.
+        """
+        if reader_active:
+            raise RuntimeError('cannot rebind an active CD reader')
+        if not re.fullmatch(r'/dev/sr[0-9]+', device):
+            raise ValueError('invalid optical device path')
+        if not Path(device).exists():
+            raise RuntimeError('replacement optical device is unavailable')
+        self.device = device
+        # Re-arm a previously enabled keepalive immediately on the new path.
+        # Existing interval and strategy are deliberately unchanged.
+        if self.active_strategy == 'keepalive':
+            self.last_start = self.clock() - self.config['interval']
+        self.last_error = None
 
     def tick(self, *, reader_active=False):
         if reader_active or self.active_strategy != 'keepalive' or self.last_start is None:

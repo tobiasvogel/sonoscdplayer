@@ -11,10 +11,13 @@ import time
 from .multi_target import MultiSelection, discover_targets
 from .multi_render import MultiRenderer
 from .i18n import Translator
+from .single_target import select_one, TargetSelectionError
+from .target_rpc_client import submit_target
+from .selection_plan import plan_from_applied
 
 
 class InteractiveMenu:
-    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de'):
+    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None):
         self.state = MultiSelection()
         self.language = Translator(language).language
         self.language_picker = False
@@ -27,6 +30,13 @@ class InteractiveMenu:
         self._lock = threading.Lock()
         self._worker = None
         self.renderer = MultiRenderer(language=self.language)
+        self._target_rpc = target_rpc
+        self._group_target_rpc = group_target_rpc
+        self._target_pending = False
+        self._target_result = None
+        self._target_generation = 0
+        self._target_worker = None
+        self._pending_selection = None
 
     def _start_discovery(self, now):
         if self._worker is not None and self._worker.is_alive():
@@ -43,6 +53,44 @@ class InteractiveMenu:
         self._worker = threading.Thread(target=work, name='ui-discovery', daemon=True)
         self._worker.start()
 
+    def _send_target(self):
+        """Off-display worker, one request only, no UID in logs or UI state."""
+        if self._target_pending:
+            return
+        try:
+            if self.state.topology.error:
+                raise ValueError('topology unavailable')
+            intent = plan_from_applied(self.state.topology.targets, self.state.draft)
+        except (ValueError, TypeError):
+            self.state = replace(self.state, notice='status.target_rejected')
+            return
+        if (intent.members and self._group_target_rpc is None) or (
+                not intent.members and self._target_rpc is None):
+            # In the safe read-only OLED mode, no player target RPC is enabled.
+            # This is not evidence of an invalid speaker selection.
+            self.state = replace(self.state, notice='status.target_unavailable')
+            return
+        self._target_pending = True
+        self._target_generation += 1
+        generation = self._target_generation
+        self._pending_selection = self.state.draft
+        uid = intent.coordinator
+        members = intent.members
+        def work():
+            try:
+                acknowledged = (self._group_target_rpc(uid, members) if members
+                                else self._target_rpc(uid))
+                if acknowledged is not True:
+                    raise RuntimeError('target was not acknowledged')
+                result = 'status.target_accepted'
+            except Exception:
+                result = 'status.target_rejected'
+            with self._lock:
+                self._target_result = (generation, result)
+        self.state = replace(self.state, notice='status.target_pending')
+        self._target_worker = threading.Thread(target=work, name='ui-target-selection',daemon=True)
+        self._target_worker.start()
+
     def poll(self, now=None):
         """Accept one completed discovery and periodically refresh while open."""
         now = time.monotonic() if now is None else now
@@ -51,8 +99,21 @@ class InteractiveMenu:
             new = self._pending
             self._pending = None
         if new is not None:
-            # Revalidation may invalidate the review; never blindly apply old IDs.
+            # Topology refresh must not erase a completed target-RPC notice.
             self.state = self.state.update(new)
+            changed = True
+        with self._lock:
+            result = self._target_result
+            self._target_result = None
+        if result is not None and result[0] == self._target_generation:
+            self._target_pending = False
+            if result[1] == 'status.target_accepted' and self._pending_selection is not None:
+                # Only the player ACK commits the new local applied target.
+                self.state = replace(self.state, applied=self._pending_selection,
+                                     notice=result[1])
+            else:
+                self.state = replace(self.state, notice=result[1])
+            self._pending_selection = None
             changed = True
         if self.active and now >= self._next_refresh:
             self._start_discovery(now)
@@ -73,6 +134,8 @@ class InteractiveMenu:
             return True
         if not self.active:
             return False
+        if self._target_pending:
+            return False
         if self.language_picker:
             if (name, event) == ('encoder','right'):
                 self.language_focus = min(1, self.language_focus+1)
@@ -92,6 +155,8 @@ class InteractiveMenu:
         if action is None:
             return False
         self.state = self.state.action(action)
+        if action == 'confirm' and self.state.notice == 'status.apply_requested':
+            self._send_target()
         if self.state.notice == 'menu.back':
             self.active = False
             self.state = replace(self.state, notice='')

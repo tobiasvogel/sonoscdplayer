@@ -21,6 +21,7 @@ from cd_toc import read_toc
 from player_play import make_url, prepare_selection, verify_target
 from player_state import Mode
 from player_switch import ownership_snapshot
+import sonos_group
 from sonos_parallel_test import detect_drive, stream_lines, wait_reader
 
 
@@ -114,14 +115,12 @@ def routed_source_ip(target_ip):
     return result
 
 
-def ownership_for_transport(player, uid, url, expected):
+def ownership_for_transport(player, uid, url, expected, members=frozenset()):
     """Read-only, strict identity/topology/URI/transport gate; no automatic adoption."""
     if player.uid != uid:
         raise RuntimeError('ownership denied: UID changed')
-    group = player.group
-    members = list(group.members)
-    if len(members) != 1 or members[0].uid != uid or group.coordinator.uid != uid:
-        raise RuntimeError('ownership denied: not solo coordinator')
+    if not sonos_group.is_expected_group(player, uid, members):
+        raise RuntimeError('ownership denied: unexpected topology')
     transport = player.get_current_transport_info()['current_transport_state']
     if transport != expected:
         raise RuntimeError(f'ownership denied: transport {transport}, expected {expected}')
@@ -132,7 +131,7 @@ def ownership_for_transport(player, uid, url, expected):
 
 class Controller:
     """A single owner: only this instance's exact URI may be stopped."""
-    def __init__(self, state, uid, host, port, server, verify=verify_target, route=None):
+    def __init__(self, state, uid, host, port, server, verify=verify_target, route=None, find_many=None):
         self.state, self.uid = state, uid
         self.host, self.port = host, port
         self.server, self.verify = server, verify
@@ -144,6 +143,12 @@ class Controller:
         self.start_monotonic = None
         self.stopped_since = None
         self.status_hook = None  # optional read-only snapshot publisher
+        self.find_many = find_many or sonos_group.find_players
+        self._joined = {}
+        self._group_coord = None
+        self._group_members = frozenset()
+        self._group_uncertain = False
+        self._recovery_url = None
 
     def _url(self, track):
         return make_url(self.host, self.port, track)
@@ -173,11 +178,89 @@ class Controller:
                 'target_uid': self.uid if owned else None,
                 'transport': self.last_transport,
                 'owned': owned,
+                'group_cleanup_pending': bool(self._joined or self._group_uncertain) and self._group_uncertain,
             },
             'stream': {
                 'active': active,
             },
         }
+
+    def _ownership(self, player, expected):
+        return ownership_for_transport(player, self.uid, self.owned_url,
+                                       expected, frozenset(self._joined))
+
+    def _release_group(self, *, owned_url=None):
+        if not self._joined:
+            return True
+        result = sonos_group.release(self._group_coord, self._joined, owned_url=owned_url)
+        remaining = sonos_group.unresolved_members(self._joined, result)
+        self._joined = remaining
+        self._group_uncertain = bool(remaining)
+        if remaining and owned_url is not None:
+            self._recovery_url = owned_url
+        if not remaining:
+            self._group_coord = None
+            self._group_members = frozenset()
+            self._recovery_url = None
+        return not remaining
+
+    def inspect_group_recovery(self):
+        """Read-only status; no Sonos mutations or hidden retry."""
+        if not self._joined:
+            return {'state': 'clear', 'remaining': 0, 'can_resolve': False}
+        result = sonos_group.inspect_recovery(self._group_coord, self._joined)
+        return {'state': result['state'], 'remaining': len(self._joined),
+                'standalone': len(result['standalone']),
+                'attached': len(result['attached']),
+                'blocked': len(result['blocked']),
+                'can_resolve': (result['state'] == 'attached'
+                                and bool(self._recovery_url)
+                                and self.state.mode in (Mode.STOPPED, Mode.ERROR)
+                                and not self.owned_url)}
+
+    def resolve_group_recovery(self):
+        """Explicit recovery only; never adopt an unknown or foreign session."""
+        if self.state.mode not in (Mode.STOPPED, Mode.ERROR) or self.owned_url:
+            raise RuntimeError('recovery requires inactive player')
+        if not self._joined:
+            return self.inspect_group_recovery()
+        observed = sonos_group.inspect_recovery(self._group_coord, self._joined)
+        if observed['state'] == 'blocked':
+            raise RuntimeError('recovery blocked by unknown topology')
+        for uid in observed['standalone']:
+            self._joined.pop(uid)
+        if observed['state'] == 'clear':
+            self._joined.clear()
+            self._group_uncertain = False
+            self._group_coord = None
+            self._group_members = frozenset()
+            self._recovery_url = None
+            return self.inspect_group_recovery()
+        if not self._recovery_url:
+            raise RuntimeError('recovery has no verified owned stream')
+        # Recheck the coordinator URI before issuing any group mutation.
+        if self._group_coord.get_current_track_info().get('uri') != self._recovery_url:
+            raise RuntimeError('recovery stream ownership changed')
+        result = sonos_group.release(self._group_coord, self._joined,
+                                     owned_url=self._recovery_url)
+        self._joined = sonos_group.unresolved_members(self._joined, result)
+        self._group_uncertain = bool(self._joined)
+        if not self._joined:
+            self._group_coord = None
+            self._group_members = frozenset()
+            self._recovery_url = None
+        return self.inspect_group_recovery()
+
+    def _verify_retained_group(self, uid):
+        coordinator = self._group_coord
+        if coordinator is None or coordinator.uid != uid:
+            raise RuntimeError('retained coordinator mismatch')
+        sonos_group.refresh_topology(coordinator)
+        if not sonos_group.is_expected_group(coordinator, uid, self._group_members):
+            raise RuntimeError('retained group topology changed')
+        if coordinator.get_current_transport_info()['current_transport_state'] != 'STOPPED':
+            raise RuntimeError('retained coordinator is not STOPPED')
+        return coordinator
 
     def refresh(self):
         if self.state.mode not in (Mode.STARTING, Mode.PLAYING, Mode.PAUSED):
@@ -191,7 +274,7 @@ class Controller:
             self.last_transport = transport
             if transport == 'PLAYING':
                 self.stopped_since = None
-                ownership_snapshot(player, self.uid, self.owned_url)
+                ownership_snapshot(player, self.uid, self.owned_url, frozenset(self._joined))
                 self.seen_playing = True
                 if self.state.mode == Mode.STARTING:
                     self.state = self.state.playback_confirmed()
@@ -199,7 +282,7 @@ class Controller:
                     self.state = self.state.resumed()
                     print('[M0.11d] PLAYING confirmed', flush=True)
             elif transport == 'PAUSED_PLAYBACK' and self.state.mode in (Mode.PLAYING, Mode.PAUSED):
-                ownership_for_transport(player, self.uid, self.owned_url, 'PAUSED_PLAYBACK')
+                self._ownership(player, 'PAUSED_PLAYBACK')
                 if self.state.mode == Mode.PLAYING:
                     self.state = self.state.paused()
             elif transport == 'STOPPED' and self.state.mode == Mode.STARTING and not self.seen_playing:
@@ -217,10 +300,12 @@ class Controller:
                 if info.get('uri') != self.owned_url:
                     self._fail('Sonos URI changed before STOPPED')
                     return
+                url = self.owned_url
                 self.state = self.state.natural_end()
                 self.owned_url = None
                 self.player = None
                 self.server.close()
+                self._release_group(owned_url=url)
                 print('[M0.11d] STOPPED observed; local server closed', flush=True)
             elif transport == 'TRANSITIONING':
                 self.stopped_since = None
@@ -237,17 +322,36 @@ class Controller:
     def _fail(self, message):
         self.state = self.state.failed(message)
         print(f'[M0.11d] ERROR: {message}; no Sonos STOP sent', flush=True)
+        url = self.owned_url
         self.owned_url = None
         self.player = None
         self.server.close()
+        # An error here may mean the topology, URI or transport could not be
+        # verified. Never issue unjoin on an ambiguous observation.
+        if self._joined:
+            self._group_uncertain = True
+            self._recovery_url = url
 
-    def play(self, uid=None):
+    def play(self, uid=None, members=None):
         if self.state.mode != Mode.STOPPED:
             raise ValueError('PLAY requires STOPPED')
         candidate = uid if uid is not None else self.uid
         if not isinstance(candidate, str) or not candidate.strip():
             raise ValueError('PLAY requires target UID')
-        target = self.verify(candidate)  # first safety gate before server spawn
+        wanted = sonos_group.normalize_members(candidate, members)
+        if self._group_uncertain:
+            raise RuntimeError('group cleanup uncertain; manual recovery required')
+        retained = bool(self._joined) and candidate == self.uid and wanted == self._group_members
+        if self._joined and not retained:
+            raise RuntimeError('retained group must be resolved before changing target')
+        target = self._verify_retained_group(candidate) if retained else self.verify(candidate)
+        member_players = {}
+        if wanted and not retained:
+            member_players = self.find_many(sorted(wanted))
+            if set(member_players) != set(wanted):
+                raise RuntimeError('member discovery incomplete')
+            for member_uid, member in member_players.items():
+                sonos_group.check_member(member, member_uid)
         host = self.route(target.ip_address) if self.route is not None else self.host
         url = make_url(host, self.port, self.state.selected_track)
         self.server.close()
@@ -258,18 +362,39 @@ class Controller:
             self.status_hook()
         try:
             self.server.start(self.state.selected_track)
-            player = self.verify(candidate)  # immediate second STOPPED + solo gate
+            player = self._verify_retained_group(candidate) if retained else self.verify(candidate)
+            if wanted and not retained:
+                for member_uid, member in member_players.items():
+                    sonos_group.check_member(member, member_uid)
             if self.route is not None and self.route(player.ip_address) != host:
                 raise RuntimeError('route to target changed during startup')
             if not self.server.alive():
                 raise RuntimeError('server exited before Sonos PLAY')
+            if wanted and not retained:
+                try:
+                    self._joined = sonos_group.form(player, member_players)
+                    self._group_coord = player
+                    self._group_members = wanted
+                except sonos_group.GroupRollbackIncomplete as rollback:
+                    self._joined = rollback.remaining
+                    self._group_coord = player
+                    self._group_members = wanted
+                    self._group_uncertain = True
+                    self._recovery_url = None
+                    raise
             player.play_uri(url, title=f'SonosCDPlayer Track {self.state.selected_track}')
         except BaseException as exc:
             self.server.close()
+            # A failed/ambiguous play_uri may already have changed the coordinator.
+            # Never unjoin after an uncertain Sonos write without URI proof.
+            if self._joined and not self._group_uncertain:
+                self._group_uncertain = True
+                self._recovery_url = None  # play_uri outcome is ambiguous
             self.owned_url, self.player = None, None
             self.state = self.state.failed(f'PLAY failed: {type(exc).__name__}: {exc}')
             raise
         self.uid, self.host = candidate, host
+        self._group_members = wanted
         self.player, self.owned_url = player, url
         self.seen_playing = False
         self.last_transport = 'TRANSITIONING'
@@ -280,8 +405,8 @@ class Controller:
         if self.state.mode != Mode.PLAYING or not self.seen_playing or not self.owned_url or not self.server.alive():
             raise ValueError('PAUSE requires confirmed owned PLAYING')
         player = self.verify_existing()
-        ownership_for_transport(player, self.uid, self.owned_url, 'PLAYING')
-        ownership_for_transport(player, self.uid, self.owned_url, 'PLAYING')
+        self._ownership(player, 'PLAYING')
+        self._ownership(player, 'PLAYING')
         player.pause()
         self.state = self.state.paused()
         self.last_transport = 'PAUSED_PLAYBACK'
@@ -290,15 +415,15 @@ class Controller:
         if self.state.mode != Mode.PAUSED or not self.seen_playing or not self.owned_url or not self.server.alive():
             raise ValueError('RESUME requires confirmed owned PAUSED')
         player = self.verify_existing()
-        ownership_for_transport(player, self.uid, self.owned_url, 'PAUSED_PLAYBACK')
-        ownership_for_transport(player, self.uid, self.owned_url, 'PAUSED_PLAYBACK')
+        self._ownership(player, 'PAUSED_PLAYBACK')
+        self._ownership(player, 'PAUSED_PLAYBACK')
         player.play()
         self.state = self.state.resumed()
         self.last_transport = 'PLAYING'
 
-    def playpause(self, uid=None):
+    def playpause(self, uid=None, members=None):
         if self.state.mode == Mode.STOPPED:
-            return self.play(uid)
+            return self.play(uid, members)
         if uid is not None and uid != self.uid:
             raise ValueError('PLAYPAUSE target UID mismatch')
         if self.state.mode == Mode.PLAYING:
@@ -307,19 +432,22 @@ class Controller:
             return self.resume()
         raise ValueError('PLAYPAUSE forbidden in current mode')
 
-    def _stop_owned(self):
+    def _stop_owned(self, *, keep_group=False):
         if self.state.mode not in (Mode.PLAYING, Mode.PAUSED) or not self.seen_playing or not self.owned_url:
             raise ValueError('STOP/track switch requires confirmed owned playback')
         player = self.verify_existing()
         expected = 'PLAYING' if self.state.mode == Mode.PLAYING else 'PAUSED_PLAYBACK'
-        ownership_for_transport(player, self.uid, self.owned_url, expected)
-        ownership_for_transport(player, self.uid, self.owned_url, expected)
+        self._ownership(player, expected)
+        self._ownership(player, expected)
         player.stop()  # only destructive action
+        old_url = self.owned_url
         self.state = self.state.natural_end()
         self.owned_url, self.player = None, None
         self.last_transport = 'STOPPED'
         self.seen_playing = False
         self.server.close()
+        if not keep_group:
+            self._release_group(owned_url=old_url)
 
     def stop(self):
         # If Sonos already stopped during STARTING, release ONLY our local session.
@@ -328,20 +456,19 @@ class Controller:
             player = self.verify_existing()
             if player.uid != self.uid:
                 raise RuntimeError('target UID changed')
-            group = player.group
-            members = list(group.members)
-            if (len(members) != 1 or members[0].uid != self.uid
-                    or group.coordinator.uid != self.uid):
-                raise RuntimeError('target no longer solo; refusing local release')
+            if not sonos_group.is_expected_group(player, self.uid, self._group_members):
+                raise RuntimeError('target group changed; refusing local release')
             state = player.get_current_transport_info()['current_transport_state']
             self.last_transport = state
             if state != 'STOPPED':
                 raise ValueError('startup recovery only when Sonos is already STOPPED')
+            old_url = self.owned_url
             self.state = self.state.natural_end()
             self.owned_url, self.player = None, None
             self.seen_playing = False
             self.start_monotonic, self.stopped_since = None, None
             self.server.close()
+            self._release_group(owned_url=old_url)
             return
         self._stop_owned()
 
@@ -351,6 +478,8 @@ class Controller:
             raise ValueError('RESET requires ERROR')
         if self.server.alive() or self.owned_url or self.player is not None:
             raise RuntimeError('RESET refused: local playback still attached')
+        if self._joined or self._group_uncertain:
+            raise RuntimeError('RESET refused: unresolved temporary group')
         self.state = self.state.reset_error()
         self.uid = None
         self.last_transport = 'UNKNOWN'
@@ -413,9 +542,19 @@ class Controller:
         if new == old:
             print('[M0.11d] already at disc boundary', flush=True)
             return
-        self._stop_owned()
+        members = self._group_members
+        self._stop_owned(keep_group=bool(members))
         self.state = self.state.select(new)
-        self.play()
+        try:
+            self.play(members=members)
+        except BaseException:
+            # The previous track has already been stopped. The next PLAY may
+            # have failed before or after a Sonos write; never blindly unjoin.
+            # Preserve every joined member for explicit recovery inspection.
+            if self._joined:
+                self._group_uncertain = True
+                self._recovery_url = None
+            raise
 
     def command(self, line):
         tokens = line.strip().lower().split()
@@ -463,16 +602,19 @@ class Controller:
         try:
             player = self.verify_existing()
             expected = 'PLAYING' if self.state.mode == Mode.PLAYING else 'PAUSED_PLAYBACK'
-            ownership_for_transport(player, self.uid, self.owned_url, expected)
-            ownership_for_transport(player, self.uid, self.owned_url, expected)
+            self._ownership(player, expected)
+            self._ownership(player, expected)
             player.stop()
         except Exception as exc:
             return {'action': 'not_stopped',
                     'reason': f'{type(exc).__name__}: {exc}'}
+        old_url = self.owned_url
         self.last_transport = 'STOPPED'
         self.state = self.state.natural_end()
         self.owned_url, self.player = None, None
         self.seen_playing = False
+        if not self._release_group(owned_url=old_url):
+            return {'action': 'stopped_owned_group_cleanup_pending'}
         return {'action': 'stopped_owned'}
 
     @staticmethod
