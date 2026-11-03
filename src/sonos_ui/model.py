@@ -22,4 +22,7 @@ class DisplayModel:
     speakers_searching: bool = False
     focus_index: int = 0
     selected_index: int | None = None
+    # Optional UID-backed checkbox mode; legacy solo UI remains unchanged.
+    checkbox_mode: bool = False
+    checked_indices: tuple[int, ...] = ()
     disc_phase: str | None = None
