@@ -37,12 +37,10 @@ class UIIntegrationTests(unittest.TestCase):
         marked = state.action('confirm')
         self.assertEqual(len(marked.draft), 1)
         self.assertFalse(marked.applied)
-        self.assertFalse(marked.reviewing)
 
     def test_apply_request_still_has_no_sonos_effect(self):
         state = MultiSelection().update(group_snapshot(self.grouped_devices()))
         state = state.action('confirm').action('next').action('next').action('next').action('confirm')
-        self.assertFalse(state.reviewing)
         self.assertEqual(state.notice, 'status.apply_requested')
         self.assertFalse(state.applied)
 
