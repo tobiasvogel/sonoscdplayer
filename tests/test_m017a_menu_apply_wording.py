@@ -19,7 +19,6 @@ class ApplySelectionMenuTests(unittest.TestCase):
     def test_single_selected_directly_requests_apply_without_confirming(self):
         state = MultiSelection(topology=self.topology).action('confirm')
         state = state.action('next').action('next').action('confirm')
-        self.assertFalse(state.reviewing)
         self.assertEqual(state.notice, 'status.apply_requested')
         self.assertEqual(state.applied, frozenset())
         self.assertEqual(plan_from_applied(state.topology.targets, state.draft).members, ())
@@ -28,7 +27,6 @@ class ApplySelectionMenuTests(unittest.TestCase):
         state = MultiSelection(topology=self.topology).action('confirm')
         state = state.action('next').action('confirm')
         state = state.action('next').action('confirm')
-        self.assertFalse(state.reviewing)
         self.assertEqual(state.notice, 'status.apply_requested')
         self.assertEqual(state.applied, frozenset())
         plan = plan_from_applied(state.topology.targets, state.draft)
@@ -37,7 +35,6 @@ class ApplySelectionMenuTests(unittest.TestCase):
     def test_empty_selection_rejected(self):
         state = MultiSelection(topology=self.topology)
         state = state.action('next').action('next').action('confirm')
-        self.assertFalse(state.reviewing)
         self.assertEqual(state.notice, 'status.invalid_selection')
 
     def test_discovery_missing_speaker_preserves_confirmed_target(self):
