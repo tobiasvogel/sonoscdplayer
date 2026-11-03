@@ -25,14 +25,14 @@ class CheckboxSelectionTests(unittest.TestCase):
         self.assertEqual(self.selection.preview(speakers()), TargetChoice('A', ()))
         self.assertFalse(self.selection.preview(speakers()).grouped)
 
-    def test_two_speakers_choose_first_checked_coordinator(self):
+    def test_two_speakers_choose_alphabetically_first_coordinator(self):
         self.selection.toggle('B')
         self.selection.toggle('A')
         self.assertEqual(self.selection.preview(speakers()),
-                         TargetChoice('B', ('A',)))
+                         TargetChoice('A', ('B',)))
         self.assertTrue(self.selection.preview(speakers()).grouped)
 
-    def test_uncheck_first_checked_promotes_next(self):
+    def test_uncheck_alphabetical_coordinator_promotes_remaining(self):
         self.selection.toggle('A')
         self.selection.toggle('B')
         self.selection.toggle('A')
@@ -51,6 +51,26 @@ class CheckboxSelectionTests(unittest.TestCase):
                       SpeakerChoice('B', 'Zimmer', True, True)]
         self.assertEqual(self.selection.preview(same_names),
                          TargetChoice('A', ('B',)))
+
+    def test_reverse_checkbox_order_and_discovery_order_use_same_coordinator(self):
+        self.selection.toggle('B')
+        self.selection.toggle('A')
+        self.assertEqual(self.selection.preview(list(reversed(speakers()))),
+                         TargetChoice('A', ('B',)))
+
+    def test_equal_names_break_tie_by_uid(self):
+        self.selection.toggle('B')
+        self.selection.toggle('A')
+        choices = [SpeakerChoice('B', 'Zimmer', True, True),
+                   SpeakerChoice('A', 'Zimmer', True, True)]
+        self.assertEqual(self.selection.preview(choices), TargetChoice('A', ('B',)))
+
+    def test_alphabetical_names_not_uid_or_checkbox_order(self):
+        self.selection.toggle('A')
+        self.selection.toggle('B')
+        choices = [SpeakerChoice('A', 'Zentrum', True, True),
+                   SpeakerChoice('B', 'Alpha', True, True)]
+        self.assertEqual(self.selection.preview(choices), TargetChoice('B', ('A',)))
 
     def test_missing_speaker_blocks_plan_without_fallback(self):
         self.selection.toggle('A')
@@ -97,7 +117,7 @@ class CheckboxSelectionTests(unittest.TestCase):
         plan = self.selection.preview(speakers())
         self.selection.acknowledge(plan)
         self.selection.begin()
-        self.assertEqual(self.selection.checked_uids, ('B', 'A'))
+        self.assertEqual(self.selection.checked_uids, ('A', 'B'))
         self.assertEqual(self.selection.confirmed, plan)
 
     def test_no_implicit_confirmation(self):
