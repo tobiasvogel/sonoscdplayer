@@ -14,7 +14,9 @@ class MultiRenderer(Renderer):
             self.text(im,(6,23),self.tr('status.marked',count=count),fill=t.primary,size=9,width=116,height=14)
             for i,label in enumerate(state.selections()[:3]):
                 self.text(im,(8,43+i*16),label,fill=t.secondary,size=9,width=112,height=13)
-            self.bottom(im,status=self.tr('status.local_only'),footer=self.tr('footer.confirm'))
+            # Confirmation only applies the target; playback needs a separate PLAY.
+            self.bottom(im,status=self.tr('status.selection_no_play'),
+                        footer=self.tr('footer.confirm'))
         else:
             self.text(im,(6,16),self.tr('status.targets',selected=len(state.draft),total=len(state.topology.targets)),fill=t.secondary,size=8,width=116,height=10)
             count=len(state.topology.targets)
