@@ -23,7 +23,7 @@ class SingleTargetTests(unittest.TestCase):
     def test_one_confirmed_solo_speaker_is_intent_only(self):
         state=MultiSelection().update(target_topology())
         state=state.action('confirm')
-        state=replace(state,focus=2).action('confirm').action('confirm')
+        state=replace(state,applied=state.draft)
         selected=select_one(state)
         self.assertEqual((selected.uid,selected.display_name),('speaker-1','Büro'))
 
@@ -39,29 +39,27 @@ class SingleTargetTests(unittest.TestCase):
     def test_two_speakers_rejected(self):
         state=MultiSelection().update(target_topology())
         state=state.action('confirm').action('next').action('confirm')
-        state=replace(state,focus=2).action('confirm').action('confirm')
+        state=replace(state,applied=state.draft)
         with self.assertRaises(TargetSelectionError):
             select_one(state)
 
     def test_existing_group_rejected(self):
         state=MultiSelection().update(target_topology(grouped=True))
         state=state.action('confirm')
-        state=replace(state,focus=2).action('confirm').action('confirm')
+        state=replace(state,applied=state.draft)
         with self.assertRaises(TargetSelectionError):
             select_one(state)
 
     def test_stale_or_failed_discovery_rejected(self):
         state=MultiSelection().update(target_topology())
         state=state.action('confirm')
-        state=replace(state,focus=2).action('confirm').action('confirm')
+        state=replace(state,applied=state.draft)
         with self.assertRaises(TargetSelectionError):
             select_one(replace(state,topology=Topology((), 'DiscoveryError')))
 
     def test_reviewing_is_not_confirmation(self):
         state=MultiSelection().update(target_topology()).action('confirm')
-        state=replace(state,focus=2).action('confirm')
-        with self.assertRaises(TargetSelectionError):
-            select_one(state)
+        # The menu's one-click apply request is not a successful player ACK.\n        state=replace(state,focus=2).action('confirm')\n        with self.assertRaises(TargetSelectionError):\n            select_one(state)
 
 
 if __name__=='__main__':
