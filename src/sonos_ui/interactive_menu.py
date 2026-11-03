@@ -36,6 +36,7 @@ class InteractiveMenu:
         self._target_result = None
         self._target_generation = 0
         self._target_worker = None
+        self._pending_selection = None
 
     def _start_discovery(self, now):
         if self._worker is not None and self._worker.is_alive():
@@ -57,17 +58,20 @@ class InteractiveMenu:
         if self._target_pending:
             return
         try:
-            if self.state.topology.error or self.state.reviewing or self.state.review_valid or self.state.draft != self.state.applied:
-                raise ValueError('selection not confirmed')
-            intent = plan_from_applied(self.state.topology.targets, self.state.applied)
+            if self.state.topology.error:
+                raise ValueError('topology unavailable')
+            intent = plan_from_applied(self.state.topology.targets, self.state.draft)
             if intent.members and self._group_target_rpc is None:
                 raise ValueError('group target RPC disabled')
+            if not intent.members and self._target_rpc is None:
+                raise ValueError('solo target RPC disabled')
         except (ValueError, TypeError):
             self.state = replace(self.state, notice='status.target_rejected')
             return
         self._target_pending = True
         self._target_generation += 1
         generation = self._target_generation
+        self._pending_selection = self.state.draft
         uid = intent.coordinator
         members = intent.members
         def work():
@@ -101,7 +105,13 @@ class InteractiveMenu:
             self._target_result = None
         if result is not None and result[0] == self._target_generation:
             self._target_pending = False
-            self.state = replace(self.state, notice=result[1])
+            if result[1] == 'status.target_accepted' and self._pending_selection is not None:
+                # Only the player ACK commits the new local applied target.
+                self.state = replace(self.state, applied=self._pending_selection,
+                                     notice=result[1])
+            else:
+                self.state = replace(self.state, notice=result[1])
+            self._pending_selection = None
             changed = True
         if self.active and now >= self._next_refresh:
             self._start_discovery(now)
@@ -142,11 +152,8 @@ class InteractiveMenu:
                   ('encoder_sw','pressed'): 'confirm'}.get((name,event))
         if action is None:
             return False
-        was_reviewing = self.state.reviewing
         self.state = self.state.action(action)
-        if (was_reviewing and action == 'confirm'
-                and self.state.notice == 'status.local_applied'
-                and self._target_rpc is not None):
+        if action == 'confirm' and self.state.notice == 'status.apply_requested':
             self._send_target()
         if self.state.notice == 'menu.back':
             self.active = False
