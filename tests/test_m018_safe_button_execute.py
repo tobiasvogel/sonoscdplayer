@@ -176,6 +176,69 @@ class ExecuteTests(unittest.TestCase):
         self.assertEqual(sends, [('/not-a-socket', 'stop', None)])
         self.assertIn('not retrying', log[0])
 
+    def test_foreign_playback_cannot_pause_resume_or_stop(self):
+        # An active stream without local ownership must never authorize writes.
+        for mode, action in (('PLAYING', 'playpause'),
+                             ('PAUSED', 'playpause'),
+                             ('PLAYING', 'stop'),
+                             ('PAUSED', 'stop')):
+            with self.subTest(mode=mode, action=action):
+                calls, sends = [], []
+
+                def reader(path, command):
+                    calls.append(command)
+                    return (state(mode, False, True) if command == 'status'
+                            else target())
+
+                log = run_one(reader, lambda *args: sends.append(args),
+                              action=action)
+                self.assertEqual(calls, ['status', 'get-target'])
+                self.assertEqual(sends, [])
+                self.assertEqual(log, ['selected-target execute: blocked'])
+
+    def test_missing_selection_blocks_play_and_owned_stop(self):
+        for mode, owned, active, action in (
+            ('STOPPED', False, False, 'playpause'),
+            ('PLAYING', True, True, 'stop'),
+        ):
+            with self.subTest(mode=mode, action=action):
+                sends = []
+                log = run_one(lambda path, command:
+                              state(mode, owned, active) if command == 'status'
+                              else target(False),
+                              lambda *args: sends.append(args), action=action)
+                self.assertEqual(sends, [])
+                self.assertEqual(log, ['selected-target execute: blocked'])
+
+    def test_ambiguous_states_block_all_hardware_transport(self):
+        for mode, owned, active, pending in (
+            ('STARTING', False, False, False),
+            ('ERROR', True, True, False),
+            ('PLAYING', True, True, True),
+            ('PAUSED', True, True, True),
+        ):
+            for action in ('playpause', 'stop'):
+                with self.subTest(mode=mode, action=action):
+                    sends = []
+                    log = run_one(lambda path, command:
+                                  state(mode, owned, active, pending=pending)
+                                  if command == 'status' else target(),
+                                  lambda *args: sends.append(args),
+                                  action=action)
+                    self.assertEqual(sends, [])
+                    self.assertEqual(log, ['selected-target execute: blocked'])
+
+    def test_rejected_target_snapshot_cannot_send_stop(self):
+        for invalid in (None, {}, {'ok': False}, {'ok': True},
+                        {'ok': True, 'target_selection': {'selected': None}}):
+            with self.subTest(invalid=invalid):
+                sends = []
+                run_one(lambda path, command:
+                        state('PLAYING', True, True) if command == 'status'
+                        else invalid,
+                        lambda *args: sends.append(args), action='stop')
+                self.assertEqual(sends, [])
+
     def test_unknown_action_never_dispatches(self):
         sends = []
         worker = SelectedTargetExecutor('/fake',
