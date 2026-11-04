@@ -1,7 +1,7 @@
 """M0.18 policy tests: no RPC, GPIO, or Sonos dependencies."""
 import unittest
 
-from integrations.interfaces.safe_button_policy import plan_playpause
+from integrations.interfaces.safe_button_policy import plan_playpause, plan_stop
 
 
 def snapshot(mode='STOPPED', *, owned=False, active=False, pending=False):
@@ -77,6 +77,26 @@ class SafeButtonPolicyTests(unittest.TestCase):
         for value in (None, 1, 'true', False):
             self.assertIsNone(plan_playpause(
                 snapshot(), {'ok': True, 'target_selection': {'selected': value}}))
+
+    def test_stop_only_for_owned_active_selected_playback(self):
+        for mode in ('PLAYING', 'PAUSED'):
+            self.assertEqual(plan_stop(
+                snapshot(mode, owned=True, active=True), target()), 'stop')
+        for mode, owned, active, pending, selected in (
+                ('STOPPED', False, False, False, True),
+                ('PLAYING', False, True, False, True),
+                ('PAUSED', True, False, False, True),
+                ('PLAYING', True, True, True, True),
+                ('PLAYING', True, True, False, False),
+                ('ERROR', True, True, False, True)):
+            self.assertIsNone(plan_stop(
+                snapshot(mode, owned=owned, active=active, pending=pending),
+                target(selected)))
+
+    def test_stop_fail_closed_on_bad_snapshots(self):
+        for item in (None, {}, {'ok': False}, {'ok': True}):
+            self.assertIsNone(plan_stop(item, target()))
+            self.assertIsNone(plan_stop(snapshot('PLAYING', owned=True, active=True), item))
 
 
 if __name__ == '__main__':
