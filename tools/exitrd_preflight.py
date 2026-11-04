@@ -37,16 +37,20 @@ def inspect_elf(data: bytes) -> str:
     kind, machine = struct.unpack_from("<HH", data, 16)
     if kind not in (2, 3) or machine not in MACHINE_NAMES:
         raise PreflightError("unsupported ELF type or architecture")
+    entry = struct.unpack_from("<Q", data, 24)[0]
     phoff = struct.unpack_from("<Q", data, 32)[0]
     phentsize, phnum = struct.unpack_from("<HH", data, 54)
     if phnum == 0 or phentsize < 56 or phnum > 1024:
         raise PreflightError("invalid ELF program-header table")
     if phoff > len(data) or phnum * phentsize > len(data) - phoff:
         raise PreflightError("truncated ELF program headers")
+    executable_entry = False
     for i in range(phnum):
         off = phoff + i * phentsize
-        ptype, _flags, offset, _vaddr, _paddr, filesz, _memsz, _align = (
+        ptype, flags, offset, vaddr, _paddr, filesz, memsz, _align = (
             struct.unpack_from("<IIQQQQQQ", data, off))
+        if ptype == 1 and flags & 1 and memsz and vaddr <= entry < vaddr + memsz:
+            executable_entry = True
         if ptype == 3:  # PT_INTERP: needs a dynamic loader after switch-root
             raise PreflightError("dynamic ELF interpreter is not exitrd-safe")
         if ptype in (1, 2) and (offset > len(data) or filesz > len(data) - offset):
@@ -60,6 +64,8 @@ def inspect_elf(data: bytes) -> str:
                     raise PreflightError("external shared-library dependency")
                 if tag == 0:
                     break
+    if not executable_entry:
+        raise PreflightError("ELF has no executable load segment containing its entrypoint")
     return MACHINE_NAMES[machine]
 
 
