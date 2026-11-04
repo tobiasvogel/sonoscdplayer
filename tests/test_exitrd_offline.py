@@ -84,8 +84,8 @@ class ExitrdOfflineTests(unittest.TestCase):
             staged.chmod(0o755)
             renderer = Path(directory) / 'renderer'
             calls = Path(directory) / 'calls'
-            renderer.write_text('#!/bin/sh\\nprintf "%s\\\\n" "$1" >> "' +
-                                str(calls) + '"\\n')
+            renderer.write_text('#!/bin/sh\nprintf "%s\\n" "$1" >> "' +
+                                str(calls) + '"\n')
             renderer.chmod(0o755)
             hook = Path(directory) / 'hook'
             hook.write_text(script.replace('/run/initramfs/shutdown', str(staged))
