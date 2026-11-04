@@ -84,9 +84,12 @@ class IdleDrivePolicyTests(unittest.TestCase):
         self.assertTrue(p.play_must_wait)
         self.assertFalse(p.wake_result(325, drive_verified=False))
         self.assertTrue(p.play_must_wait)
-        self.assertEqual(p.activity(330), 'wake')
-        self.assertTrue(p.wake_result(340, drive_verified=True))
-        self.assertFalse(p.play_must_wait)
+        self.assertTrue(p.wake_fault_latched)
+        self.assertIsNone(p.activity(330))  # No implicit retry after failure.
+        self.assertTrue(p.play_must_wait)
+        self.assertFalse(p.keepalive_allowed(331))
+        self.assertIsNone(p.idle_action(999, playback_active=False,
+                                        reader_active=False))
 
     def test_stop_while_waiting_to_wake_is_forbidden(self):
         p = IdleDrivePolicy()
