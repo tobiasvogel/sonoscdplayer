@@ -23,6 +23,7 @@ import time
 import tomllib
 
 from cd_toc import read_toc
+from player_state import Mode
 from drive_power import DrivePowerManager, load_config
 from drive_identity import usb_identity, recovered_device
 from player_controller import Controller, ProcessServer, routed_source_ip
@@ -224,7 +225,34 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
         print(f'[M0.15a-r2] local socket ready: {path} (0600); responsive cached status', flush=True)
         # Only this one worker ever touches controller, Sonos, reader and drive power.
         with concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='player-control') as executor:
+            def verify_original_disc(device):
+                # Never accept a different drive or disc after a wake.
+                return (drive_id is not None and drive_toc is not None
+                        and usb_identity(device) == drive_id
+                        and read_toc(device) == drive_toc)
+
+            def wake_if_required():
+                if power is None or power.idle_policy is None:
+                    return True
+                policy = power.idle_policy
+                if not policy.play_must_wait:
+                    return True
+                # Publish a visible waiting state before blocking on motor/TOC.
+                publisher.publish(controller, power)
+                ok = power.wake(verify=verify_original_disc)
+                publisher.publish(controller, power)
+                return ok
+
             def operate(request):
+                # Only a complete, explicit local event request may reset
+                # the user activity timer. Never infer activity from status.
+                if isinstance(request, dict) and request == {'command': 'drive-activity'}:
+                    if power is not None and power.idle_policy is not None:
+                        power.activity()
+                        if not wake_if_required():
+                            return response(controller, ok=False, error='drive wake unverified')
+                    publisher.publish(controller, power)
+                    return response(controller, ok=True)
                 if (drive_toc is not None and isinstance(request, dict)
                         and request.get('command') in ('play', 'play-selected', 'playpause', 'reset')):
                     try:
@@ -233,6 +261,14 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                         reply = response(controller, ok=False, error=f'drive unavailable: {type(exc).__name__}: {exc}')
                         publisher.publish(controller, power)
                         return reply
+                # Explicit PLAY is itself user activity. If it arrives before
+                # the asynchronous GPIO activity signal, wake/verify here too.
+                if (isinstance(request, dict)
+                        and request.get('command') in ('play', 'play-selected', 'playpause')
+                        and power is not None and power.idle_policy is not None):
+                    power.activity()
+                    if not wake_if_required():
+                        return response(controller, ok=False, error='drive wake unverified')
                 reply = handle_command(controller, request, selection)
                 publisher.publish(controller, power)
                 return reply
@@ -264,7 +300,13 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                                   flush=True)
                 controller.refresh()
                 if power is not None:
-                    power.tick(reader_active=controller.server.reader_active())
+                    power.tick(
+                        reader_active=controller.server.reader_active(),
+                        playback_active=(controller.state.mode != Mode.STOPPED
+                                         or bool(controller.owned_url)
+                                         or controller.server.alive()),
+                        group_cleanup_pending=bool(controller._joined
+                                                    or controller._group_uncertain))
                 publisher.publish(controller, power)
 
             busy = None
