@@ -31,7 +31,7 @@ class ShutdownRendererTests(unittest.TestCase):
         return subprocess.run([str(self.executable), *args], capture_output=True, text=True)
 
     def test_dry_run_does_not_access_hardware(self):
-        for phase in ('wait', 'final'):
+        for phase in ('transition', 'wait', 'final', 'reboot'):
             with self.subTest(phase=phase):
                 proc = self.run_renderer(phase, '--dry-run')
                 self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -39,7 +39,7 @@ class ShutdownRendererTests(unittest.TestCase):
                 self.assertIn('backend=ssd1327', proc.stdout)
 
     def test_rejects_unknown_phase(self):
-        self.assertEqual(self.run_renderer('reboot', '--dry-run').returncode, 2)
+        self.assertEqual(self.run_renderer('not-a-phase', '--dry-run').returncode, 2)
         self.assertEqual(self.run_renderer('safe', '--dry-run').returncode, 2)
         self.assertEqual(self.run_renderer('wait', '--unknown').returncode, 2)
 
@@ -47,6 +47,8 @@ class ShutdownRendererTests(unittest.TestCase):
         text = (self.build / 'shutdown_frames.h').read_text()
         self.assertIn('shutdown_frame_wait[8192]', text)
         self.assertIn('shutdown_frame_final[8192]', text)
+        self.assertIn('shutdown_frame_reboot[8192]', text)
+        self.assertIn('shutdown_frame_transition[8192]', text)
         self.assertIn('SHUTDOWN_FRAME_FORMAT "gray4-packed"', text)
 
     def test_core_works_with_mock_backend(self):
