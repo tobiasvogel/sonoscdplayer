@@ -140,6 +140,10 @@ class ExecuteTests(unittest.TestCase):
                          target_executor=Safe(), dispatcher=Legacy())
             handle_event('playpause', 'released', commands=True, execute=True,
                          target_executor=Safe(), dispatcher=Legacy())
+            handle_event('stop', 'pressed', commands=True, execute=True,
+                         target_executor=Safe(), dispatcher=Legacy())
+            handle_event('skip', 'pressed', commands=True, execute=True,
+                         target_executor=Safe(), dispatcher=Legacy())
         self.assertEqual(safe, ['safe'])
         self.assertEqual(legacy, [])
 
