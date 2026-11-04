@@ -123,8 +123,13 @@ def handle_event(name, event, *, commands=False, execute=False, socket_path=DEFA
         else:
             print(f'command preview: {command}', flush=True)
         return
-    if command == 'playpause' and target_executor is not None:
-        target_executor.submit()
+    if target_executor is not None:
+        # Initial safe-execute rollout permits PLAY/PAUSE only. Other hardware
+        # buttons remain previews until they have their own acceptance tests.
+        if command == 'playpause':
+            target_executor.submit()
+        else:
+            print(f'command skipped in safe execute mode: {command}', flush=True)
         return
     if command == 'playpause' and uid is None:
         print('command skipped: playpause UID unavailable', flush=True)
