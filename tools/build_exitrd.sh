@@ -22,4 +22,6 @@ python3 "$ROOT/tools/build_shutdown_renderer.py" \
     "$ROOT/src/shutdown/backends/ssd1327.c" \
     "$ROOT/src/shutdown/transport/linux_spi_gpio.c" \
     -o "$BUILD_DIR/shutdown"
+# Enforce a non-group-writable binary regardless of the invoking user\x27s umask.
+chmod 0755 "$BUILD_DIR/shutdown"
 "$BUILD_DIR/shutdown" --check
