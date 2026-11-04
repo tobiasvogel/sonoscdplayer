@@ -155,12 +155,35 @@ def write_staged_binary(target: Path, data: bytes) -> Path:
     return target / "shutdown"
 
 
+def inspect_host(mountinfo: str) -> list[str]:
+    """Read-only checks for a future Raspberry Pi dry run."""
+    issues = []
+    try:
+        if mount_fs_type(Path("/run"), mountinfo) != "tmpfs":
+            issues.append("/run is not tmpfs")
+    except (OSError, PreflightError) as exc:
+        issues.append(f"/run mount unverified: {exc}")
+    if not Path("/run/systemd/system").is_dir():
+        issues.append("systemd runtime marker missing")
+    if Path("/run/initramfs/shutdown").exists() or Path("/run/initramfs/shutdown").is_symlink():
+        issues.append("another exitrd is already staged; do not overwrite")
+    for dev in ("/dev/spidev0.0", "/dev/gpiochip0"):
+        try:
+            if not stat.S_ISCHR(Path(dev).stat().st_mode):
+                issues.append(f"{dev} is not a character device")
+        except OSError:
+            issues.append(f"{dev} is unavailable")
+    return issues
+
+
 def run(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--expected-arch", choices=("native", "aarch64", "x86_64"),
                         default="native")
     parser.add_argument("--stage-dir", type=Path)
+    parser.add_argument("--host-check", action="store_true",
+                        help="read-only Raspberry Pi runtime readiness checks")
     parser.add_argument("--stage", action="store_true",
                         help="explicitly copy to an isolated tmpfs directory; NEVER activate")
     args = parser.parse_args(argv)
@@ -172,8 +195,17 @@ def run(argv=None) -> int:
         raise PreflightError(f"ELF architecture {arch}, expected {expected}")
     digest = hashlib.sha256(data).hexdigest()
     print(f"ELF: static/no-needed, arch={arch}, bytes={len(data)}, sha256={digest}")
-    if args.stage_dir is not None:
+    mountinfo = None
+    if args.host_check or args.stage_dir is not None:
         mountinfo = Path("/proc/self/mountinfo").read_text(encoding="utf-8")
+    if args.host_check:
+        issues = inspect_host(mountinfo)
+        for issue in issues:
+            print(f"HOST BLOCKER: {issue}")
+        if issues:
+            raise PreflightError(f"{len(issues)} host readiness blocker(s)")
+        print("HOST READINESS: basic runtime prerequisites available")
+    if args.stage_dir is not None:
         real = inspect_stage_dir(args.stage_dir, mountinfo)
         print(f"Isolated RAM stage: {real} (tmpfs, non-activating)")
         if args.stage:
