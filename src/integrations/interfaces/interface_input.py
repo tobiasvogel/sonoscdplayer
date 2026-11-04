@@ -128,6 +128,8 @@ def handle_event(name, event, *, commands=False, execute=False, socket_path=DEFA
         # buttons remain previews until they have their own acceptance tests.
         if command == 'playpause':
             target_executor.submit()
+        elif command == 'stop':
+            target_executor.submit('stop')
         else:
             print(f'command skipped in safe execute mode: {command}', flush=True)
         return
@@ -187,7 +189,7 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
             GPIO.setup(pin, GPIO.IN, pull_up_down=pulls[pull])
         sample = lambda: {pin: GPIO.input(pin) for pin in pins}
         engine = InputEngine(cfg, sample(), time.monotonic_ns() // 1_000_000)
-        dispatcher = CommandDispatcher(socket_path, uid) if execute else None
+        dispatcher = None  # CLI execution only uses the safe selected-target path.
         target_preview = SelectedTargetPreview(socket_path) if target_preview_enabled else None
         target_executor = (SelectedTargetExecutor(socket_path, sender=send_command)
                            if target_execute_enabled else None)
@@ -215,11 +217,11 @@ def main():
     group.add_argument('--gpio', action='store_true')
     group.add_argument('--simulate', type=Path, metavar='JSONL')
     p.add_argument('--commands', action='store_true', help='show allowed command mappings')
-    p.add_argument('--execute', action='store_true', help='explicitly send mapped commands (requires --commands)')
+    p.add_argument('--execute', action='store_true', help='execute safe PLAY/PAUSE and STOP only (requires --selected-target-execute)')
     p.add_argument('--selected-target-preview', action='store_true',
                    help='read-only status/get-target planning for PLAY/PAUSE; never sends transport')
     p.add_argument('--selected-target-execute', action='store_true',
-                   help='with --execute: safe state-checked one-shot PLAY/PAUSE only')
+                   help='with --execute: safe state-checked one-shot PLAY/PAUSE and STOP')
     p.add_argument('--socket', default=DEFAULT_SOCKET)
     p.add_argument('--ui-events-socket', default=None,
                    help='optional nonblocking read-only UI event observer')
@@ -229,11 +231,13 @@ def main():
         p.error('--execute requires --commands --gpio')
     if args.selected_target_preview and (not args.gpio or not args.commands or args.execute):
         p.error('--selected-target-preview requires --gpio --commands without --execute')
+    if args.execute and not args.selected_target_execute:
+        p.error('--execute requires --selected-target-execute (legacy dispatch disabled)')
     if args.selected_target_execute and (not args.gpio or not args.commands or
                                          not args.execute or args.selected_target_preview):
         p.error('--selected-target-execute requires --gpio --commands --execute without --selected-target-preview')
-    if args.uid_file and not args.execute:
-        p.error('--uid-file is only used with --execute')
+    if args.uid_file:
+        p.error('--uid-file is not used by safe selected-target execution')
     if args.ui_events_socket is not None and not args.gpio:
         p.error('--ui-events-socket requires --gpio')
     cfg = load_config(args.config)
