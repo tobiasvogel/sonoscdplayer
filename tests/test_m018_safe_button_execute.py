@@ -3,8 +3,9 @@ import contextlib
 import io
 import threading
 import unittest
+from unittest import mock
 
-from integrations.interfaces.interface_input import handle_event
+from integrations.interfaces.interface_input import (handle_event, send_command)
 from integrations.interfaces.safe_button_execute import SelectedTargetExecutor
 
 
@@ -182,6 +183,82 @@ class ExecuteTests(unittest.TestCase):
                   sender=lambda *args: sends.append(args))
         self.assertFalse(worker.submit('next'))
         self.assertEqual(sends, [])
+
+
+class TransportAcknowledgementTests(unittest.TestCase):
+    """No Sonos/GPIO: inspect real sender's socket timeouts and one-shot I/O."""
+
+    class Socket:
+        def __init__(self, reply=b'{"ok":true}\\n', fail_recv=False):
+            self.reply = reply
+            self.fail_recv = fail_recv
+            self.timeouts = []
+            self.connections = []
+            self.requests = []
+            self.reads = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def settimeout(self, seconds):
+            self.timeouts.append(seconds)
+
+        def connect(self, path):
+            self.connections.append(path)
+
+        def sendall(self, data):
+            self.requests.append(data)
+
+        def recv(self, size):
+            self.reads += 1
+            if self.fail_recv:
+                raise TimeoutError('simulated unknown acceptance')
+            return self.reply
+
+    def test_command_specific_bounded_acknowledgement_deadlines(self):
+        for command, lower, upper in (
+            ('play-selected', 129.0, 130.0),
+            ('pause', 9.0, 10.0),
+            ('resume', 9.0, 10.0),
+            ('stop', 9.0, 10.0),
+            ('help', 0.5, 1.0),
+        ):
+            with self.subTest(command=command):
+                client = self.Socket()
+                with mock.patch('integrations.interfaces.interface_input.socket.socket',
+                                return_value=client):
+                    self.assertTrue(send_command('/fake', command))
+                self.assertEqual(client.connections, ['/fake'])
+                self.assertEqual(len(client.requests), 1)
+                self.assertEqual(client.reads, 1)
+                self.assertEqual(client.timeouts[0], 1.0)
+                self.assertGreaterEqual(client.timeouts[-1], lower)
+                self.assertLessEqual(client.timeouts[-1], upper)
+
+    def test_timeout_never_reconnects_or_resends(self):
+        client = self.Socket(fail_recv=True)
+        with mock.patch('integrations.interfaces.interface_input.socket.socket',
+                        return_value=client):
+            with self.assertRaises(TimeoutError):
+                send_command('/fake', 'play-selected')
+        self.assertEqual(client.connections, ['/fake'])
+        self.assertEqual(len(client.requests), 1)
+        self.assertEqual(client.reads, 1)
+
+    def test_total_response_deadline_expires_without_retry(self):
+        client = self.Socket()
+        with mock.patch('integrations.interfaces.interface_input.socket.socket',
+                        return_value=client), mock.patch(
+                        'integrations.interfaces.interface_input.time.monotonic',
+                        side_effect=[100.0, 111.0]):
+            with self.assertRaisesRegex(TimeoutError, 'deadline exceeded'):
+                send_command('/fake', 'stop')
+        self.assertEqual(client.connections, ['/fake'])
+        self.assertEqual(len(client.requests), 1)
+        self.assertEqual(client.reads, 0)
 
 
 if __name__ == '__main__':
