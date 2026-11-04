@@ -34,6 +34,12 @@ class ExitrdOfflineTests(unittest.TestCase):
             path.write_text(content)
             return self.call('--probe-mountinfo', str(path))
 
+    def test_build_output_is_not_group_or_world_writable(self):
+        import stat
+        mode = self.executable.stat().st_mode
+        self.assertTrue(mode & stat.S_IXUSR)
+        self.assertEqual(mode & (stat.S_IWGRP | stat.S_IWOTH), 0)
+
     def test_binary_offline_check_never_renders(self):
         result = self.call('--check')
         self.assertEqual(result.returncode, 0, result.stderr)
