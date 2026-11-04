@@ -43,7 +43,8 @@ class SelectedTargetExecutor:
             try:
                 status = self.reader(self.socket_path, 'status')
                 target = self.reader(self.socket_path, 'get-target')
-                command = (plan_stop(status, target) if action == 'stop'\n                           else plan_playpause(status, target))
+                command = (plan_stop(status, target) if action == 'stop'
+                           else plan_playpause(status, target))
                 if command not in SAFE_COMMANDS:
                     self.report('selected-target execute: blocked')
                     return
