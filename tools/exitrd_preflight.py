@@ -171,8 +171,15 @@ def inspect_host(mountinfo: str) -> list[str]:
         issues.append(f"/run mount unverified: {exc}")
     if not Path("/run/systemd/system").is_dir():
         issues.append("systemd runtime marker missing")
-    if Path("/run/initramfs/shutdown").exists() or Path("/run/initramfs/shutdown").is_symlink():
-        issues.append("another exitrd is already staged; do not overwrite")
+    exitrd = Path("/run/initramfs/shutdown")
+    try:
+        # PermissionError is a blocker, never evidence of an absent exitrd.
+        existing = exitrd.exists() or exitrd.is_symlink()
+    except OSError as exc:
+        issues.append(f"cannot inspect existing exitrd: {exc}")
+    else:
+        if existing:
+            issues.append("another exitrd is already staged; do not overwrite")
     for dev in ("/dev/spidev0.0", "/dev/gpiochip0"):
         try:
             if not stat.S_ISCHR(Path(dev).stat().st_mode):
