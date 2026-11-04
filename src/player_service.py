@@ -260,7 +260,10 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     if power is not None and power.idle_policy is not None:
                         power.activity()
                         if not wake_if_required():
-                            return response(controller, ok=False, error='drive wake unverified')
+                            reply = response(controller, ok=False, error='drive wake unverified')
+                            reply['state']['drive_power'] = power.snapshot(
+                                reader_active=controller.server.reader_active())
+                            return reply
                     publisher.publish(controller, power)
                     return response(controller, ok=True)
                 if (drive_toc is not None and isinstance(request, dict)
@@ -278,7 +281,10 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                         and power is not None and power.idle_policy is not None):
                     power.activity()
                     if not wake_if_required():
-                        return response(controller, ok=False, error='drive wake unverified')
+                        reply = response(controller, ok=False, error='drive wake unverified')
+                        reply['state']['drive_power'] = power.snapshot(
+                            reader_active=controller.server.reader_active())
+                        return reply
                 reply = handle_command(controller, request, selection)
                 publisher.publish(controller, power)
                 return reply
