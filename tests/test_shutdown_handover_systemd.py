@@ -21,6 +21,7 @@ class ShutdownHandoverSystemdTests(unittest.TestCase):
         unit = (ROOT / 'systemd/sonoscdplayer-shutdown-screen.service').read_text()
         self.assertIn('Before=sonoscdplayer-oled.service', unit)
         self.assertIn('RemainAfterExit=yes', unit)
+        self.assertIn('ConditionFileIsExecutable=', unit)
         self.assertIn('ExecStop=-/usr/local/libexec/sonoscdplayer-shutdown-display wait', unit)
         self.assertNotIn('safetounplug', unit.lower())
         self.assertNotIn('WantedBy=multi-user.target', unit)
