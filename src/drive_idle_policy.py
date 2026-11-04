@@ -14,6 +14,7 @@ class IdleDrivePolicy:
     spun_down: bool = False
     stop_attempted: bool = False
     wake_in_progress: bool = False
+    wake_fault_latched: bool = False
 
     def __post_init__(self):
         if type(self.idle_seconds) not in (int, float) or not 30 <= self.idle_seconds <= 86400:
@@ -26,6 +27,10 @@ class IdleDrivePolicy:
         PLAY must not be forwarded until wake and disc readiness are proven.
         """
         self.last_activity = now
+        # A failed or uncertain START must never be retried via another
+        # button press or encoder turn in the same service lifetime.
+        if self.wake_fault_latched:
+            return None
         self.stop_attempted = False
         if self.spun_down and not self.wake_in_progress:
             self.wake_in_progress = True
@@ -39,7 +44,7 @@ class IdleDrivePolicy:
         attempt (even with an uncertain result), cease keepalive until a
         fresh user event creates a new activity epoch.
         """
-        return (not self.spun_down and not self.stop_attempted
+        return (not self.wake_fault_latched and not self.spun_down and not self.stop_attempted
                 and not self.wake_in_progress
                 and now - self.last_activity < self.idle_seconds)
 
@@ -49,7 +54,7 @@ class IdleDrivePolicy:
         if playback_active or reader_active or group_cleanup_pending:
             self.last_activity = now
             return None
-        if (not drive_ready or self.spun_down or self.wake_in_progress
+        if (not drive_ready or self.wake_fault_latched or self.spun_down or self.wake_in_progress
                 or self.stop_attempted):
             return None
         if now - self.last_activity < self.idle_seconds:
@@ -65,6 +70,9 @@ class IdleDrivePolicy:
     def wake_result(self, now, *, drive_verified):
         """START acknowledgement alone is insufficient: verify disc/drive."""
         self.wake_in_progress = False
+        if drive_verified is not True:
+            self.wake_fault_latched = True
+            return False
         if drive_verified is True:
             self.spun_down = False
             self.last_activity = now
@@ -74,4 +82,4 @@ class IdleDrivePolicy:
 
     @property
     def play_must_wait(self):
-        return self.spun_down or self.wake_in_progress
+        return self.spun_down or self.wake_in_progress or self.wake_fault_latched
