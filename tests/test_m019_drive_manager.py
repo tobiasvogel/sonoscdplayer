@@ -98,10 +98,34 @@ class PowerManagerTests(unittest.TestCase):
         self.assertTrue(p.idle_policy.play_must_wait)
         self.assertEqual([a[1] for a in commands], ['--stop', '--start'])
         with mock.patch('drive_power.drive_lock', side_effect=unlocked):
+            self.assertFalse(p.activity())
+            self.assertFalse(p.wake(verify=lambda dev: dev == '/dev/sr0'))
+        self.assertTrue(p.idle_policy.play_must_wait)
+        self.assertTrue(p.idle_policy.wake_fault_latched)
+        self.assertEqual([a[1] for a in commands], ['--stop', '--start'])
+        self.assertTrue(p.snapshot(reader_active=False)['idle_wake_fault_latched'])
+
+    def test_transport_failure_latches_fault_and_all_subsequent_activity_is_safe(self):
+        p, now, commands = self.make_manager()
+
+        def fail_wake(args, **kwargs):
+            commands.append(args)
+            return SimpleNamespace(returncode=35 if '--start' in args else 0,
+                                   stdout='', stderr='Transport error')
+        p.runner = fail_wake
+        with mock.patch('drive_power.drive_lock', side_effect=unlocked):
+            now[0] = 300
+            p.tick()
             self.assertTrue(p.activity())
-            self.assertTrue(p.wake(verify=lambda dev: dev == '/dev/sr0'))
-        self.assertFalse(p.idle_policy.play_must_wait)
-        self.assertEqual([a[1] for a in commands], ['--stop', '--start', '--start'])
+            self.assertFalse(p.wake(verify=lambda dev: True))
+            for tick in (301, 310, 400, 700):
+                now[0] = tick
+                self.assertFalse(p.activity())
+                self.assertFalse(p.wake(verify=lambda dev: True))
+                p.tick()
+        self.assertEqual([a[1] for a in commands], ['--stop', '--start'])
+        self.assertTrue(p.idle_policy.wake_fault_latched)
+        self.assertIn('Transport error', p.last_error)
 
     def test_stop_error_does_not_keepalive_or_retry_blindly(self):
         p, now, commands = self.make_manager()
