@@ -189,7 +189,7 @@ class TransportAcknowledgementTests(unittest.TestCase):
     """No Sonos/GPIO: inspect real sender's socket timeouts and one-shot I/O."""
 
     class Socket:
-        def __init__(self, reply=b'{"ok":true}\\n', fail_recv=False):
+        def __init__(self, reply=b'{"ok":true}\n', fail_recv=False):
             self.reply = reply
             self.fail_recv = fail_recv
             self.timeouts = []
