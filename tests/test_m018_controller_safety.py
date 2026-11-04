@@ -108,8 +108,9 @@ class OwnershipChangeTests(unittest.TestCase):
     def test_changed_group_topology_blocks_stop_without_unjoin(self):
         ctrl, speaker, server = owned_controller()
         other = FakeSonos(uid='RINCON_FOREIGN')
-        speaker.on_transport_read = lambda n: setattr(
-            speaker.group, 'members', [speaker, other]) if n == 2 else None
+        # Change the topology after proof #1, before proof #2 begins.
+        speaker.on_uri_read = lambda n: setattr(
+            speaker.group, 'members', [speaker, other]) if n == 1 else None
         with self.assertRaises(RuntimeError):
             ctrl.stop()
         self.assertEqual(speaker.operations, [])
