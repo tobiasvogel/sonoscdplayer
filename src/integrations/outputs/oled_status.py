@@ -8,6 +8,7 @@ import argparse
 from contextlib import nullcontext
 import math
 import json
+import os
 from pathlib import Path
 import socket
 import time
@@ -17,6 +18,13 @@ from .oled_ambient import OLEDAmbientConfig, OLEDContrastControl
 
 DEFAULT_SOCKET = '/tmp/sonoscdplayer-control.sock'
 DEFAULT_LOGO = Path(__file__).resolve().parents[2] / 'data' / 'start_screen.png'
+
+
+def preserve_display_on_exit(flag=False, environ=None):
+    """Opt-in handover. Exact '1' is used for a systemd Environment drop-in."""
+    if environ is None:
+        environ = os.environ
+    return flag or environ.get('SONOSCDPLAYER_PRESERVE_DISPLAY_ON_EXIT') == '1'
 
 
 def request_status(path=DEFAULT_SOCKET, timeout=1.5):
@@ -324,6 +332,6 @@ def main(argv=None):
                     previous=current
                 time.sleep(args.refresh_ms/1000 if end is None else min(args.refresh_ms/1000,max(0,end-time.monotonic())))
     finally:
-        if driver: driver.close(blank=not args.preserve_display_on_exit)
+        if driver: driver.close(blank=not preserve_display_on_exit(args.preserve_display_on_exit))
 
 if __name__=='__main__': main()
