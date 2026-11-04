@@ -5,7 +5,8 @@ from threading import Event
 from integrations.interfaces.safe_button_execute import SelectedTargetExecutor
 
 from integrations.outputs.oled_status import (
-    drive_waking, drive_wait_frame, status_frame, modern_status_frame)
+    drive_waking, drive_wait_frame, drive_fault, drive_fault_frame,
+    status_frame, modern_status_frame)
 from integrations.interfaces.interface_input import DriveActivityPublisher
 
 
@@ -17,6 +18,25 @@ class WaitNoticeTests(unittest.TestCase):
         self.assertTrue(drive_waking(state))
         self.assertEqual(bytes(status_frame(state).data), expected)
         self.assertEqual(bytes(modern_status_frame(state).data), expected)
+
+    def test_failed_wake_displays_persistent_error_both_ui_modes(self):
+        state = {'player': {'mode': 'STOPPED'},
+                 'drive_power': {'idle_wake_fault_latched': True,
+                                 'idle_spun_down': True,
+                                 'idle_waking': False,
+                                 'last_error': 'idle wake: Transport error'}}
+        expected = bytes(drive_fault_frame().data)
+        self.assertTrue(drive_fault(state))
+        self.assertEqual(bytes(status_frame(state).data), expected)
+        self.assertEqual(bytes(modern_status_frame(state).data), expected)
+        state['drive_power']['idle_waking'] = True
+        self.assertEqual(bytes(status_frame(state).data), expected)
+        self.assertEqual(bytes(modern_status_frame(state).data), expected)
+
+    def test_old_hardware_errors_do_not_trigger_new_fault_overlay(self):
+        state = {'drive_power': {'idle_wake_fault_latched': False,
+                                 'last_error': 'historical motor error'}}
+        self.assertFalse(drive_fault(state))
 
     def test_notice_not_shown_for_spun_down_without_active_wake(self):
         self.assertFalse(drive_waking({'drive_power': {'idle_spun_down': True}}))
