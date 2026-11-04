@@ -6,6 +6,7 @@ import socket
 import stat
 import threading
 import time
+import queue
 from pathlib import Path
 
 try:
@@ -38,6 +39,7 @@ TRANSPORT_RESPONSE_TIMEOUTS = {
     'pause': 10.0,
     'resume': 10.0,
     'stop': 10.0,
+    'drive-activity': 30.0,
 }
 DEFAULT_COMMAND_RESPONSE_TIMEOUT = 1.0
 
@@ -130,6 +132,52 @@ class CommandDispatcher:
         return True
 
 
+class DriveActivityPublisher:
+    """Optional best-effort physical activity channel, independent of UI.
+
+    No GPIO callback performs socket I/O. Events are bounded and never retried.
+    PLAY also checks wake itself in the serialized player worker.
+    """
+    def __init__(self, socket_path, *, sender=send_command, max_pending=32):
+        self.socket_path = socket_path
+        self.sender = sender
+        self._queue = queue.Queue(maxsize=max_pending)
+        self._closed = threading.Event()
+        self._thread = None
+
+    def start(self):
+        self._thread = threading.Thread(target=self._run,
+                                        name='drive-activity', daemon=True)
+        self._thread.start()
+
+    def enqueue(self):
+        if self._closed.is_set():
+            return False
+        try:
+            self._queue.put_nowait(None)
+            return True
+        except queue.Full:
+            return False
+
+    def _run(self):
+        while not self._closed.is_set():
+            try:
+                self._queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            if self._closed.is_set():
+                break
+            try:
+                self.sender(self.socket_path, 'drive-activity', None)
+            except Exception as exc:
+                print('drive activity: unavailable (' + type(exc).__name__
+                      + '); not retrying', flush=True)
+
+    def close(self):
+        self._closed.set()
+
+
+
 def handle_event(name, event, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None, dispatcher=None, target_preview=None, target_executor=None):
     command = map_event(name, event)
     print(f'{name}: {event}' + (f' -> {command}' if command else ''), flush=True)
@@ -188,7 +236,8 @@ def run_sim(cfg, input_file):
                     print(f'{step["ms"]}ms {name}: {event}', flush=True)
 
 
-def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None, ui_events_socket=None, target_preview_enabled=False, target_execute_enabled=False):
+def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None, ui_events_socket=None, target_preview_enabled=False, target_execute_enabled=False,
+             drive_activity_enabled=False):
     try:
         import RPi.GPIO as GPIO
     except ImportError as exc:
@@ -198,6 +247,8 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
     # Optional UI transport is started once, outside the GPIO sampling loop.
     # The producer uses put_nowait only; the worker owns all socket I/O.
     publisher = None
+    activity_publisher = (DriveActivityPublisher(socket_path)
+                          if drive_activity_enabled else None)
     if ui_events_socket is not None:
         from sonos_ui.ui_event_bridge import AsyncEventPublisher
         publisher = AsyncEventPublisher(ui_events_socket)
@@ -213,11 +264,16 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
                            if target_execute_enabled else None)
         if publisher is not None:
             publisher.start()
+        if activity_publisher is not None:
+            activity_publisher.start()
         print('GPIO command mode active.' if execute else 'GPIO diagnostics active; Ctrl+C to exit. No Sonos commands.', flush=True)
         while True:
             for name, event in engine.sample(sample(), time.monotonic_ns() // 1_000_000):
                 if publisher is not None:
                     publisher.enqueue(name, event)
+                if (activity_publisher is not None and
+                        (event == 'pressed' or (name == 'encoder' and event in ('left', 'right')))):
+                    activity_publisher.enqueue()
                 handle_event(name, event, commands=commands, execute=execute, socket_path=socket_path, uid=uid, dispatcher=dispatcher, target_preview=target_preview, target_executor=target_executor)
             time.sleep(cfg.poll_interval_ms / 1000)
     except KeyboardInterrupt:
@@ -225,6 +281,8 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
     finally:
         if publisher is not None:
             publisher.close()
+        if activity_publisher is not None:
+            activity_publisher.close()
         GPIO.cleanup()
 
 
@@ -241,6 +299,8 @@ def main():
     p.add_argument('--selected-target-execute', action='store_true',
                    help='with --execute: safe state-checked one-shot PLAY/PAUSE and STOP')
     p.add_argument('--socket', default=DEFAULT_SOCKET)
+    p.add_argument('--drive-activity-events', action='store_true',
+                   help='opt-in nonblocking physical activity RPC for idle drive wake')
     p.add_argument('--ui-events-socket', default=None,
                    help='optional nonblocking read-only UI event observer')
     p.add_argument('--uid-file', type=Path, help='private 0600 file for playpause UID; never logged')
@@ -256,6 +316,8 @@ def main():
         p.error('--selected-target-execute requires --gpio --commands --execute without --selected-target-preview')
     if args.uid_file:
         p.error('--uid-file is not used by safe selected-target execution')
+    if args.drive_activity_events and not args.gpio:
+        p.error('--drive-activity-events requires --gpio')
     if args.ui_events_socket is not None and not args.gpio:
         p.error('--ui-events-socket requires --gpio')
     cfg = load_config(args.config)
@@ -266,7 +328,8 @@ def main():
         run_gpio(cfg, commands=args.commands, execute=args.execute, socket_path=args.socket,
                  uid=uid, ui_events_socket=args.ui_events_socket,
                  target_preview_enabled=args.selected_target_preview,
-                 target_execute_enabled=args.selected_target_execute)
+                 target_execute_enabled=args.selected_target_execute,
+                 drive_activity_enabled=args.drive_activity_events)
 
 
 if __name__ == '__main__':
