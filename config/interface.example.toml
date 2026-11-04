@@ -31,6 +31,8 @@ pull = "off"
 active_level = "low" # applies to encoder push switch only
 button_debounce_ms = 0
 steps_per_detent = 4  # count valid quadrature state transitions
+# Set true to reverse encoder scroll direction without swapping GPIO wiring.
+# false keeps the existing clockwise/counterclockwise mapping.
 invert_direction = false
 
 # Override each button individually when mixing types of interface.
