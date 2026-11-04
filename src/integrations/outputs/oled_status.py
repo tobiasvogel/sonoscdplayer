@@ -319,7 +319,8 @@ def main(argv=None):
                 try:
                     state=hold.success(ready_state if ready_state is not None else request_status(args.socket), time.monotonic())
                     ready_state=None
-                    frame=(menu.frame(image_to_frame) if menu is not None and menu.active else
+                    frame=(drive_wait_frame() if drive_waking(state) else
+                            menu.frame(image_to_frame) if menu is not None and menu.active else
                            modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state))
                     label={'screen':'status','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
                 except (OSError,ValueError,TimeoutError,TypeError) as exc:
@@ -330,7 +331,8 @@ def main(argv=None):
                     busy = isinstance(exc, (BlockingIOError, TimeoutError, socket.timeout))
                     state=hold.failure(time.monotonic(), 50.0 if busy else None)
                     if state is not None:
-                        frame=(menu.frame(image_to_frame) if menu is not None and menu.active else
+                        frame=(drive_wait_frame() if drive_waking(state) else
+                            menu.frame(image_to_frame) if menu is not None and menu.active else
                                modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state))
                         label={'screen':'status_cached','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
                     else:
