@@ -33,6 +33,41 @@ class IdleDrivePolicyTests(unittest.TestCase):
         self.assertIsNone(p.idle_action(903, playback_active=False, reader_active=False))
         self.assertEqual(p.idle_action(904, playback_active=False, reader_active=False), 'stop')
 
+    def test_keepalive_continues_every_interval_before_idle_deadline(self):
+        p = IdleDrivePolicy(idle_seconds=300, last_activity=0)
+        # Simulate existing 10-second cadence. Keepalive must never
+        # extend the inactivity window by resetting last_activity.
+        for seconds in range(10, 300, 10):
+            with self.subTest(seconds=seconds):
+                self.assertTrue(p.keepalive_allowed(seconds))
+                self.assertIsNone(p.idle_action(
+                    seconds, playback_active=False, reader_active=False))
+        self.assertEqual(p.last_activity, 0)
+        self.assertFalse(p.keepalive_allowed(300))
+        self.assertEqual(p.idle_action(
+            300, playback_active=False, reader_active=False), 'stop')
+        self.assertFalse(p.keepalive_allowed(301))
+        p.stop_result(acknowledged=True)
+        self.assertFalse(p.keepalive_allowed(350))
+
+    def test_new_user_activity_restarts_both_idle_and_keepalive_window(self):
+        p = IdleDrivePolicy(idle_seconds=300, last_activity=0)
+        self.assertTrue(p.keepalive_allowed(290))
+        self.assertIsNone(p.activity(295))
+        self.assertTrue(p.keepalive_allowed(590))
+        self.assertFalse(p.keepalive_allowed(595))
+        self.assertEqual(p.idle_action(
+            595, playback_active=False, reader_active=False), 'stop')
+
+    def test_uncertain_stop_disables_keepalive_without_blind_retry(self):
+        p = IdleDrivePolicy(idle_seconds=300)
+        self.assertEqual(p.idle_action(
+            300, playback_active=False, reader_active=False), 'stop')
+        p.stop_result(acknowledged=False)
+        self.assertFalse(p.keepalive_allowed(301))
+        self.assertIsNone(p.idle_action(
+            900, playback_active=False, reader_active=False))
+
     def test_button_and_encoder_reset_idle_timer(self):
         p = IdleDrivePolicy()
         self.assertIsNone(p.activity(299))
