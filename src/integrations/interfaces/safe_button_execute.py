@@ -21,13 +21,14 @@ class SelectedTargetExecutor:
     """Nonblocking one-shot transport worker; at most one in flight."""
 
     def __init__(self, socket_path, *, reader=read_snapshot, sender=None,
-                 report=print):
+                 report=print, activity_before_read=False):
         if sender is None:
             raise ValueError('a one-shot sender must be supplied')
         self.socket_path = socket_path
         self.reader = reader
         self.sender = sender
         self.report = report
+        self.activity_before_read = activity_before_read
         self._lock = threading.Lock()
         self._busy = False
 
@@ -41,6 +42,11 @@ class SelectedTargetExecutor:
 
         def perform():
             try:
+                if self.activity_before_read:
+                    # One physical PLAY/PAUSE event: finish a possible motor
+                    # wake before a short get-target read can time out.
+                    # Any uncertain activity reply blocks transport, no retry.
+                    self.sender(self.socket_path, 'drive-activity', None)
                 status = self.reader(self.socket_path, 'status')
                 target = self.reader(self.socket_path, 'get-target')
                 command = (plan_stop(status, target) if action == 'stop'
