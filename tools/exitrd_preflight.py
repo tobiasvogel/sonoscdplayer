@@ -131,8 +131,10 @@ def inspect_stage_dir(target: Path, mountinfo: str) -> Path:
         raise PreflightError("stage directory must exist and not be a symlink")
     real = target.resolve(strict=True)
     live = Path("/run/initramfs")
-    if real == live or live in real.parents or real in live.parents:
-        raise PreflightError("cannot stage into or above /run/initramfs")
+    live_resolved = live.resolve(strict=False)
+    for forbidden in (live, live_resolved):
+        if real == forbidden or forbidden in real.parents or real in forbidden.parents:
+            raise PreflightError("cannot stage into or above /run/initramfs")
     if mount_fs_type(real, mountinfo) != "tmpfs":
         raise PreflightError("stage directory must be backed by tmpfs")
     if (real / "shutdown").exists() or (real / "shutdown").is_symlink():
@@ -143,11 +145,9 @@ def inspect_stage_dir(target: Path, mountinfo: str) -> Path:
 def write_staged_binary(target: Path, data: bytes) -> Path:
     """Create a new shutdown executable; never overwrite any staged binary."""
     fd = os.open(target, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    created = False
     try:
         output = os.open("shutdown", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                          0o700, dir_fd=fd)
-        created = True
         try:
             with os.fdopen(output, "wb") as stream:
                 stream.write(data)
