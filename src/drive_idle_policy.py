@@ -32,6 +32,17 @@ class IdleDrivePolicy:
             return 'wake'
         return None
 
+    def keepalive_allowed(self, now):
+        """Continue existing keepalive *until* the idle deadline.
+
+        Motor keepalive pulses do not reset last_activity. After a STOP
+        attempt (even with an uncertain result), cease keepalive until a
+        fresh user event creates a new activity epoch.
+        """
+        return (not self.spun_down and not self.stop_attempted
+                and not self.wake_in_progress
+                and now - self.last_activity < self.idle_seconds)
+
     def idle_action(self, now, *, playback_active, reader_active,
                     group_cleanup_pending=False, drive_ready=True):
         """Advise one STOP only when every local activity guard is clear."""
