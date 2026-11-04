@@ -5,7 +5,7 @@ Description=SonosCDPlayer shutdown display handover (experimental)
 Before=sonoscdplayer-oled.service sonoscdplayer-frontend.service
 After=local-fs.target
 ConditionPathExists=/dev/spidev0.0
-ConditionPathIsExecutable=/usr/local/libexec/sonoscdplayer-shutdown-display
+ConditionFileIsExecutable=/usr/local/libexec/sonoscdplayer-shutdown-display
 
 [Service]
 Type=oneshot
