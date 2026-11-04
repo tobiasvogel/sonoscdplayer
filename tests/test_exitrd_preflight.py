@@ -126,6 +126,19 @@ class ExitrdPreflightTests(unittest.TestCase):
             with self.assertRaisesRegex(preflight.PreflightError, "architecture"):
                 preflight.run(["--binary", str(source), "--expected-arch", "x86_64"])
 
+    def test_host_check_reports_permission_denied_without_crashing(self):
+        original_exists = Path.exists
+
+        def deny_live_exitrd(path):
+            if str(path) == "/run/initramfs/shutdown":
+                raise PermissionError(13, "Permission denied", str(path))
+            return original_exists(path)
+
+        with patch.object(preflight, "mount_fs_type", return_value="tmpfs"), \
+             patch.object(Path, "exists", deny_live_exitrd):
+            issues = preflight.inspect_host("")
+        self.assertTrue(any("cannot inspect existing exitrd" in item for item in issues))
+
     def test_host_checks_are_explicit_and_read_only(self):
         with patch.object(preflight, "mount_fs_type", return_value="ext4"):
             issues = preflight.inspect_host("")
