@@ -2,6 +2,7 @@
 import unittest
 from unittest import mock
 from threading import Event
+from integrations.interfaces.safe_button_execute import SelectedTargetExecutor
 
 from integrations.outputs.oled_status import (
     drive_waking, drive_wait_frame, status_frame, modern_status_frame)
@@ -42,6 +43,48 @@ class ActivityPublisherTests(unittest.TestCase):
         worker = DriveActivityPublisher('/fake.sock', sender=lambda *args: None)
         worker.close()
         self.assertFalse(worker.enqueue())
+
+
+class OrderedPlayWakeTests(unittest.TestCase):
+    def test_play_waits_for_activity_ack_before_target_reads(self):
+        steps, done = [], Event()
+
+        def sender(path, command, uid):
+            steps.append(command)
+            return True
+
+        def reader(path, command):
+            steps.append(command)
+            if command == 'status':
+                return {'ok': True, 'state': {
+                    'schema_version': 1, 'player': {'mode': 'STOPPED'},
+                    'sonos': {'owned': False, 'group_cleanup_pending': False},
+                    'stream': {'active': False}}}
+            return {'ok': True, 'target_selection': {'selected': True}}
+
+        worker = SelectedTargetExecutor(
+            '/fake', reader=reader, sender=sender,
+            activity_before_read=True, report=lambda message: done.set())
+        self.assertTrue(worker.submit())
+        self.assertTrue(done.wait(2))
+        self.assertEqual(steps, ['drive-activity', 'status',
+                                 'get-target', 'play-selected'])
+
+    def test_uncertain_wake_blocks_all_target_reads_and_play(self):
+        steps, done = [], Event()
+
+        def sender(path, command, uid):
+            steps.append(command)
+            raise TimeoutError('unknown motor outcome')
+
+        worker = SelectedTargetExecutor(
+            '/fake', reader=lambda *args: steps.append('read'),
+            sender=sender, activity_before_read=True,
+            report=lambda message: done.set())
+        self.assertTrue(worker.submit())
+        self.assertTrue(done.wait(2))
+        self.assertEqual(steps, ['drive-activity'])
+
 
 
 if __name__ == '__main__':
