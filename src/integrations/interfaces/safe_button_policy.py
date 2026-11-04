@@ -51,3 +51,35 @@ def plan_playpause(status, target):
         if owned is True and active is True:
             return 'resume'
     return None
+
+
+def plan_stop(status, target):
+    """Authorize STOP only for an acknowledged, owned active playback.
+
+    A selected target alone never authorizes STOP. The player performs its
+    independent live URI, topology, transport, and ownership checks.
+    """
+    if not isinstance(status, dict) or status.get('ok') is not True:
+        return None
+    if not isinstance(target, dict) or target.get('ok') is not True:
+        return None
+    state = status.get('state')
+    selection = target.get('target_selection')
+    if not isinstance(state, dict) or not isinstance(selection, dict):
+        return None
+    if state.get('schema_version') != 1:
+        return None
+    player = state.get('player')
+    sonos = state.get('sonos')
+    stream = state.get('stream')
+    if not all(isinstance(part, dict) for part in (player, sonos, stream)):
+        return None
+    if sonos.get('group_cleanup_pending') is not False:
+        return None
+    if selection.get('selected') is not True:
+        return None
+    if player.get('mode') not in ('PLAYING', 'PAUSED'):
+        return None
+    if sonos.get('owned') is not True or stream.get('active') is not True:
+        return None
+    return 'stop'
