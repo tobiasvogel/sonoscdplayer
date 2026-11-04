@@ -11,7 +11,7 @@ python3 "$ROOT/tools/build_shutdown_renderer.py" \
     --wait "$ROOT/src/data/shutdown_screen.png" \
     --final "$ROOT/src/data/pleasewait_screen.png" \
     --reboot "$ROOT/src/data/reboot_screen.png" \
-    --transition "$ROOT/src/data/transition_screen.png" \
+    --transition "$ROOT/src/data/shutdown_screen.png" \
     --output "$BUILD_DIR/shutdown_frames.h"
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -static \
     -I"$BUILD_DIR" -I"$ROOT/src/shutdown" \
