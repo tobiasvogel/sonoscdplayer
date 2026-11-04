@@ -9,6 +9,10 @@ pcm_timeout_seconds = 45
 enabled = true
 strategy = "auto" # off | start | keepalive | power_condition | auto
 keepalive_interval_seconds = 10
+# Opt-in M0.19: keep the normal 10s keepalive until 5 minutes inactivity.
+# Then attempt one motor STOP; wake only after explicit user interaction.
+# Deliberately disabled by default until hardware acceptance.
+# idle_spin_down_seconds = 300
 
 # Advanced: only fields advertised as changeable are written.
 # Volatile only; NEVER --save. No writes without explicit overrides.
