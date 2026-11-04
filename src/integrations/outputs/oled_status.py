@@ -28,6 +28,19 @@ def preserve_display_on_exit(flag=False, environ=None):
     return flag or environ.get('SONOSCDPLAYER_PRESERVE_DISPLAY_ON_EXIT') == '1'
 
 
+def player_ready_timeout(default_seconds, *, preserve=False, environ=None):
+    """Use a short readiness wait only for an explicitly armed handover resume.
+
+    The ordinary boot path retains its configured timeout. Opt-in is exact '1'
+    and requires preserve-display mode, so enabling fast resume alone is inert.
+    """
+    if environ is None:
+        environ = os.environ
+    if (preserve and environ.get('SONOSCDPLAYER_HANDOVER_FAST_RESUME') == '1'):
+        return min(default_seconds, 2.0)
+    return default_seconds
+
+
 def request_status(path=DEFAULT_SOCKET, timeout=1.5):
     """Strictly read-only, bounded socket read; no replays or state mutation."""
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
@@ -292,7 +305,11 @@ def main(argv=None):
         elif not args.adopt_boot_splash and args.splash_seconds != 0:
             print(json.dumps({'screen':'splash_skipped','reason':'PNG unavailable or invalid'}),flush=True)
         if args.adopt_boot_splash:
-            ready_state=wait_for_player_ready(request_status,args.socket,max_wait_seconds=args.splash_ready_timeout)
+            ready_state=wait_for_player_ready(
+                request_status, args.socket,
+                max_wait_seconds=player_ready_timeout(
+                    args.splash_ready_timeout,
+                    preserve=preserve_display_on_exit(args.preserve_display_on_exit)))
         if ready_state is not None:
             hold.success(ready_state,time.monotonic())
         with receiver_context as ui_events:
