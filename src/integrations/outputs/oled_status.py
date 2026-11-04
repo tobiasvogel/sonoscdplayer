@@ -19,6 +19,7 @@ from .oled_ambient import OLEDAmbientConfig, OLEDContrastControl
 
 DEFAULT_SOCKET = '/tmp/sonoscdplayer-control.sock'
 DEFAULT_LOGO = Path(__file__).resolve().parents[2] / 'data' / 'start_screen.png'
+SHUTDOWN_PRESERVE_MARKER = Path('/run/sonoscdplayer-oled-shutdown-preserve')
 
 
 def preserve_display_on_exit(flag=False, environ=None):
@@ -26,6 +27,16 @@ def preserve_display_on_exit(flag=False, environ=None):
     if environ is None:
         environ = os.environ
     return flag or environ.get('SONOSCDPLAYER_PRESERVE_DISPLAY_ON_EXIT') == '1'
+
+
+def preserve_display_for_shutdown(flag=False, environ=None, marker_path=SHUTDOWN_PRESERVE_MARKER):
+    """Preserve on explicit opt-in or when the shutdown-order unit has armed it.
+
+    The root-owned marker is set only by the separate systemd shutdown sentinel,
+    which stops BEFORE the OLED service on system shutdown. Ordinary OLED
+    restarts do not stop that sentinel, so they keep the historical blanking.
+    """
+    return preserve_display_on_exit(flag, environ) or marker_path.is_file()
 
 
 def player_ready_timeout(default_seconds, *, preserve=False, environ=None):
@@ -356,7 +367,7 @@ def main(argv=None):
                 time.sleep(args.refresh_ms/1000 if end is None else min(args.refresh_ms/1000,max(0,end-time.monotonic())))
     finally:
         try:
-            if driver: driver.close(blank=not preserve_display_on_exit(args.preserve_display_on_exit))
+            if driver: driver.close(blank=not preserve_display_for_shutdown(args.preserve_display_on_exit))
         finally:
             signal.signal(signal.SIGTERM, previous_sigterm)
 
