@@ -25,10 +25,11 @@ def pack_ssd1327(path: Path) -> bytes:
                  for i in range(0, len(data), 2))
 
 
-def generate(wait: Path, final: Path, output: Path, backend: str) -> None:
+def generate(wait: Path, final: Path, reboot: Path, transition: Path, output: Path, backend: str) -> None:
     if backend != 'ssd1327':
         raise ValueError('unsupported backend: ' + backend)
-    frames = {'wait': pack_ssd1327(wait), 'final': pack_ssd1327(final)}
+    frames = {'wait': pack_ssd1327(wait), 'final': pack_ssd1327(final),
+              'reboot': pack_ssd1327(reboot), 'transition': pack_ssd1327(transition)}
     output.parent.mkdir(parents=True, exist_ok=True)
     lines = ['/* Generated at build time; do not edit. GPL-2.0-only. */',
              '#ifndef SONOSCDPLAYER_SHUTDOWN_FRAMES_H',
@@ -51,9 +52,11 @@ def main():
     parser.add_argument('--backend', choices=['ssd1327'], default='ssd1327')
     parser.add_argument('--wait', type=Path, required=True)
     parser.add_argument('--final', type=Path, required=True)
+    parser.add_argument('--reboot', type=Path, required=True)
+    parser.add_argument('--transition', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    generate(args.wait, args.final, args.output, args.backend)
+    generate(args.wait, args.final, args.reboot, args.transition, args.output, args.backend)
 
 
 if __name__ == '__main__':
