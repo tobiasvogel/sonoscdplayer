@@ -9,6 +9,7 @@ from contextlib import nullcontext
 import math
 import json
 import os
+import signal
 from pathlib import Path
 import socket
 import time
@@ -268,6 +269,11 @@ def main(argv=None):
         menu = InteractiveMenu(language=language, target_rpc=sender,
                                group_target_rpc=group_sender)
         receiver_context = EventReceiver(args.ui_events_socket)
+    def stop_on_sigterm(_signum, _frame):
+        # systemd's normal SIGTERM must run finally and release SPI/GPIO.
+        raise SystemExit(0)
+
+    previous_sigterm = signal.signal(signal.SIGTERM, stop_on_sigterm)
     try:
         if driver: driver.open(adopt_existing=args.adopt_boot_splash)
         end=time.monotonic()+args.seconds if args.seconds else None
@@ -332,6 +338,9 @@ def main(argv=None):
                     previous=current
                 time.sleep(args.refresh_ms/1000 if end is None else min(args.refresh_ms/1000,max(0,end-time.monotonic())))
     finally:
-        if driver: driver.close(blank=not preserve_display_on_exit(args.preserve_display_on_exit))
+        try:
+            if driver: driver.close(blank=not preserve_display_on_exit(args.preserve_display_on_exit))
+        finally:
+            signal.signal(signal.SIGTERM, previous_sigterm)
 
 if __name__=='__main__': main()
