@@ -167,6 +167,9 @@ def main(argv=None):
     p.add_argument('--socket',default=DEFAULT_SOCKET)
     p.add_argument('--splash',default=str(DEFAULT_LOGO))
     p.add_argument('--adopt-boot-splash',action='store_true',help='Adopt firmware-initialized OLED without reset; requires verified firmware splash')
+    p.add_argument('--preserve-display-on-exit',action='store_true',
+                   help='On renderer exit, release SPI/GPIO without DISPLAY OFF; '
+                        'requires an explicitly coordinated display handover')
     p.add_argument('--splash-seconds',type=float,default=None,help='Legacy fixed splash duration; default waits for a valid player status')
     p.add_argument('--splash-ready-timeout',type=float,default=30.0,help='Maximum wait for player status, then show SERVICE OFFLINE')
     p.add_argument('--seconds',type=float,default=30)
@@ -321,6 +324,6 @@ def main(argv=None):
                     previous=current
                 time.sleep(args.refresh_ms/1000 if end is None else min(args.refresh_ms/1000,max(0,end-time.monotonic())))
     finally:
-        if driver: driver.close()
+        if driver: driver.close(blank=not args.preserve_display_on_exit)
 
 if __name__=='__main__': main()
