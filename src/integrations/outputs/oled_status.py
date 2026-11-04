@@ -367,7 +367,15 @@ def main(argv=None):
                 time.sleep(args.refresh_ms/1000 if end is None else min(args.refresh_ms/1000,max(0,end-time.monotonic())))
     finally:
         try:
-            if driver: driver.close(blank=not preserve_display_for_shutdown(args.preserve_display_on_exit))
+            if driver:
+                preserve = preserve_display_for_shutdown(args.preserve_display_on_exit)
+                print(json.dumps({
+                    'oled_exit': 'close',
+                    'shutdown_marker_present': SHUTDOWN_PRESERVE_MARKER.is_file(),
+                    'preserve': preserve,
+                    'blank': not preserve,
+                }), flush=True)
+                driver.close(blank=not preserve)
         finally:
             signal.signal(signal.SIGTERM, previous_sigterm)
 
