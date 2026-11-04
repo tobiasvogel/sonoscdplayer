@@ -1,0 +1,16 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Install as /usr/lib/systemd/system-shutdown/sonoscdplayer-final-screen
+# systemd-shutdown passes poweroff|reboot|halt|kexec as $1.
+# This is a best-effort finalizing screen, NOT a safe-to-unplug guarantee.
+# Keep the binary and its runtime dependencies accessible until this phase.
+case "${1:-}" in
+    poweroff) phase=final ;;
+    reboot) phase=reboot ;;
+    *) exit 0 ;;
+esac
+
+renderer=/usr/local/libexec/sonoscdplayer-shutdown-display
+[ -x "$renderer" ] || exit 0
+"$renderer" "$phase" >/dev/null 2>&1 || :
+exit 0
