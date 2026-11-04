@@ -21,7 +21,7 @@ def target(selected=True):
     return {'ok': True, 'target_selection': {'selected': selected}}
 
 
-def run_one(reader, sender):
+def run_one(reader, sender, action='playpause'):
     log, done = [], threading.Event()
 
     def report(message):
@@ -30,7 +30,7 @@ def run_one(reader, sender):
 
     worker = SelectedTargetExecutor('/not-a-socket', reader=reader,
                                     sender=sender, report=report)
-    assert worker.submit()
+    assert worker.submit(action)
     assert done.wait(2), 'executor did not finish'
     return log
 
@@ -128,8 +128,8 @@ class ExecuteTests(unittest.TestCase):
         safe, legacy = [], []
 
         class Safe:
-            def submit(self):
-                safe.append('safe')
+            def submit(self, action='playpause'):
+                safe.append(action)
 
         class Legacy:
             def submit(self, cmd):
@@ -144,8 +144,44 @@ class ExecuteTests(unittest.TestCase):
                          target_executor=Safe(), dispatcher=Legacy())
             handle_event('skip', 'pressed', commands=True, execute=True,
                          target_executor=Safe(), dispatcher=Legacy())
-        self.assertEqual(safe, ['safe'])
+        self.assertEqual(safe, ['playpause', 'stop'])
         self.assertEqual(legacy, [])
+
+    def test_stop_one_shot_with_no_uid(self):
+        sends = []
+        run_one(lambda path, cmd: state('PLAYING', True, True)
+                if cmd == 'status' else target(),
+                lambda *args: sends.append(args), action='stop')
+        self.assertEqual(sends, [('/not-a-socket', 'stop', None)])
+
+    def test_stop_blocks_when_unowned_or_cleanup_pending(self):
+        for snap in (state('PLAYING', False, True),
+                     state('PLAYING', True, True, pending=True),
+                     state('STOPPED', False, False)):
+            with self.subTest(snap=snap):
+                sends = []
+                run_one(lambda path, cmd: snap if cmd == 'status' else target(),
+                        lambda *args: sends.append(args), action='stop')
+                self.assertEqual(sends, [])
+
+    def test_stop_sender_timeout_does_not_retry(self):
+        sends = []
+        def sender(*args):
+            sends.append(args)
+            raise TimeoutError('acceptance unknown')
+        log = run_one(lambda path, cmd: state('PAUSED', True, True)
+                      if cmd == 'status' else target(),
+                      sender, action='stop')
+        self.assertEqual(sends, [('/not-a-socket', 'stop', None)])
+        self.assertIn('not retrying', log[0])
+
+    def test_unknown_action_never_dispatches(self):
+        sends = []
+        worker = SelectedTargetExecutor('/fake',
+                  reader=lambda *args: (_ for _ in ()).throw(AssertionError()),
+                  sender=lambda *args: sends.append(args))
+        self.assertFalse(worker.submit('next'))
+        self.assertEqual(sends, [])
 
 
 if __name__ == '__main__':
