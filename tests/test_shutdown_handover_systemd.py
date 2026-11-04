@@ -79,8 +79,8 @@ class ShutdownHandoverSystemdTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             binary = Path(directory) / 'failing-renderer'
             log = Path(directory) / 'calls'
-            binary.write_text('#!/bin/sh\\nprintf "%s\\\\n" "$1" >> "' +
-                              str(log) + '"\\nexit 7\\n')
+            binary.write_text('#!/bin/sh\nprintf "%s\\n" "$1" >> "' +
+                              str(log) + '"\nexit 7\n')
             binary.chmod(0o755)
             hook = Path(directory) / 'hook.sh'
             hook.write_text(script.replace(
