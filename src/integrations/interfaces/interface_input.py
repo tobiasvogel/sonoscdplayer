@@ -31,6 +31,16 @@ except ImportError:
 DEFAULT_CONFIG = Path(__file__).with_name('interface.toml')
 DEFAULT_SOCKET = '/run/sonoscdplayer/control.sock'
 
+# PLAY can spend up to 120 seconds prebuffering before acknowledging.
+# Response deadlines are total wall-clock bounds; no request is retried.
+TRANSPORT_RESPONSE_TIMEOUTS = {
+    'play-selected': 130.0,
+    'pause': 10.0,
+    'resume': 10.0,
+    'stop': 10.0,
+}
+DEFAULT_COMMAND_RESPONSE_TIMEOUT = 1.0
+
 
 def read_uid(path):
     """Read a private per-device UID file, never place the UID in argv or logs."""
@@ -53,12 +63,20 @@ def send_command(socket_path, command, uid=None):
         if not uid:
             raise ValueError('playpause requires a private UID file')
         request['uid'] = uid
+    response_timeout = TRANSPORT_RESPONSE_TIMEOUTS.get(
+        command, DEFAULT_COMMAND_RESPONSE_TIMEOUT)
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+        # Fail quickly on connect/send; allow bounded time for player work.
         client.settimeout(1.0)
         client.connect(socket_path)
         client.sendall((json.dumps(request) + '\n').encode('utf-8'))
+        deadline = time.monotonic() + response_timeout
         data = bytearray()
         while b'\n' not in data and len(data) <= 16384:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError('player response deadline exceeded')
+            client.settimeout(remaining)
             chunk = client.recv(4096)
             if not chunk:
                 break
