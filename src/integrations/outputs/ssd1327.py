@@ -187,9 +187,14 @@ class SSD1327:
             self.set_contrast(contrast)
         self.show(frame)
 
-    def close(self):
+    def close(self, *, blank=True):
+        """Release SPI/GPIO; optionally preserve the last OLED frame for handover.
+
+        The default remains DISPLAY OFF. A preserving close must only be used
+        when an explicitly coordinated successor is taking over the display.
+        """
         try:
-            if self.spi is not None and self.gpio is not None:
+            if blank and self.spi is not None and self.gpio is not None:
                 self._cmd(0xae) # display off
         except Exception:
             pass
