@@ -260,8 +260,10 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
         engine = InputEngine(cfg, sample(), time.monotonic_ns() // 1_000_000)
         dispatcher = None  # CLI execution only uses the safe selected-target path.
         target_preview = SelectedTargetPreview(socket_path) if target_preview_enabled else None
-        target_executor = (SelectedTargetExecutor(socket_path, sender=send_command)
-                           if target_execute_enabled else None)
+        target_executor = (SelectedTargetExecutor(
+            socket_path, sender=send_command,
+            activity_before_read=drive_activity_enabled)
+            if target_execute_enabled else None)
         if publisher is not None:
             publisher.start()
         if activity_publisher is not None:
@@ -272,7 +274,11 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
                 if publisher is not None:
                     publisher.enqueue(name, event)
                 if (activity_publisher is not None and
-                        (event == 'pressed' or (name == 'encoder' and event in ('left', 'right')))):
+                        (event == 'pressed' or (name == 'encoder' and event in ('left', 'right')))
+                        and not (target_executor is not None
+                                 and name == 'playpause' and event == 'pressed')):
+                    # In execute mode PLAY/PAUSE sends its activity synchronously
+                    # inside the executor, before short selection reads.
                     activity_publisher.enqueue()
                 handle_event(name, event, commands=commands, execute=execute, socket_path=socket_path, uid=uid, dispatcher=dispatcher, target_preview=target_preview, target_executor=target_executor)
             time.sleep(cfg.poll_interval_ms / 1000)
