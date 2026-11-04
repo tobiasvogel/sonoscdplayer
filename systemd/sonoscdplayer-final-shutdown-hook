@@ -10,6 +10,12 @@ case "${1:-}" in
     *) exit 0 ;;
 esac
 
+# An active exitrd owns the late poweroff frame after /oldroot is released.
+# Keep the reboot screen here: exitrd does not render on reboot.
+if [ "$phase" = final ] && [ -x /run/initramfs/shutdown ]; then
+    exit 0
+fi
+
 renderer=/usr/local/libexec/sonoscdplayer-shutdown-display
 [ -x "$renderer" ] || exit 0
 "$renderer" "$phase" >/dev/null 2>&1 || :
