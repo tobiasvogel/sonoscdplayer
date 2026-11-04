@@ -6,6 +6,16 @@
 #include "shutdown_frames.h" /* generated at build time from source PNGs */
 
 static int frame_for_phase(const char *phase, const uint8_t **frame, size_t *size) {
+    if (strcmp(phase, "transition") == 0) {
+        *frame = shutdown_frame_transition;
+        *size = sizeof(shutdown_frame_transition);
+        return 0;
+    }
+    if (strcmp(phase, "reboot") == 0) {
+        *frame = shutdown_frame_reboot;
+        *size = sizeof(shutdown_frame_reboot);
+        return 0;
+    }
     if (strcmp(phase, "wait") == 0) {
         *frame = shutdown_frame_wait;
         *size = sizeof(shutdown_frame_wait);
@@ -24,7 +34,7 @@ int main(int argc, char **argv) {
     size_t size = 0;
     if ((argc != 2 && argc != 3) || frame_for_phase(argv[1], &frame, &size) != 0 ||
         (argc == 3 && strcmp(argv[2], "--dry-run") != 0)) {
-        fprintf(stderr, "usage: %s wait|final [--dry-run]\n", argv[0]);
+        fprintf(stderr, "usage: %s transition|wait|final|reboot [--dry-run]\n", argv[0]);
         return 2;
     }
     const display_backend_t *backend = &shutdown_display_backend;
