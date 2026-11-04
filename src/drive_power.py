@@ -244,6 +244,9 @@ class DrivePowerManager:
         policy = self.idle_policy
         if policy is None or not policy.play_must_wait:
             return True
+        if policy.wake_fault_latched:
+            self.last_error = self.last_error or 'idle wake: previous failure; manual intervention required'
+            return False
         if not callable(verify):
             raise ValueError('wake requires disc identity/TOC verification')
         try:
@@ -279,6 +282,7 @@ class DrivePowerManager:
                 'idle_spin_down_seconds': self.config.get('idle_spin_down_seconds'),
                 'idle_spun_down': (self.idle_policy.spun_down if self.idle_policy else False),
                 'idle_waking': (self.idle_policy.wake_in_progress if self.idle_policy else False),
+                'idle_wake_fault_latched': (self.idle_policy.wake_fault_latched if self.idle_policy else False),
                 'idle_stop_attempted': (self.idle_policy.stop_attempted if self.idle_policy else False),
                 'power_condition_probe': self.power_condition_probe,
                 'power_condition_probe_error': self.power_condition_probe_error,
