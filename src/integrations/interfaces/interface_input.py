@@ -18,6 +18,11 @@ try:
 except ImportError:
     from button_commands import map_event
 
+try:
+    from .safe_button_preview import SelectedTargetPreview
+except ImportError:
+    from safe_button_preview import SelectedTargetPreview
+
 DEFAULT_CONFIG = Path(__file__).with_name('interface.toml')
 DEFAULT_SOCKET = '/run/sonoscdplayer/control.sock'
 
@@ -102,13 +107,16 @@ class CommandDispatcher:
         return True
 
 
-def handle_event(name, event, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None, dispatcher=None):
+def handle_event(name, event, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None, dispatcher=None, target_preview=None):
     command = map_event(name, event)
     print(f'{name}: {event}' + (f' -> {command}' if command else ''), flush=True)
     if not command or not commands:
         return
     if not execute:
-        print(f'command preview: {command}', flush=True)
+        if command == 'playpause' and target_preview is not None:
+            target_preview.submit()
+        else:
+            print(f'command preview: {command}', flush=True)
         return
     if command == 'playpause' and uid is None:
         print('command skipped: playpause UID unavailable', flush=True)
@@ -147,7 +155,7 @@ def run_sim(cfg, input_file):
                     print(f'{step["ms"]}ms {name}: {event}', flush=True)
 
 
-def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None, ui_events_socket=None):
+def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None, ui_events_socket=None, target_preview_enabled=False):
     try:
         import RPi.GPIO as GPIO
     except ImportError as exc:
@@ -167,6 +175,7 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
         sample = lambda: {pin: GPIO.input(pin) for pin in pins}
         engine = InputEngine(cfg, sample(), time.monotonic_ns() // 1_000_000)
         dispatcher = CommandDispatcher(socket_path, uid) if execute else None
+        target_preview = SelectedTargetPreview(socket_path) if target_preview_enabled else None
         if publisher is not None:
             publisher.start()
         print('GPIO command mode active.' if execute else 'GPIO diagnostics active; Ctrl+C to exit. No Sonos commands.', flush=True)
@@ -174,7 +183,7 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
             for name, event in engine.sample(sample(), time.monotonic_ns() // 1_000_000):
                 if publisher is not None:
                     publisher.enqueue(name, event)
-                handle_event(name, event, commands=commands, execute=execute, socket_path=socket_path, uid=uid, dispatcher=dispatcher)
+                handle_event(name, event, commands=commands, execute=execute, socket_path=socket_path, uid=uid, dispatcher=dispatcher, target_preview=target_preview)
             time.sleep(cfg.poll_interval_ms / 1000)
     except KeyboardInterrupt:
         pass
@@ -192,6 +201,8 @@ def main():
     group.add_argument('--simulate', type=Path, metavar='JSONL')
     p.add_argument('--commands', action='store_true', help='show allowed command mappings')
     p.add_argument('--execute', action='store_true', help='explicitly send mapped commands (requires --commands)')
+    p.add_argument('--selected-target-preview', action='store_true',
+                   help='read-only status/get-target planning for PLAY/PAUSE; never sends transport')
     p.add_argument('--socket', default=DEFAULT_SOCKET)
     p.add_argument('--ui-events-socket', default=None,
                    help='optional nonblocking read-only UI event observer')
@@ -199,6 +210,8 @@ def main():
     args = p.parse_args()
     if args.execute and (not args.commands or not args.gpio):
         p.error('--execute requires --commands --gpio')
+    if args.selected_target_preview and (not args.gpio or not args.commands or args.execute):
+        p.error('--selected-target-preview requires --gpio --commands without --execute')
     if args.uid_file and not args.execute:
         p.error('--uid-file is only used with --execute')
     if args.ui_events_socket is not None and not args.gpio:
@@ -209,7 +222,8 @@ def main():
     else:
         uid = read_uid(args.uid_file) if args.uid_file else None
         run_gpio(cfg, commands=args.commands, execute=args.execute, socket_path=args.socket,
-                 uid=uid, ui_events_socket=args.ui_events_socket)
+                 uid=uid, ui_events_socket=args.ui_events_socket,
+                 target_preview_enabled=args.selected_target_preview)
 
 
 if __name__ == '__main__':
