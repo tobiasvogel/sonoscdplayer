@@ -38,6 +38,18 @@ class EncoderDirectionConfigTests(unittest.TestCase):
             path.write_text(new_text, encoding='utf-8')
             return load_config(path)
 
+    def test_example_configuration_places_direction_in_encoder_input(self):
+        import tomllib
+        example_path = ROOT / 'config/interface.example.toml'
+        with example_path.open('rb') as stream:
+            example = tomllib.load(stream)
+        with CONFIG_PATH.open('rb') as stream:
+            installed_template = tomllib.load(stream)
+        self.assertIn('invert_direction', example['encoder_input'])
+        self.assertIs(example['encoder_input']['invert_direction'], False)
+        self.assertEqual(example['encoder_input'], installed_template['encoder_input'])
+        self.assertFalse(load_config(example_path).encoder.invert_direction)
+
     def test_default_direction_is_backward_compatible(self):
         cfg = load_config(CONFIG_PATH)
         self.assertFalse(cfg.encoder.invert_direction)
