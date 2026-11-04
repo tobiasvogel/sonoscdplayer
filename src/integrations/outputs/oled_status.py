@@ -66,8 +66,29 @@ def short_text(value, max_chars=20):
     return str(value or '')[:max_chars]
 
 
+def drive_wait_frame():
+    """Read-only temporary OLED notice while a verified drive wake runs."""
+    img=Image.new('L',(128,128),0)
+    draw=ImageDraw.Draw(img)
+    font=ImageFont.load_default()
+    draw.text((5,4),'SONOS CD PLAYER',font=font,fill=255)
+    draw.line((4,19,123,19),fill=88)
+    draw.text((13,45),'PLEASE WAIT',font=font,fill=255)
+    draw.text((9,66),'Starting CD drive',font=font,fill=180)
+    draw.line((4,121,123,121),fill=66)
+    return image_to_frame(img)
+
+
+def drive_waking(state):
+    return (isinstance(state, dict)
+            and isinstance(state.get('drive_power'), dict)
+            and state['drive_power'].get('idle_waking') is True)
+
+
 def status_frame(state=None, error=None):
     """Simple legible OLED status; avoid claiming live Sonos reachability."""
+    if error is None and drive_waking(state):
+        return drive_wait_frame()
     img=Image.new('L',(128,128),0)
     draw=ImageDraw.Draw(img)
     f=ImageFont.load_default()
@@ -104,6 +125,8 @@ def modern_status_frame(state=None, error=None, *, cover_mode='auto', language='
     """
     if error is not None or state is None:
         return status_frame(error=error or 'No local status')
+    if drive_waking(state):
+        return drive_wait_frame()
     from sonos_ui.player_adapter import project_status
     from sonos_ui.render import Renderer
     display = project_status(state)
