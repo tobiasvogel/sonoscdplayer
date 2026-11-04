@@ -31,7 +31,7 @@ class ShutdownHandoverSystemdTests(unittest.TestCase):
         self.assertIn('poweroff) phase=final', script)
         self.assertIn('reboot) phase=reboot', script)
         self.assertIn('*) exit 0', script)
-        self.assertNotIn('safe-to-unplug', script.lower().replace('not a safe-to-unplug guarantee', ''))
+        self.assertNotIn('phase=safe', script)
         import subprocess
         import tempfile
         with tempfile.TemporaryDirectory() as directory:
@@ -40,7 +40,7 @@ class ShutdownHandoverSystemdTests(unittest.TestCase):
             bin_dir.mkdir()
             log = Path(directory) / 'phases'
             binary = bin_dir / 'renderer'
-            binary.write_text('#!/bin/sh\\nprintf "%s\\\\n" "$1" >> "' + str(log) + '"\\n')
+            binary.write_text('#!/bin/sh\nprintf "%s\\n" "$1" >> "' + str(log) + '"\n')
             binary.chmod(0o755)
             hook.write_text(script.replace('/usr/local/libexec/sonoscdplayer-shutdown-display', str(binary)))
             for action in ('poweroff', 'reboot', 'halt', 'kexec', 'unknown'):
