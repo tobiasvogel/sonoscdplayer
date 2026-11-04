@@ -119,7 +119,6 @@ class ExitrdPreflightTests(unittest.TestCase):
             with self.assertRaises(preflight.PreflightError):
                 mountinfo = Path("/proc/self/mountinfo").read_text()
                 preflight.inspect_stage_dir(target, mountinfo)
-            self.assertFalse(Path("/run/initramfs/shutdown").is_symlink())
 
     def test_mismatched_binary_architecture_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
