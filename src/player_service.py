@@ -226,10 +226,20 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
         # Only this one worker ever touches controller, Sonos, reader and drive power.
         with concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='player-control') as executor:
             def verify_original_disc(device):
+                # One motor START, bounded read-only TOC polling while spinning up.
                 # Never accept a different drive or disc after a wake.
-                return (drive_id is not None and drive_toc is not None
-                        and usb_identity(device) == drive_id
-                        and read_toc(device) == drive_toc)
+                if drive_id is None or drive_toc is None:
+                    return False
+                if usb_identity(device) != drive_id:
+                    return False
+                deadline = time.monotonic() + 20.0
+                while True:
+                    try:
+                        return read_toc(device) == drive_toc
+                    except (OSError, RuntimeError, ValueError):
+                        if time.monotonic() >= deadline:
+                            return False
+                        time.sleep(0.5)
 
             def wake_if_required():
                 if power is None or power.idle_policy is None:
