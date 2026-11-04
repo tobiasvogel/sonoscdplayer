@@ -11,7 +11,7 @@ ConditionFileIsExecutable=/usr/local/libexec/sonoscdplayer-shutdown-display
 Type=oneshot
 ExecStart=/usr/bin/true
 RemainAfterExit=yes
-ExecStop=-/usr/local/libexec/sonoscdplayer-shutdown-display wait
+ExecStop=-/usr/local/libexec/sonoscdplayer-shutdown-display transition
 TimeoutStopSec=5s
 
 [Install]
