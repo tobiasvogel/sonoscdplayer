@@ -79,6 +79,27 @@ def drive_wait_frame():
     return image_to_frame(img)
 
 
+def drive_fault(state):
+    """Show only confirmed, latched motor wake failures, not stale generic errors."""
+    return (isinstance(state, dict)
+            and isinstance(state.get('drive_power'), dict)
+            and state['drive_power'].get('idle_wake_fault_latched') is True)
+
+
+def drive_fault_frame():
+    """Persistent read-only motor fault notice; no automatic retries."""
+    img=Image.new('L',(128,128),0)
+    draw=ImageDraw.Draw(img)
+    font=ImageFont.load_default()
+    draw.text((5,4),'SONOS CD PLAYER',font=font,fill=255)
+    draw.line((4,19,123,19),fill=88)
+    draw.text((9,44),'CD DRIVE ERROR',font=font,fill=255)
+    draw.text((8,65),'Wake failed',font=font,fill=210)
+    draw.text((8,85),'Check USB power',font=font,fill=180)
+    draw.line((4,121,123,121),fill=66)
+    return image_to_frame(img)
+
+
 def drive_waking(state):
     return (isinstance(state, dict)
             and isinstance(state.get('drive_power'), dict)
@@ -87,6 +108,8 @@ def drive_waking(state):
 
 def status_frame(state=None, error=None):
     """Simple legible OLED status; avoid claiming live Sonos reachability."""
+    if error is None and drive_fault(state):
+        return drive_fault_frame()
     if error is None and drive_waking(state):
         return drive_wait_frame()
     img=Image.new('L',(128,128),0)
@@ -125,6 +148,8 @@ def modern_status_frame(state=None, error=None, *, cover_mode='auto', language='
     """
     if error is not None or state is None:
         return status_frame(error=error or 'No local status')
+    if drive_fault(state):
+        return drive_fault_frame()
     if drive_waking(state):
         return drive_wait_frame()
     from sonos_ui.player_adapter import project_status
@@ -319,7 +344,8 @@ def main(argv=None):
                 try:
                     state=hold.success(ready_state if ready_state is not None else request_status(args.socket), time.monotonic())
                     ready_state=None
-                    frame=(drive_wait_frame() if drive_waking(state) else
+                    frame=(drive_fault_frame() if drive_fault(state) else
+                            drive_wait_frame() if drive_waking(state) else
                             menu.frame(image_to_frame) if menu is not None and menu.active else
                            modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state))
                     label={'screen':'status','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
