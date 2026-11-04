@@ -68,6 +68,39 @@ class ExitHandoverTests(unittest.TestCase):
         self.assertEqual(gpio.cleaned, [(25, 24)])
         self.assertFalse(driver.opened)
 
+    def test_service_restart_adopts_preserved_frame_without_reset(self):
+        first, first_spi, first_gpio = self.new_opened_driver()
+        frame = Framebuffer()
+        frame.pixel(0, 0, 15)
+        first.show(frame)
+        self.assertIn((0x5c,), first_spi.commands)
+        first.close(blank=False)
+        self.assertNotIn((0xae,), first_spi.commands)
+        self.assertTrue(first_spi.closed)
+        self.assertEqual(first_gpio.cleaned, [(25, 24)])
+
+        # A restarted service takes over with a new SPI/GPIO file descriptor,
+        # without a hardware reset or an OLED DISPLAY OFF command.
+        second_spi, second_gpio = FakeSPI(), FakeGPIO()
+        second = SSD1327(DisplayConfig(), spi=second_spi,
+                         gpio=second_gpio, sleep=lambda _: None)
+        second.open(adopt_existing=True)
+        self.assertEqual(second_spi.commands, [(0xaf,)])
+        self.assertNotIn((24, second_gpio.LOW), second_gpio.outputs)
+        second.show(frame)
+        self.assertIn((0x5c,), second_spi.commands)
+        second.close()
+        self.assertIn((0xae,), second_spi.commands)
+        self.assertTrue(second_spi.closed)
+
+    def test_normal_close_remains_default_after_preserved_handover(self):
+        first, spi, _gpio = self.new_opened_driver()
+        first.close(blank=False)
+        second, second_spi, _second_gpio = self.new_opened_driver()
+        second.close()
+        self.assertEqual(spi.commands, [])
+        self.assertEqual(second_spi.commands, [(0xae,)])
+
     def test_recovery_still_blanks_and_reinitializes(self):
         driver, spi, gpio = self.new_opened_driver()
         driver.recover_once(Framebuffer())
