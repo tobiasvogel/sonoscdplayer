@@ -47,6 +47,60 @@ class ShutdownHandoverSystemdTests(unittest.TestCase):
                 self.assertEqual(subprocess.run(['sh', str(hook), action], check=False).returncode, 0)
             self.assertEqual(log.read_text().splitlines(), ['final', 'reboot'])
 
+    def test_systemd_unit_parser_accepts_shutdown_service(self):
+        import shutil
+        import subprocess
+        analyzer = shutil.which('systemd-analyze')
+        if analyzer is None:
+            self.skipTest('systemd-analyze is not installed')
+        unit = ROOT / 'systemd/sonoscdplayer-shutdown-screen.service'
+        result = subprocess.run([analyzer, 'verify', str(unit)],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_shutdown_hook_missing_renderer_fails_open(self):
+        import subprocess
+        import tempfile
+        script = (ROOT / 'systemd/sonoscdplayer-final-shutdown-hook').read_text()
+        with tempfile.TemporaryDirectory() as directory:
+            absent = Path(directory) / 'does-not-exist'
+            hook = Path(directory) / 'hook.sh'
+            hook.write_text(script.replace(
+                '/usr/local/libexec/sonoscdplayer-shutdown-display', str(absent)))
+            for action in ('poweroff', 'reboot', 'halt', 'kexec'):
+                result = subprocess.run(['sh', str(hook), action],
+                                        capture_output=True, text=True, timeout=3)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_shutdown_hook_renderer_error_does_not_block_shutdown(self):
+        import subprocess
+        import tempfile
+        script = (ROOT / 'systemd/sonoscdplayer-final-shutdown-hook').read_text()
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / 'failing-renderer'
+            log = Path(directory) / 'calls'
+            binary.write_text('#!/bin/sh\\nprintf "%s\\\\n" "$1" >> "' +
+                              str(log) + '"\\nexit 7\\n')
+            binary.chmod(0o755)
+            hook = Path(directory) / 'hook.sh'
+            hook.write_text(script.replace(
+                '/usr/local/libexec/sonoscdplayer-shutdown-display', str(binary)))
+            for action in ('poweroff', 'reboot'):
+                result = subprocess.run(['sh', str(hook), action],
+                                        capture_output=True, text=True, timeout=3)
+                self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(log.read_text().splitlines(), ['final', 'reboot'])
+
+    def test_shutdown_hooks_do_not_claim_safe_to_unplug(self):
+        from pathlib import Path
+        unit = (ROOT / 'systemd/sonoscdplayer-shutdown-screen.service').read_text()
+        script = (ROOT / 'systemd/sonoscdplayer-final-shutdown-hook').read_text()
+        for text in (unit, script):
+            self.assertNotIn('safetounplug_screen.png', text)
+            self.assertNotIn(' phase=safe', text)
+        self.assertIn('phase=final', script)
+        self.assertIn('phase=reboot', script)
+
     def test_dropin_does_not_override_installed_renderer_command(self):
         conf = (ROOT / 'systemd/sonoscdplayer-oled.service.d/exit-handover.conf.example').read_text()
         self.assertIn('Environment=SONOSCDPLAYER_PRESERVE_DISPLAY_ON_EXIT=1', conf)
