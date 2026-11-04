@@ -1,0 +1,16 @@
+# Optional late-shutdown OLED handover marker; not enabled by default.
+# Normal OLED restarts must retain the standard DISPLAY OFF behavior.
+[Unit]
+Description=SonosCDPlayer OLED shutdown-only preserve sentinel
+After=sonoscdplayer-oled.service
+# Shutdown reverses ordering: this service stops BEFORE the OLED frontend.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/rm -f /run/sonoscdplayer-oled-shutdown-preserve
+ExecStop=/usr/bin/touch /run/sonoscdplayer-oled-shutdown-preserve
+RemainAfterExit=yes
+TimeoutStopSec=5s
+
+[Install]
+WantedBy=sonoscdplayer.target
