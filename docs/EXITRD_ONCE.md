@@ -178,3 +178,38 @@ This confirms the **offline regression suite and binary build flags**, not the t
 **Evidence limits:** The operator did not supply detailed time stamps, a video, or a per-stage transcript of OLED transitions and ACT LED sequence in this particular report; do not claim independently instrumented three-second timing or flash-controller durability. The previously observed ACT LED shutdown blink sequence provides separate supporting operator evidence, but must not be silently attributed to this exact trial. Most importantly, the opt-in “Safe to unplug” frame is still displayed **before** the final kernel poweroff syscall. It is **not** an independently verified safe-to-disconnect indication. The operator must still wait for completion of the ACT LED shutdown sequence before removing power. `SONOSCD_EXITRD_SAFE_APPROVED=0` remains hard-locked.
 
 The tested activation was RAM-only and nonpersistent; a normal reboot removes it. No permanent feature configuration or systemd staging unit was enabled. `main` remains unchanged. Next design task: an explicit default-off operator-controlled configuration for experimental staging with opt-in risk acknowledgement, rollback and observability, without converting the experimental frame into a safety claim.
+
+## Default-off local configuration for opt-in experimental screen
+
+The repository now ships the sample `config/shutdown.ini`:
+
+```ini
+[shutdown]
+experimental_safe_screen = false
+```
+
+A standalone helper, `tools/exitrd_config.py`, reads the **operator-owned local override** `/etc/sonoscdplayer/shutdown.ini`; a missing override means **disabled**. It does not read from, or alter, the player service's configuration. It does not install a unit or stage anything on boot. The repository template is unchanged by local opt-in, keeping `git pull --ff-only` possible.
+
+For an **operator-controlled local opt-in** (this example only creates a config file; it does not arm exitrd or shut down the Pi):
+
+```sh
+sudo install -d -m 0755 /etc/sonoscdplayer
+sudo install -m 0644 config/shutdown.ini /etc/sonoscdplayer/shutdown.ini
+sudoedit /etc/sonoscdplayer/shutdown.ini
+# set experimental_safe_screen = true
+python3 tools/exitrd_config.py
+```
+
+After explicitly building `build/exitrd-unverified-safe/shutdown` with the separate risk-acknowledged build, a **separate** manually invoked, once-per-boot activation requires the exact file SHA-256 and **both** acknowledgement tokens:
+
+```sh
+SHA=$(sha256sum build/exitrd-unverified-safe/shutdown | awk '{print $1}')
+sudo python3 tools/exitrd_config.py --activate-once \
+  --expected-sha256 "$SHA" \
+  --acknowledge I_UNDERSTAND_EXITRD_CAN_PREVENT_CLEAN_SHUTDOWN \
+  --acknowledge-risk I_ACCEPT_EARLY_SAFE_SCREEN_RISK
+```
+
+Status `python3 tools/exitrd_config.py` is read-only; the helper refuses unknown/duplicate INI options, symlink configs, missing risk acknowledgements, wrong binary mode, SHA mismatch and existing exitrd staging. No action ever calls poweroff. For an armed one-boot exitrd, `sudo python3 tools/exitrd_config.py --deactivate` requests rollback via the existing digest-checked `exitrd_once.disarm()` method, **even if the INI is disabled or corrupted**. To disable future experimental use, set `experimental_safe_screen = false` or remove the local override. Disabling the config is not an automatic disarm for a currently staged one-boot exitrd; invoke `--deactivate` before shutdown if already armed.
+
+**Danger:** This config only permits a manually staged experimental binary, never enables a verified safety status. Its existing `Safe to unplug` bitmap appears **before** the actual kernel poweroff syscall, so the user must still wait for the **finished ACT LED shutdown sequence** before disconnecting power. The option is an experiment under operator responsibility, not a reliable early-unplug signal. No persistent auto-arming has been introduced, and `main` stays untouched. The new configuration helper and tests must be validated offline on the Pi before a new supervised activation.
