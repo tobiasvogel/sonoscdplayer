@@ -32,3 +32,11 @@ The second binary is stored separately at `build/exitrd-diagnostic/shutdown`. It
 The image is an **in-band observation only**: seeing it is evidence that the program reached the post-unmount rendering path, not independent proof of physical SD-card safety or of the exact state of every storage device. Record a video of the OLED during the first supervised test. With no serial console, the precise PID-1 console diagnostics will not be preserved for audit. If the diagnostic frame does not appear, do not infer why from the OLED alone.
 
 **No automatic activation:** the build and tests cannot arm `/run/initramfs/shutdown`, trigger `poweroff`, or touch the installed fallback hook. Always validate new binary hashes and the latest staging preflight before deciding on a separately approved live test. Do not set `safe-approved=1`.
+
+## 2026-11-05 supervised Raspberry Pi poweroff acceptance
+
+**Observed by operator:** With the separately built `diagnostic=1`, `safe-approved=0` binary staged under `/run/initramfs/shutdown`, the existing late C hook briefly displayed the `final` frame. The OLED then changed to `EXITRD / TEST / OK` and held this frame. The Raspberry Pi powered off normally, booted again, and the normal OLED interface returned.
+
+**Interpretation:** The experimental exitrd reached its post-`release_oldroot()` success/display path during real shutdown; SPI/GPIO remained usable late enough to render the distinct test frame. The normal start after the next boot is also confirmed. This is one supervised successful end-to-end test, **not** an independent proof of every storage flush or a blanket safe-to-unplug authorization. There was no external serial console to capture PID-1 diagnostics. `SONOSCD_EXITRD_SAFE_APPROVED=0` remains mandatory.
+
+**Next milestone:** Preserve the evidence and convert from the temporary test frame to a clearly non-safety normal final image only after controlled regression. Any future `Safe to unplug` label requires separate documented criteria and approval. Neither this result nor any source commit automatically enables persistent exitrd staging.
