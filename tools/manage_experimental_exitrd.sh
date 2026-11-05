@@ -5,17 +5,17 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 PYTHON=${PYTHON:-python3}
 ACTION=${1:---help}
-CONFIG=${2:-}
+CONFIG="$ROOT/src/config.toml"
 
 usage() {
     cat <<'EOF'
 Usage:
-  sh tools/manage_experimental_exitrd.sh --status --config /path/to/player.toml
-  sh tools/manage_experimental_exitrd.sh --enable-once --config /path/to/player.toml
+  sh tools/manage_experimental_exitrd.sh --status [--config /path/to/player.toml]
+  sh tools/manage_experimental_exitrd.sh --enable-once [--config /path/to/player.toml]
   sh tools/manage_experimental_exitrd.sh --disable
 
-Before --enable-once set [service] experimental_safe_screen = true in your
-real player TOML. This script builds the experiment, verifies its mode and
+By default the script uses src/config.toml (the player service config).
+Before --enable-once set [service] experimental_safe_screen = true there. This script builds the experiment, verifies its mode and
 SHA-256, and stages it for ONLY THIS BOOT after an interactive acknowledgement.
 It never shuts down, enables a systemd service or arranges re-arming at boot.
 WARNING: The OLED safe graphic appears BEFORE kernel poweroff. Do not unplug
@@ -39,10 +39,12 @@ case "$ACTION" in
         exit
         ;;
     --status|--enable-once)
-        [ "$#" -eq 3 ] && [ "$2" = "--config" ] && [ -n "$3" ] || {
-            usage >&2; exit 2;
-        }
-        CONFIG=$3
+        if [ "$#" -eq 3 ] && [ "$2" = "--config" ] && [ -n "$3" ]; then
+            CONFIG=$3
+        elif [ "$#" -ne 1 ]; then
+            usage >&2
+            exit 2
+        fi
         ;;
     *)
         usage >&2
