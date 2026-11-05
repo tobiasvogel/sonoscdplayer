@@ -136,6 +136,76 @@ static int release_oldroot(void) {
     return -1;
 }
 
+/* Conservative post-unmount mount inventory. This is NOT media durability proof.
+ * All unknown filesystem types count as potential persistent backing.
+ * Device holders and volatile hardware caches are not observable here. */
+static bool volatile_fs(const char *name) {
+    static const char *const types[] = {
+        "tmpfs", "ramfs", "devtmpfs", "proc", "sysfs", "devpts",
+        "cgroup", "cgroup2", "securityfs", "debugfs", "tracefs",
+        "configfs", "pstore", "efivarfs", "mqueue", "hugetlbfs",
+        "fusectl", "bpf", "autofs", "binfmt_misc", "nsfs"
+    };
+    for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); i++)
+        if (strcmp(name, types[i]) == 0) return true;
+    return false;
+}
+
+static int audit_mounts(const char *path, size_t *persistent, size_t *oldroot) {
+    FILE *stream = fopen(path, "re");
+    if (!stream) return -1;
+    char *line = NULL;
+    size_t cap = 0;
+    ssize_t len;
+    *persistent = 0;
+    *oldroot = 0;
+    int result = -1;
+    while ((len = getline(&line, &cap, stream)) >= 0) {
+        if ((size_t)len > EXITRD_MAX_LINE) { errno = E2BIG; goto done; }
+        char *save = NULL;
+        char *token = strtok_r(line, " ", &save);
+        char *mountpoint = NULL;
+        char *fstype = NULL;
+        for (unsigned col = 1; col <= 5; col++) {
+            if (!token) { errno = EINVAL; goto done; }
+            if (col == 5) mountpoint = token;
+            token = strtok_r(NULL, " ", &save);
+        }
+        while (token && strcmp(token, "-") != 0)
+            token = strtok_r(NULL, " ", &save);
+        if (!token || !(fstype = strtok_r(NULL, " ", &save)) ||
+            !strtok_r(NULL, " ", &save) ||
+            !strtok_r(NULL, " \\n", &save)) {
+            errno = EINVAL;
+            goto done;
+        }
+        char decoded[PATH_MAX];
+        if (decode_mount(decoded, sizeof(decoded), mountpoint) != 0) {
+            errno = EINVAL;
+            goto done;
+        }
+        if (is_oldroot(decoded)) (*oldroot)++;
+        if (!volatile_fs(fstype)) (*persistent)++;
+    }
+    if (ferror(stream)) { errno = EIO; goto done; }
+    result = 0;
+done:
+    {
+        int saved = errno;
+        free(line);
+        fclose(stream);
+        errno = saved;
+    }
+    return result;
+}
+
+/* A passing mount inventory alone MUST NEVER authorize safe-to-unplug. */
+static bool safe_to_unplug_allowed(size_t persistent, size_t oldroot) {
+    (void)persistent;
+    (void)oldroot;
+    return false; /* no device-holder or durable-cache-flush proof yet */
+}
+
 static bool backend_matches(size_t size) {
     return shutdown_display_backend.width == SHUTDOWN_FRAME_WIDTH &&
            shutdown_display_backend.height == SHUTDOWN_FRAME_HEIGHT &&
@@ -185,6 +255,13 @@ int main(int argc, char **argv) {
         printf("oldroot_mounts=%zu oldroot_present=%d\n", count, root_seen);
         return 0;
     }
+    if (argc == 3 && strcmp(argv[1], "--audit-mountinfo") == 0) {
+        size_t persistent = 0, oldroot = 0;
+        if (audit_mounts(argv[2], &persistent, &oldroot) != 0) return 1;
+        printf("persistent_mounts=%zu oldroot_mounts=%zu safe-eligible=%d\n",
+               persistent, oldroot, safe_to_unplug_allowed(persistent, oldroot));
+        return 0;
+    }
     if (getpid() != 1 || argc < 2) {
         fputs("exitrd: only executable as shutdown PID 1\n", stderr);
         return 2;
@@ -202,6 +279,14 @@ int main(int argc, char **argv) {
     sync();
     if (release_oldroot() == 0) {
         fputs("sonoscd-exitrd: oldroot_unmount=success\n", stderr);
+        size_t persistent = 0, oldroot = 0;
+        if (audit_mounts("/proc/self/mountinfo", &persistent, &oldroot) == 0) {
+            fprintf(stderr,
+                    "sonoscd-exitrd: residual_persistent_mounts=%zu residual_oldroot_mounts=%zu safe-eligible=0\n",
+                    persistent, oldroot);
+        } else {
+            fprintf(stderr, "sonoscd-exitrd: mount_audit=failed safe-eligible=0 errno=%d\n", errno);
+        }
         sync();
         if (poweroff) show_post_unmount();
     } else {
