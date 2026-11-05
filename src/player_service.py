@@ -132,6 +132,18 @@ def handle_command(controller, request, selection=None):
         return response(controller, ok=False, error=f'{type(exc).__name__}: {exc}')
 
 
+def disc_allows_new_play(controller, request, monitor):
+    """Only explicit new PLAY needs physical TOC revalidation.
+
+    PAUSE/RESUME and status remain side-effect free. Return False on unsafe
+    or stale media; never contact Sonos on this path.
+    """
+    return (monitor is None or not isinstance(request, dict)
+            or request.get('command') not in ('play', 'play-selected', 'playpause')
+            or controller.state.mode != Mode.STOPPED
+            or monitor.validate_before_play(controller))
+
+
 class StatusPublisher:
     """Immutable cached read-only response; NEVER authorizes a Sonos action."""
     def __init__(self, controller, power=None):
@@ -230,14 +242,11 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
             def operate(request):
                 # Check the *physical* TOC immediately before a new PLAY. The
                 # 3-second cached monitor status must not authorize stale media.
-                if (disc_monitor is not None and isinstance(request, dict)
-                        and request.get('command') in ('play', 'play-selected', 'playpause')
-                        and controller.state.mode == Mode.STOPPED):
-                    if not disc_monitor.validate_before_play(controller):
-                        reply = response(controller, ok=False,
-                                         error='disc changed, unavailable or unverified; inspect status and retry PLAY')
-                        publisher.publish(controller, power)
-                        return reply
+                if not disc_allows_new_play(controller, request, disc_monitor):
+                    reply = response(controller, ok=False,
+                                     error='disc changed, unavailable or unverified; inspect status and retry PLAY')
+                    publisher.publish(controller, power)
+                    return reply
                 if (disc_monitor is None and drive_toc is not None
                         and isinstance(request, dict)
                         and request.get('command') in ('play', 'play-selected', 'playpause', 'reset')):
