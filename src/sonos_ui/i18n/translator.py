@@ -12,8 +12,9 @@ from importlib import resources
 _LOCALE_NAME = re.compile(r'^[a-z]{2}(?:-[A-Za-z0-9]{2,8})*$')
 
 
+@lru_cache(maxsize=1)
 def available_languages():
-    """Discover locale files from the installed package, not Linux LANG."""
+    """Discover installed locale files once per process, not Linux LANG."""
     directory = resources.files('sonos_ui.i18n.locales')
     languages = sorted(
         file.name[:-5] for file in directory.iterdir()
