@@ -194,5 +194,105 @@ class DiscMonitorTests(unittest.TestCase):
         self.assertEqual(counts['media'], 0)
 
 
+    def test_same_serial_reconnect_with_different_disc(self):
+        c = FakeController()
+        c.state = PlayerState().disc_loaded((1, 2, 3))
+        c.disc_status = DiscStatus.ready('/dev/sr0', 3)
+        expected_id = object()
+        present = [False]
+        media_calls = []
+        rebindings = []
+        new_disc = SimpleNamespace(tracks=[
+            SimpleNamespace(number=i) for i in range(1, 6)])
+        m = DiscMonitor('/dev/sr0', expected_id,
+                        media=lambda p: media_calls.append(p) or CDS_DISC_OK,
+                        toc=lambda _: new_disc,
+                        path_exists=lambda _: present[0],
+                        identity_reader=lambda _: expected_id,
+                        recover=lambda _: '/dev/sr0',
+                        on_rebind=rebindings.append, lock=fake_lock)
+        self.assertTrue(m.poll(c))
+        self.assertEqual(c.disc_status.mode, DiscMode.NO_DRIVE)
+        self.assertEqual(c.state.track_numbers, ())
+        present[0] = True
+        self.assertTrue(m.poll(c))
+        self.assertEqual(c.disc_status.mode, DiscMode.LOADING)
+        self.assertEqual(rebindings, ['/dev/sr0'])
+        self.assertEqual(media_calls, [])
+        self.assertTrue(m.poll(c))
+        self.assertEqual(c.disc_status.track_count, 5)
+        self.assertEqual(c.state.track_numbers, (1, 2, 3, 4, 5))
+        self.assertEqual(media_calls, ['/dev/sr0'])
+
+    def test_reconnect_renumber_only_matching_identity_adopted(self):
+        c = FakeController()
+        expected_id = object()
+        device_paths = {'/dev/sr0': False, '/dev/sr1': True}
+        observed = []
+        m = DiscMonitor('/dev/sr0', expected_id,
+                        media=lambda _: CDS_NO_DISC,
+                        path_exists=lambda p: device_paths[p],
+                        identity_reader=lambda p: expected_id if p == '/dev/sr1' else None,
+                        recover=lambda _: '/dev/sr1',
+                        on_rebind=observed.append, lock=fake_lock)
+        self.assertTrue(m.poll(c))
+        self.assertTrue(m.poll(c))
+        self.assertEqual(m.device, '/dev/sr1')
+        self.assertEqual(observed, ['/dev/sr1'])
+        self.assertTrue(m.poll(c))
+        self.assertEqual(c.disc_status, DiscStatus(DiscMode.NO_DISC, '/dev/sr1'))
+
+    def test_wrong_identity_reconnect_does_not_touch_media(self):
+        c = FakeController()
+        expected_id = object()
+        counts = {'media': 0, 'rebind': 0}
+        m = DiscMonitor('/dev/sr0', expected_id,
+                        path_exists=lambda _: True,
+                        identity_reader=lambda _: None,
+                        recover=lambda _: '/dev/sr1',
+                        media=lambda _: counts.__setitem__('media', counts['media']+1),
+                        on_rebind=lambda _: counts.__setitem__('rebind', counts['rebind']+1),
+                        lock=fake_lock)
+        self.assertTrue(m.poll(c))
+        self.assertFalse(m.poll(c))
+        self.assertEqual(c.disc_status.mode, DiscMode.NO_DRIVE)
+        self.assertEqual(counts, {'media': 0, 'rebind': 0})
+
+    def test_reconnect_no_serial_does_not_adopt_unknown_device(self):
+        c = FakeController()
+        m, counts = make_monitor([CDS_DISC_OK])
+        m.path_exists = lambda _: False
+        self.assertTrue(m.poll(c))
+        m.path_exists = lambda _: True
+        self.assertTrue(m.poll(c))
+        self.assertEqual(c.disc_status.mode, DiscMode.NO_DRIVE)
+        self.assertEqual(counts['media'], 0)
+
+    def test_reconnect_never_runs_during_active_session(self):
+        c = FakeController()
+        m, counts = make_monitor([CDS_DISC_OK])
+        m.path_exists = lambda _: False
+        self.assertTrue(m.poll(c))
+        c.owned_url = 'http://owned'
+        self.assertFalse(m.poll(c))
+        self.assertEqual(counts['media'], 0)
+
+    def test_rebind_failure_preserves_unavailable_state(self):
+        c = FakeController()
+        expected_id = object()
+        present = [False]
+        def failed_rebind(_):
+            raise RuntimeError('cannot update power manager')
+        m = DiscMonitor('/dev/sr0', expected_id, path_exists=lambda _: present[0],
+                        identity_reader=lambda _: expected_id,
+                        recover=lambda _: '/dev/sr0',
+                        on_rebind=failed_rebind, lock=fake_lock)
+        self.assertTrue(m.poll(c))
+        present[0] = True
+        self.assertFalse(m.poll(c))
+        self.assertEqual(c.disc_status.mode, DiscMode.NO_DRIVE)
+        self.assertTrue(m._disconnected)
+
+
 if __name__ == '__main__':
     unittest.main()
