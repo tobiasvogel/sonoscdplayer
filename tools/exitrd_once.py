@@ -90,6 +90,11 @@ def arm_once(data: bytes, digest: str, preserved: dict[str, bytes]):
                     '-o', 'rw,nosuid,nodev,exec,size=8m,mode=0700',
                     'tmpfs', str(LIVE))
         mounted = True
+        # systemd's switch_root needs an existing /oldroot and API
+        # filesystem transfer targets within the new root. A chroot test
+        # previously created these manually; staging must do so itself.
+        for directory in ('oldroot', 'dev', 'proc', 'sys', 'run'):
+            (LIVE / directory).mkdir(mode=0o755)
         for name, payload in preserved.items():
             (LIVE / name).write_bytes(payload)
             os.chmod(LIVE / name, 0o600)
