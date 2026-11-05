@@ -59,5 +59,6 @@
   "legacy.stream": "Stream: {state}",
   "legacy.stream_active": "aktiv",
   "legacy.stream_idle": "inaktiv",
-  "legacy.transport_unknown": "unbekannt"
+  "legacy.transport_unknown": "unbekannt",
+  "label.unnamed_speaker": "Unbenannter Lautsprecher"
 }
