@@ -143,6 +143,7 @@ class Controller:
         self.start_monotonic = None
         self.stopped_since = None
         self.status_hook = None  # optional read-only snapshot publisher
+        self.disc_status = None  # optional M0.19 independent disc observation
         self.find_many = find_many or sonos_group.find_players
         self._joined = {}
         self._group_coord = None
@@ -166,7 +167,7 @@ class Controller:
         """
         active = self.server.alive()
         owned = bool(self.owned_url)
-        return {
+        snapshot = {
             'schema_version': 1,
             'player': {
                 'mode': self.state.mode.value,
@@ -184,6 +185,9 @@ class Controller:
                 'active': active,
             },
         }
+        if self.disc_status is not None:
+            snapshot['disc'] = self.disc_status.snapshot()
+        return snapshot
 
     def _ownership(self, player, expected):
         return ownership_for_transport(player, self.uid, self.owned_url,
