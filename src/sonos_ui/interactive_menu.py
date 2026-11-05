@@ -43,9 +43,13 @@ class InteractiveMenu:
         if self._worker is not None and self._worker.is_alive():
             return
         self._next_refresh = now + self._refresh_seconds
+        language=self.language
         def work():
             try:
-                result = self._discover(timeout=3.0)
+                if self._discover is discover_targets:
+                    result = discover_targets(timeout=3.0, language=language)
+                else:
+                    result = self._discover(timeout=3.0)
             except Exception as exc:
                 from .multi_target import Topology
                 result = Topology((), type(exc).__name__)
@@ -147,6 +151,8 @@ class InteractiveMenu:
                 self.renderer = MultiRenderer(language=self.language)
                 self.language_picker = False
                 self.state = replace(self.state, notice='')
+                # Rebuild localized fallback names after a user language switch.
+                self._next_refresh = 0.0
             else:
                 return False
             return True
