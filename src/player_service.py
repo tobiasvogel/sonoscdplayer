@@ -135,8 +135,9 @@ def handle_command(controller, request, selection=None):
 def disc_allows_new_play(controller, request, monitor):
     """Only explicit new PLAY needs physical TOC revalidation.
 
-    PAUSE/RESUME and status remain side-effect free. Return False on unsafe
-    or stale media; never contact Sonos on this path.
+    PAUSE/RESUME and status remain side-effect free. A changed but
+    successfully validated CD keeps the explicit PLAY authorized; unsafe
+    or unreadable media never contacts Sonos on this path.
     """
     return (monitor is None or not isinstance(request, dict)
             or request.get('command') not in ('play', 'play-selected', 'playpause')
@@ -244,7 +245,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 # 3-second cached monitor status must not authorize stale media.
                 if not disc_allows_new_play(controller, request, disc_monitor):
                     reply = response(controller, ok=False,
-                                     error='disc changed, unavailable or unverified; inspect status and retry PLAY')
+                                     error='disc unavailable, unreadable or unverified; inspect status before PLAY')
                     publisher.publish(controller, power)
                     return reply
                 if (disc_monitor is None and drive_toc is not None
