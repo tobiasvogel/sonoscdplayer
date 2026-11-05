@@ -219,3 +219,17 @@ sudo python3 tools/exitrd_player_config.py \
 The helper checks the expected binary's offline mode string (`safe-approved=0 diagnostic=0 unverified-safe=1 delay-seconds=3`), the real ELF/SHA/host preflight through the established once-helper, then stages only into RAM for one shutdown. To roll back before shutdown: `sudo python3 tools/exitrd_player_config.py --config /ACTUAL/PATH/player.toml --deactivate`; rollback is possible even if the TOML was removed/corrupted. Editing the player TOML back to false by itself does not undo an already staged exitrd.
 
 **Important:** This is a manual administration interface, not yet integration with the player's live settings UI or its normal config loader. The opt-in `Safe to unplug` bitmap is still drawn *before* the final kernel poweroff syscall. Wait until the ACT LED's documented shutdown sequence has fully ended before disconnecting power. The option does not create a verified safe-to-unplug state. The new helper and tests are not yet accepted on the Pi.
+
+## 2026-11-05 player TOML configuration offline acceptance
+
+The operator updated the Raspberry Pi working tree and ran the full `test_exitrd_*.py` regression suite after the `[service].experimental_safe_screen = false` integration in `config/player.example.toml`: **64 tests passed in 6.787 seconds** (`OK`).
+
+The read-only command `python3 tools/exitrd_player_config.py --config config/player.example.toml` reported:
+
+```text
+experimental_safe_screen=false
+WARNING: OLED graphic precedes kernel poweroff; wait for completed ACT LED sequence
+READ-ONLY: no mount, activation or shutdown
+```
+
+This validates offline tests and disabled-default parsing on the Raspberry Pi. It **does not** validate an enabled TOML configuration on live shutdown, nor demonstrate that the main player service automatically consumes this new option (it does not currently). The independently supervised experimental exitrd hardware test is documented above. No activation, systemd configuration or poweroff occurred during this offline check; no change to `main`.
