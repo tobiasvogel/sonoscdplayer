@@ -24,6 +24,30 @@ int main(void) {
         return 2;
     }
     printf("before=%zu oldroot_present=%d\n", before, root_before);
+    /* Hold an oldroot child as our cwd: the production unmount routine must
+     * refuse to report success while any oldroot mount is still busy.
+     * The test never calls show_post_unmount or the reboot syscall.
+     */
+    if (chdir("/oldroot/run/cache") != 0) {
+        perror("chdir busy fixture");
+        return 2;
+    }
+    if (release_oldroot() == 0) {
+        fputs("unexpected success with busy oldroot mount\n", stderr);
+        return 1;
+    }
+    if (chdir("/") != 0) {
+        perror("chdir fixture root");
+        return 2;
+    }
+    size_t blocked_count = 0;
+    bool blocked_root = false;
+    if (read_mounts(&blocked_count, &blocked_root, "/proc/self/mountinfo") != 0 ||
+        !blocked_root || blocked_count == 0) {
+        fputs("busy oldroot not retained\n", stderr);
+        return 1;
+    }
+    printf("busy_mount_rejected=1 oldroot_still_present=1\n");
     if (release_oldroot() != 0) {
         perror("release_oldroot");
         return 1;
