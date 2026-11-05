@@ -313,7 +313,7 @@ class DiscMonitorTests(unittest.TestCase):
         self.assertEqual(c.state.selected_track, 1)
         self.assertEqual(calls, ['media', 'toc'])
 
-    def test_play_boundary_different_disc_same_track_count_is_blocked(self):
+    def test_play_boundary_different_disc_same_track_count_continues_explicit_play(self):
         c = FakeController()
         old = SimpleNamespace(tracks=[SimpleNamespace(number=1)],
                               leadout_lsn=18000)
@@ -326,9 +326,10 @@ class DiscMonitorTests(unittest.TestCase):
                         toc=lambda _: new, identity_reader=lambda _: identity,
                         path_exists=lambda _: True, lock=fake_lock)
         m.loaded_toc = old
-        self.assertFalse(m.validate_before_play(c))
+        self.assertTrue(m.validate_before_play(c))
         self.assertIs(m.loaded_toc, new)
         self.assertEqual(c.state.mode, Mode.STOPPED)
+        self.assertEqual(c.state.selected_track, 1)
         self.assertTrue(m.validate_before_play(c))
 
     def test_play_boundary_missing_media_clears_track_selection(self):
@@ -366,7 +367,7 @@ class DiscMonitorTests(unittest.TestCase):
         self.assertEqual(counts, {'media': 0, 'toc': 0})
 
 
-    def test_play_command_guard_blocks_stale_disc(self):
+    def test_play_command_guard_refreshes_stale_disc_without_second_play(self):
         c = FakeController()
         c.state = PlayerState().disc_loaded((1,))
         c.disc_status = DiscStatus.ready('/dev/sr0', 1)
@@ -381,9 +382,10 @@ class DiscMonitorTests(unittest.TestCase):
         m.loaded_toc = old
         for cmd in ('status', 'pause', 'resume'):
             self.assertTrue(disc_allows_new_play(c, {'command': cmd}, m))
-        self.assertFalse(disc_allows_new_play(
+        self.assertTrue(disc_allows_new_play(
             c, {'command': 'play', 'uid': 'RINCON_123'}, m))
         self.assertIs(m.loaded_toc, new)
+        self.assertEqual(c.state.selected_track, 1)
         self.assertTrue(disc_allows_new_play(
             c, {'command': 'play-selected'}, m))
 
@@ -397,6 +399,47 @@ class DiscMonitorTests(unittest.TestCase):
         c.state = c.state.start_requested().playback_confirmed()
         self.assertTrue(disc_allows_new_play(
             c, {'command': 'playpause', 'uid': 'RINCON_123'}, Monitor()))
+
+
+    def test_play_swapped_disc_resets_old_selected_track_to_first(self):
+        c = FakeController()
+        c.state = PlayerState().disc_loaded((1, 2, 3)).select(3)
+        c.disc_status = DiscStatus.ready('/dev/sr0', 3)
+        original_id = object()
+        original = SimpleNamespace(tracks=[SimpleNamespace(number=i) for i in (1, 2, 3)],
+                                   leadout_lsn=75000)
+        replacement = SimpleNamespace(tracks=[SimpleNamespace(number=i) for i in (1, 2)],
+                                      leadout_lsn=45000)
+        m = DiscMonitor('/dev/sr0', original_id,
+                        media=lambda _: CDS_DISC_OK,
+                        toc=lambda _: replacement,
+                        path_exists=lambda _: True,
+                        identity_reader=lambda _: original_id,
+                        lock=fake_lock)
+        m.loaded_toc = original
+        self.assertTrue(disc_allows_new_play(
+            c, {'command': 'play', 'uid': 'RINCON_123'}, m))
+        self.assertEqual(c.state.mode, Mode.STOPPED)
+        self.assertEqual(c.state.track_numbers, (1, 2))
+        self.assertEqual(c.state.selected_track, 1)
+        self.assertEqual(c.disc_status.track_count, 2)
+
+    def test_play_swapped_disc_unreadable_is_rejected(self):
+        c = FakeController()
+        c.state = PlayerState().disc_loaded((1,))
+        c.disc_status = DiscStatus.ready('/dev/sr0', 1)
+        original_id = object()
+        m = DiscMonitor('/dev/sr0', original_id,
+                        media=lambda _: CDS_DISC_OK,
+                        toc=lambda _: (_ for _ in ()).throw(ValueError('unreadable')),
+                        path_exists=lambda _: True,
+                        identity_reader=lambda _: original_id,
+                        lock=fake_lock)
+        m.loaded_toc = SimpleNamespace(tracks=[SimpleNamespace(number=1)])
+        self.assertFalse(disc_allows_new_play(
+            c, {'command': 'play', 'uid': 'RINCON_123'}, m))
+        self.assertEqual(c.state, PlayerState())
+        self.assertEqual(c.disc_status.mode, DiscMode.UNREADABLE)
 
 
 if __name__ == '__main__':
