@@ -16,6 +16,15 @@ class GuidedExitrdTests(unittest.TestCase):
             input=stdin, text=True, capture_output=True,
             env={**os.environ, **(env or {})}, timeout=10)
 
+    def without_live_stage(self, directory):
+        fake_bin = Path(directory) / "fakebin"
+        fake_bin.mkdir()
+        for name in ("mountpoint", "systemctl"):
+            tool = fake_bin / name
+            tool.write_text("#!/bin/sh\nexit 1\n")
+            tool.chmod(0o755)
+        return {"PATH": str(fake_bin) + os.pathsep + os.environ.get("PATH", "")}
+
     def test_help_is_read_only(self):
         result = self.call("--help")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -43,8 +52,10 @@ class GuidedExitrdTests(unittest.TestCase):
         self.assertIn("RAM exitrd mount:", result.stdout)
 
     def test_disabled_config_blocks_noninteractive_enable_without_build(self):
-        result = self.call("--enable-once", "--config",
-                           str(ROOT / "config/player.example.toml"))
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.call("--enable-once", "--config",
+                               str(ROOT / "config/player.example.toml"),
+                               env=self.without_live_stage(directory))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("experimental_safe_screen = true", result.stderr)
 
@@ -53,7 +64,8 @@ class GuidedExitrdTests(unittest.TestCase):
             cfg = Path(directory) / "player.toml"
             cfg.write_text("[service]\nexperimental_safe_screen = true\n")
             result = self.call("--enable-once", "--config", str(cfg),
-                               stdin="YES-I-ACCEPT\n")
+                               stdin="YES-I-ACCEPT\n",
+                               env=self.without_live_stage(directory))
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("interactive terminal required", result.stderr)
             self.assertFalse((Path(directory) / "shutdown").exists())
