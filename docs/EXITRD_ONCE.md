@@ -106,3 +106,14 @@ unmount=ok audit=clean poweroff=returned-error safe-eligible=0
 ```
 
 The offline-only guard confirmed that no live exitrd was staged. No shutdown or power-cycle was performed in this acceptance. The test outcomes validate the simulator, not actual error injection under systemd PID 1; media-cache durability and actual power-off remain outside its evidence scope. `safe-approved=0` and no persistent activation remain mandatory.
+
+## Isolated production-code failure-path acceptance (pending Pi run)
+
+The isolated mount-namespace/chroot test `tools/test_exitrd_unmount_isolated.sh` now exercises **production C functions** `release_oldroot()`, `audit_mounts()`, and the shutdown evidence reducer directly, rather than relying exclusively on the `--simulate-safety` CLI. It creates three nested *tmpfs* mounts under a synthetic `/oldroot` and verifies:
+
+- Before unmount, the mount audit sees exactly three `/oldroot` mounts, and the state machine refuses to record an audit before unmount succeeds.
+- While the test process holds its cwd in a nested mount, production unmount must fail; audit remains skipped and `safe-eligible=0`.
+- After releasing the cwd, the production unmount succeeds; post-unmount audit sees zero oldroot and zero persistent mounts, but `safe-eligible=0` remains.
+- A simulated kernel poweroff syscall returning an error is explicitly classified `poweroff=returned-error`, still without safety authorization.
+
+The test does not call the PID-1 main function, render the OLED, issue a real reboot/poweroff syscall, or mount at the host's `/run/initramfs`. The fixture is created exclusively inside a private mount namespace and chroot. This test **does not prove real device cache flushes, SD-card persistence, or the physical power state**. It is intentionally separate from the earlier two supervised poweroff trials.
