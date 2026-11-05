@@ -238,14 +238,14 @@ This validates offline tests and disabled-default parsing on the Raspberry Pi. I
 
 For operators who do not want to enter build flags or digest-checked staging commands manually, `tools/manage_experimental_exitrd.sh` provides a guided management entry point. It still **does not create a persistent installation**, because placing an exitrd in the shutdown handover on every boot would require a separately designed, tested and explicitly approved service integration. It does not call poweroff.
 
-Set `[service].experimental_safe_screen = true` **in the existing deployed player TOML** (not the example template), then run the following from the checkout, replacing the example config path with the actual deployed configuration path:
+The deployed player service uses `src/config.toml` (see `systemd/sonoscdplayer-player.service`), which now includes `[service].experimental_safe_screen = false`. Change that field to `true` for deliberate opt-in. Then run these simple commands from the checkout:
 
 ```sh
-sh tools/manage_experimental_exitrd.sh --status --config /path/to/player.toml
-sh tools/manage_experimental_exitrd.sh --enable-once --config /path/to/player.toml
+sh tools/manage_experimental_exitrd.sh --status
+sh tools/manage_experimental_exitrd.sh --enable-once
 ```
 
-**Enable-once** first parses the existing player TOML, refuses absent/false/invalid settings and an already-mounted exitrd, requires an interactive terminal and a typed `YES-I-ACCEPT` acknowledgement of the pre-poweroff OLED warning, and builds the separate experimental static binary (`unverified-safe=1 delay-seconds=3 safe-approved=0`). It calculates SHA-256 and delegates the privileged stage to the existing `exitrd_player_config.py` and `exitrd_once.py` preflight. Elevated privileges are used for staging, not for the build itself. A successful run **only arms the next shutdown of the current boot**; it never initiates shutdown. Operator must invoke a supervised shutdown separately.
+`--config /path/to/player.toml` is available for custom installations; the default is the actual player service path `src/config.toml`. **Enable-once** first parses the existing player TOML, refuses absent/false/invalid settings and an already-mounted exitrd, requires an interactive terminal and a typed `YES-I-ACCEPT` acknowledgement of the pre-poweroff OLED warning, and builds the separate experimental static binary (`unverified-safe=1 delay-seconds=3 safe-approved=0`). It calculates SHA-256 and delegates the privileged stage to the existing `exitrd_player_config.py` and `exitrd_once.py` preflight. Elevated privileges are used for staging, not for the build itself. A successful run **only arms the next shutdown of the current boot**; it never initiates shutdown. Operator must invoke a supervised shutdown separately.
 
 ```sh
 sh tools/manage_experimental_exitrd.sh --disable
@@ -254,3 +254,5 @@ sh tools/manage_experimental_exitrd.sh --disable
 **Disable** only disarms the currently staged RAM exitrd via the existing digest/marker-checked rollback; it does not edit player TOML. To disable future requests also set `experimental_safe_screen = false` in the deployed player TOML. `--status` never builds, stages or changes configurations. If no exitrd is staged, `--disable` reports that nothing is active. If an unexpected exitrd occupies `/run/initramfs`, the rollback helper refuses to unmount it without its trusted marker.
 
 The script is an ease-of-use wrapper around an already hardware-tested *one-boot* mechanism; its own command paths require new offline validation before deployment. A permanent system-managed installation or automatic arming based on player TOML is **not implemented**. The experimental “Safe to unplug” graphic still appears before the kernel's actual poweroff and must **never** replace observing the completed ACT LED shutdown sequence.
+
+The actual deployment path was verified against the checked-in `systemd/sonoscdplayer-player.service`, which uses `WorkingDirectory=/home/pi/src/sonoscdplayer/src` and `--config config.toml`. Updating `src/config.toml` in a Git checkout creates a local configuration diff, which should be preserved on subsequent source pulls; alternatively pass a distinct deployed TOML with `--config`. The checked-in example and active config both default to `false`. The guide and convenience tests are pending Raspberry Pi validation.
