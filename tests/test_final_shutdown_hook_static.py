@@ -26,11 +26,9 @@ class StaticFinalShutdownHookTests(unittest.TestCase):
     def test_reboot_uses_reboot_frame_regardless_of_exitrd(self):
         self.assertIn("phase=reboot", self.invoke("reboot"))
 
-    def test_poweroff_is_final_or_delegated_to_existing_exitrd(self):
+    def test_poweroff_always_preserves_fallback_final(self):
         output = self.invoke("poweroff")
-        self.assertTrue(
-            ("phase=final exitrd_present=0" in output or
-             "phase=none exitrd_present=1" in output), output)
+        self.assertIn("phase=final", output)
 
     def test_halt_and_kexec_never_draw_poweroff(self):
         for verb in ("halt", "kexec", "unknown"):
