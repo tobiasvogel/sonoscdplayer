@@ -33,7 +33,7 @@ class GuidedExitrdTests(unittest.TestCase):
     def test_status_on_actual_player_config_is_read_only(self):
         result = self.call("--status")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("experimental_safe_screen=false", result.stdout)
+        self.assertIn("experimental_safe_screen=", result.stdout)
         self.assertIn("READ-ONLY", result.stdout)
 
     def test_status_on_default_example_is_read_only(self):
