@@ -42,7 +42,7 @@ class PersistentExitrdTests(unittest.TestCase):
     def test_autostage_rejects_wrong_toml_type(self):
         with tempfile.TemporaryDirectory() as d:
             file = Path(d) / 'player.toml'
-            file.write_text('[service]\\nexperimental_safe_screen = "true"\\n')
+            file.write_text('[service]\nexperimental_safe_screen = "true"\n')
             with self.assertRaises(stager.StageError):
                 stager.enabled(file)
 
@@ -59,7 +59,7 @@ class PersistentExitrdTests(unittest.TestCase):
         arm.assert_called_once_with(b'binary', 'a' * 64, {})
 
     def test_persistent_config_edit_preserves_other_sections(self):
-        original = '[streaming]\\nmax_buffer_mib = 16\\n[service]\\nshutdown_policy = "stop_owned"\\n[led_outputs]\\npower_pin = 12\\n'
+        original = '[streaming]\nmax_buffer_mib = 16\n[service]\nshutdown_policy = "stop_owned"\n[led_outputs]\npower_pin = 12\n'
         enabled = installer.verified_config_text(original, True)
         self.assertIn('experimental_safe_screen = true', enabled)
         self.assertIn('max_buffer_mib = 16', enabled)
@@ -69,9 +69,9 @@ class PersistentExitrdTests(unittest.TestCase):
         self.assertEqual(disabled.count('experimental_safe_screen'), 1)
 
     def test_config_bad_values_and_missing_service_refused(self):
-        for source in ('[streaming]\\nx = 1\\n',
-                       '[service]\\nexperimental_safe_screen = "yes"\\n',
-                       '[service]\\nexperimental_safe_screen = 3\\n'):
+        for source in ('[streaming]\nx = 1\n',
+                       '[service]\nexperimental_safe_screen = "yes"\n',
+                       '[service]\nexperimental_safe_screen = 3\n'):
             with self.subTest(source=source):
                 with self.assertRaises(installer.InstallError):
                     installer.verified_config_text(source, True)
