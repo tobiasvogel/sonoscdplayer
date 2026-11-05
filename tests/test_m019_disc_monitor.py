@@ -264,7 +264,7 @@ class DiscMonitorTests(unittest.TestCase):
         m.path_exists = lambda _: False
         self.assertTrue(m.poll(c))
         m.path_exists = lambda _: True
-        self.assertTrue(m.poll(c))
+        self.assertFalse(m.poll(c))
         self.assertEqual(c.disc_status.mode, DiscMode.NO_DRIVE)
         self.assertEqual(counts['media'], 0)
 
