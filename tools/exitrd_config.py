@@ -16,7 +16,8 @@ import sys
 import exitrd_once
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG = ROOT / 'config/shutdown.ini'
+CONFIG = Path('/etc/sonoscdplayer/shutdown.ini')
+TEMPLATE = ROOT / 'config/shutdown.ini'
 EXPERIMENTAL = ROOT / 'build/exitrd-unverified-safe/shutdown'
 RISK_ACK = 'I_ACCEPT_EARLY_SAFE_SCREEN_RISK'
 REQUIRED_CHECK = (
@@ -30,14 +31,19 @@ class ConfigError(Exception):
 
 
 def read_enabled(path: Path = CONFIG) -> bool:
+    if not path.exists() and not path.is_symlink():
+        # No local override is equivalent to the shipped disabled default.
+        return False
     if path.is_symlink() or not path.is_file():
-        raise ConfigError('missing or symlinked shutdown config')
+        raise ConfigError('invalid or symlinked shutdown config')
     parser = configparser.ConfigParser(interpolation=None, strict=True)
     try:
         with path.open(encoding='utf-8') as stream:
             parser.read_file(stream)
     except (OSError, configparser.Error, UnicodeError) as exc:
         raise ConfigError(f'invalid shutdown config: {exc}') from exc
+    if set(parser.defaults()):
+        raise ConfigError('DEFAULT section is not allowed')
     if set(parser.sections()) != {'shutdown'}:
         raise ConfigError('config must contain only [shutdown]')
     if set(parser['shutdown']) != {'experimental_safe_screen'}:
