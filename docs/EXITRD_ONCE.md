@@ -54,3 +54,17 @@ The next **separately supervised** poweroff should use the normal binary `build/
 **Evidence boundary:** Because both the installed static final hook and the ordinary exitrd draw identical artwork, this second test does not independently identify which process displayed the final frame. The previous opt-in distinct `EXITRD / TEST / OK` hardware test remains the evidence for reaching exitrd's post-unmount rendering path. Neither test independently proves stable-storage durability or justifies `Safe to unplug`. `safe-approved=0` remains enforced; no persistent staging mechanism has been installed and `main` has not been modified.
 
 **Next acceptance gate:** Define and verify filesystem/device durability and absence of remaining writable block-device holders, plus failure-path behavior and poweroff-state criteria, before considering a distinct safety-approved screen. Do not equate a successful user-visible shutdown or boot with independent media-flush proof.
+
+## 2026-11-05 safety-gate audit prototype (offline only)
+
+The first safety review deliberately separates **observed mount cleanup** from **storage durability**. The static exitrd now includes a conservative post-unmount inventory of `/proc/self/mountinfo`: residual mounts under `/oldroot` are counted, and mount filesystems outside a small known volatile/pseudo-filesystem allowlist are counted as potentially persistent, including unknown and even read-only types. Audit parse errors are reported as failures. The read-only offline interface is:
+
+```sh
+build/exitrd/shutdown --audit-mountinfo /proc/self/mountinfo
+```
+
+This is **not** a live eligibility check: on a normally booted Pi it will correctly find storage-mounted filesystems. The C routine logs the audit when the PID-1 exitrd has successfully released `/oldroot`. It does not alter mount operations or change the final OLED artwork.
+
+**Critical hard lock:** `SONOSCD_EXITRD_SAFE_APPROVED=1` now produces a compile-time error, and the C renderer no longer selects `shutdown_frame_safe`. The conservative gate returns `safe-eligible=0` even when all the listed mounts are volatile. Do not interpret a zero persistent-mount count as storage-level durability evidence. It is possible for writable block-device handles, in-flight I/O, controller caches, and failures in the physical medium to evade a mount-only inspection. Filesystem and block-layer ordering/flush semantics, active device holders, boot media layout, and failure behavior require separate criteria and tests before considering any future safe graphic.
+
+The prior two supervised poweroffs tested the **earlier** binaries; this new audit change has not been hardware-tested and must not be activated until its offline tests pass. `main` remains untouched. No persistent exitrd activation was added.
