@@ -228,6 +228,16 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
         # Only this one worker ever touches controller, Sonos, reader and drive power.
         with concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='player-control') as executor:
             def operate(request):
+                # Check the *physical* TOC immediately before a new PLAY. The
+                # 3-second cached monitor status must not authorize stale media.
+                if (disc_monitor is not None and isinstance(request, dict)
+                        and request.get('command') in ('play', 'play-selected', 'playpause')
+                        and controller.state.mode == Mode.STOPPED):
+                    if not disc_monitor.validate_before_play(controller):
+                        reply = response(controller, ok=False,
+                                         error='disc changed, unavailable or unverified; inspect status and retry PLAY')
+                        publisher.publish(controller, power)
+                        return reply
                 if (disc_monitor is None and drive_toc is not None
                         and isinstance(request, dict)
                         and request.get('command') in ('play', 'play-selected', 'playpause', 'reset')):
@@ -398,6 +408,8 @@ def run(argv=None):
         monitor = (DiscMonitor(disc_status.device, identity,
                                on_rebind=on_verified_rebind)
                    if disc_status.device is not None else None)
+        if monitor is not None:
+            monitor.loaded_toc = toc  # verified startup TOC, never stale
         serve(ctrl, ns.socket, power=power, drive_id=identity,
               drive_toc=toc, disc_monitor=monitor)
     except KeyboardInterrupt:
