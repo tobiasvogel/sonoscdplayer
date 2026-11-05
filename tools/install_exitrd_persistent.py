@@ -132,7 +132,7 @@ def install(expected: str):
         from exitrd_once import LIVE, MARKER, require_host, is_mountpoint
         if (not is_mountpoint(LIVE, require_host()) or
                 not MARKER.is_file() or
-                MARKER.read_text() != f'sha256={expected}\\n'):
+                MARKER.read_text() != f'sha256={expected}\n'):
             raise InstallError('boot stager did not confirm the expected RAM exitrd')
         print('INSTALLED and RAM-staged; automatically re-armed on future boots.')
         print('NO POWEROFF TRIGGERED. Wait for ACT LED after any later shutdown.')
