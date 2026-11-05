@@ -46,6 +46,36 @@ class ExitrdOfflineTests(unittest.TestCase):
         self.assertIn('safe-approved=0', result.stdout)
         self.assertIn('backend=ssd1327', result.stdout)
 
+    def test_default_frame_matches_normal_final_artwork(self):
+        """Ensure production exitrd uses the known final frame, not diagnostic/safe."""
+        import re
+        import sys
+        sys.path.insert(0, str(ROOT / 'tools'))
+        from build_shutdown_renderer import pack_ssd1327
+
+        header = (Path(self.temp.name) / 'shutdown_frames.h').read_text()
+        match = re.search(
+            r'static const uint8_t shutdown_frame_final\\[8192\\] = \\{(.*?)\\};',
+            header, flags=re.S)
+        self.assertIsNotNone(match)
+        packed = bytes(int(value, 16) for value in
+                       re.findall(r'0x([0-9a-f]{2})', match.group(1)))
+        self.assertEqual(packed, pack_ssd1327(ROOT / 'src/data/pleasewait_screen.png'))
+        self.assertNotEqual(packed, pack_ssd1327(ROOT / 'src/data/safetounplug_screen.png'))
+        self.assertNotIn('shutdown_frame_diagnostic', header)
+
+    def test_normal_exitrd_uses_final_only_after_successful_poweroff_unmount(self):
+        source = (ROOT / 'src/shutdown/exitrd.c').read_text()
+        self.assertIn('const uint8_t *frame = shutdown_frame_final;', source)
+        self.assertIn('#elif SONOSCD_EXITRD_SAFE_APPROVED', source)
+        self.assertIn('#if SONOSCD_EXITRD_DIAGNOSTIC', source)
+        self.assertIn('if (poweroff) show_post_unmount();', source)
+        self.assertIn('if (release_oldroot() == 0)', source)
+        check = self.call('--check')
+        self.assertEqual(check.returncode, 0)
+        self.assertIn('diagnostic=0', check.stdout)
+        self.assertIn('safe-approved=0', check.stdout)
+
     def test_refuses_regular_process_poweroff_reboot(self):
         for action in ('poweroff', 'reboot', 'halt', 'kexec', 'unknown'):
             with self.subTest(action=action):
