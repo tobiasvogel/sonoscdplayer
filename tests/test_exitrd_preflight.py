@@ -145,5 +145,41 @@ class ExitrdPreflightTests(unittest.TestCase):
         self.assertTrue(any("/run is not tmpfs" in issue for issue in issues))
 
 
+
+# Additional non-activating contracts for the explicit one-boot staging helper.
+import exitrd_once as staging  # noqa: E402
+
+
+class ExitrdOnceContracts(unittest.TestCase):
+    def test_default_is_check_only(self):
+        with patch.object(staging, "precheck", return_value=(b"x", "a" * 64, {})):
+            with patch.object(staging, "arm_once") as arm:
+                self.assertEqual(staging.main([]), 0)
+                arm.assert_not_called()
+
+    def test_activate_needs_explicit_acknowledgement(self):
+        with patch.object(staging, "precheck") as check:
+            self.assertEqual(staging.main(["--activate-once"]), 1)
+            check.assert_not_called()
+
+    def test_valid_activation_requires_sha256(self):
+        with patch.object(staging, "precheck", side_effect=staging.PreflightError("missing sha")):
+            self.assertEqual(staging.main(["--activate-once",
+                                          "--acknowledge", staging.ACK]), 1)
+
+    def test_precheck_rejects_existing_separate_mount(self):
+        with patch.object(staging, "require_host", return_value="mountinfo"):
+            with patch.object(staging, "is_mountpoint", return_value=True):
+                with self.assertRaisesRegex(staging.PreflightError, "already separately mounted"):
+                    staging.precheck(Path("/nonexistent"), None, activating=False)
+
+    def test_activation_dispatch_can_be_mocked(self):
+        with patch.object(staging, "precheck", return_value=(b"payload", "f" * 64, {})):
+            with patch.object(staging, "arm_once") as arm:
+                self.assertEqual(staging.main(["--activate-once",
+                                  "--expected-sha256", "f" * 64,
+                                  "--acknowledge", staging.ACK]), 0)
+                arm.assert_called_once_with(b"payload", "f" * 64, {})
+
 if __name__ == "__main__":
     unittest.main()
