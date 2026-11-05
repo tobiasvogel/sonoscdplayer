@@ -4,17 +4,17 @@
 
 The explicit activation option must not be used until a supervised recovery plan has been agreed. Activation temporarily mounts an executable RAM filesystem on `/run/initramfs`, preserving copies of the existing fsck files and requiring both an expected SHA-256 digest and an acknowledgement token. The original files remain underneath the mount; the `--deactivate` option restores visibility before shutdown. The mount is not persistent across boots.
 
-**Fallback change (source only):** The final-screen shell and static C hooks now render the `final` frame even when exitrd is staged; a working exitrd may repaint after `/oldroot` is released. The already-installed static hook on the Pi is not changed by pulling source. Rebuild, verify, and explicitly install the revised C binary before a live test. A fallback image is not proof of filesystem safety. The exitrd's `safe-approved` flag stays `0`. Neither PID-1 handover nor real post-unmount display persistence has been proven.
+**Fallback change (source only):** The final-screen shell and static C hooks now render the `final` frame even when exitrd is staged; a working exitrd may repaint after `/oldroot` is released. The already-installed static hook on the Pi is not changed by pulling source. Rebuild, verify, and explicitly install the revised C binary before a live test. A fallback image is not proof of filesystem safety. The exitrd's `safe-approved` flag stays `0`. This sentence was written before the supervised 2026-11-05 hardware test; see the acceptance record below for the current status.
 
 Only after offline checks and an isolated staging/rollback test should a supervised live shutdown be considered. Do not arm during normal operation.
 
 The default-mode and activation-gating regression cases are included in `tests/test_exitrd_preflight.py`. Run those tests and the shell/static hook tests before any installation. A successful source-level test does not replace an installed-hook hash check.
 
-## PID-1 live-handover readiness (not yet activated)
+## PID-1 live-handover staging requirements
 
 The staging helper now creates the required `oldroot`, `dev`, `proc`, `sys` and `run` directory targets in the separate RAM root. Exitrd reports its PID-1 entry and oldroot unmount result on the shutdown console (`sonoscd-exitrd: ...`). Such console messages **do not persist automatically across poweroff**; record them through an already configured external console before claiming the handover was verified. The pre-exitrd final OLED frame is a fallback, not diagnostic proof.
 
-Before the first live handover, rebuild `build/exitrd/shutdown`, run the offline tests and re-run isolated staging/rollback against the new build. Do not use an old digest for activation. Do not activate `safe-approved=1`.
+Before any further live handover, rebuild `build/exitrd/shutdown`, run the offline tests and re-run isolated staging/rollback against the new build. Do not use an old digest for activation. Do not activate `safe-approved=1`.
 
 ## Opt-in OLED visual proof for first supervised poweroff
 
@@ -40,3 +40,9 @@ The image is an **in-band observation only**: seeing it is evidence that the pro
 **Interpretation:** The experimental exitrd reached its post-`release_oldroot()` success/display path during real shutdown; SPI/GPIO remained usable late enough to render the distinct test frame. The normal start after the next boot is also confirmed. This is one supervised successful end-to-end test, **not** an independent proof of every storage flush or a blanket safe-to-unplug authorization. There was no external serial console to capture PID-1 diagnostics. `SONOSCD_EXITRD_SAFE_APPROVED=0` remains mandatory.
 
 **Next milestone:** Preserve the evidence and convert from the temporary test frame to a clearly non-safety normal final image only after controlled regression. Any future `Safe to unplug` label requires separate documented criteria and approval. Neither this result nor any source commit automatically enables persistent exitrd staging.
+
+## Follow-up: regular final frame after validated diagnostic test
+
+The ordinary exitrd already selects `shutdown_frame_final` (`src/data/pleasewait_screen.png`) when `diagnostic=0` and `safe-approved=0`; the special `EXITRD / TEST / OK` frame only exists in opt-in diagnostic builds. Two offline regression tests now assert that the normal generated framebuffer matches the final PNG, differs from the safe-to-unplug PNG, contains no diagnostic array, and that the offline build reports both switches disabled.
+
+The next **separately supervised** poweroff should use the normal binary `build/exitrd/shutdown`, freshly built, verified via `--check` and expected SHA-256, and staged once with `tools/exitrd_once.py`. The installed C final hook remains untouched. Because the hook and ordinary exitrd display the same artwork, this follow-up test **cannot visually prove which process rendered the final frame**. Its purpose is to establish normal user-facing appearance and successful subsequent restart; the earlier distinct diagnostic frame remains the recorded evidence of post-unmount rendering. Do not claim a new independent PID-1 proof from unchanged artwork. This step is not a permanent installation or authorization for `safe-approved=1`.
