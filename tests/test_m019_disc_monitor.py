@@ -294,5 +294,76 @@ class DiscMonitorTests(unittest.TestCase):
         self.assertTrue(m._disconnected)
 
 
+    def test_play_boundary_unchanged_toc_is_approved(self):
+        c = FakeController()
+        disc = SimpleNamespace(tracks=[SimpleNamespace(number=1)],
+                               leadout_lsn=18000)
+        c.state = PlayerState().disc_loaded((1,))
+        c.disc_status = DiscStatus.ready('/dev/sr0', 1)
+        identity = object()
+        calls = []
+        m = DiscMonitor('/dev/sr0', identity,
+                        media=lambda _: calls.append('media') or CDS_DISC_OK,
+                        toc=lambda _: calls.append('toc') or disc,
+                        identity_reader=lambda _: identity,
+                        path_exists=lambda _: True, lock=fake_lock)
+        m.loaded_toc = disc
+        self.assertTrue(m.validate_before_play(c))
+        self.assertEqual(c.state.selected_track, 1)
+        self.assertEqual(calls, ['media', 'toc'])
+
+    def test_play_boundary_different_disc_same_track_count_is_blocked(self):
+        c = FakeController()
+        old = SimpleNamespace(tracks=[SimpleNamespace(number=1)],
+                              leadout_lsn=18000)
+        new = SimpleNamespace(tracks=[SimpleNamespace(number=1)],
+                              leadout_lsn=19000)
+        identity = object()
+        c.state = PlayerState().disc_loaded((1,))
+        c.disc_status = DiscStatus.ready('/dev/sr0', 1)
+        m = DiscMonitor('/dev/sr0', identity, media=lambda _: CDS_DISC_OK,
+                        toc=lambda _: new, identity_reader=lambda _: identity,
+                        path_exists=lambda _: True, lock=fake_lock)
+        m.loaded_toc = old
+        self.assertFalse(m.validate_before_play(c))
+        self.assertIs(m.loaded_toc, new)
+        self.assertEqual(c.state.mode, Mode.STOPPED)
+        self.assertTrue(m.validate_before_play(c))
+
+    def test_play_boundary_missing_media_clears_track_selection(self):
+        c = FakeController()
+        disc = SimpleNamespace(tracks=[SimpleNamespace(number=1)])
+        c.state = PlayerState().disc_loaded((1,))
+        c.disc_status = DiscStatus.ready('/dev/sr0', 1)
+        identity = object()
+        m = DiscMonitor('/dev/sr0', identity, media=lambda _: CDS_NO_DISC,
+                        toc=lambda _: self.fail('TOC must not be queried'),
+                        identity_reader=lambda _: identity,
+                        path_exists=lambda _: True, lock=fake_lock)
+        m.loaded_toc = disc
+        self.assertFalse(m.validate_before_play(c))
+        self.assertEqual(c.state, PlayerState())
+        self.assertEqual(c.disc_status.mode, DiscMode.LOADING)
+
+    def test_play_boundary_missing_usb_identity_fails_closed(self):
+        c = FakeController()
+        c.state = PlayerState().disc_loaded((1,))
+        c.disc_status = DiscStatus.ready('/dev/sr0', 1)
+        original = object()
+        m = DiscMonitor('/dev/sr0', original, media=lambda _: self.fail('media forbidden'),
+                        identity_reader=lambda _: None,
+                        path_exists=lambda _: True, lock=fake_lock)
+        self.assertFalse(m.validate_before_play(c))
+        self.assertEqual(c.disc_status.mode, DiscMode.NO_DRIVE)
+        self.assertEqual(c.state, PlayerState())
+
+    def test_play_boundary_no_probe_during_owned_session(self):
+        c = FakeController()
+        c.owned_url = 'http://owned'
+        m, counts = make_monitor([CDS_DISC_OK])
+        self.assertFalse(m.validate_before_play(c))
+        self.assertEqual(counts, {'media': 0, 'toc': 0})
+
+
 if __name__ == '__main__':
     unittest.main()
