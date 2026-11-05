@@ -23,6 +23,8 @@ import time
 import tomllib
 
 from cd_toc import read_toc
+from disc_startup import inspect_initial_disc
+from player_state import PlayerState
 from drive_power import DrivePowerManager, load_config
 from drive_identity import usb_identity, recovered_device
 from player_controller import Controller, ProcessServer, routed_source_ip
@@ -339,10 +341,10 @@ def run(argv=None):
     shutdown_policy = 'stop_owned'
     try:
         refuse_existing_control_socket(ns.socket)
-        device = detect_drive(base) if ns.device == 'auto' else ns.device
-        toc = read_toc(device)
-        identity = usb_identity(device)
-        state = prepare_selection(toc, 1)
+        disc_status, toc = inspect_initial_disc(base, requested_device=ns.device)
+        device = disc_status.device or '/dev/sr0'  # placeholder, never opened without a READY TOC
+        identity = usb_identity(device) if toc is not None else None
+        state = prepare_selection(toc, 1) if toc is not None else PlayerState()
         with conf.open('rb') as handle:
             settings = tomllib.load(handle)
             shutdown_policy = settings.get('service', {}).get('shutdown_policy', 'stop_owned')
@@ -359,9 +361,14 @@ def run(argv=None):
                           ProcessServer(base, device, conf, ns.port,
                                         startup_prebuffer=startup_enabled,
                                         startup_timeout=float(startup_timeout)), route=routed_source_ip)
-        power = DrivePowerManager(device, load_config(conf))
-        power.start()
-        print('[M0.12b-r7] ready; no Sonos action until explicit PLAY', flush=True)
+        ctrl.disc_status = disc_status
+        # Never issue start/keepalive motor commands when no readable disc was
+        # selected. M0.19b will implement safe idle discovery and reloading.
+        if toc is not None:
+            power = DrivePowerManager(device, load_config(conf))
+            power.start()
+        print(f'[M0.19a] service ready; disc={disc_status.mode.value}; '
+              'no Sonos action until explicit PLAY', flush=True)
         serve(ctrl, ns.socket, power=power, drive_id=identity, drive_toc=toc)
     except KeyboardInterrupt:
         print('\n[M0.12b-r7] shutdown requested', flush=True)
