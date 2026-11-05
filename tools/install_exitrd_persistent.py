@@ -116,7 +116,7 @@ def install(expected: str):
     precheck(EXPERIMENTAL, expected, activating=True)
     verified_config_text(CONFIG.read_text(encoding='utf-8'), True)
     try:
-        INSTALL.mkdir(mode=0o755, parents=False, exist_ok=False)
+        INSTALL.mkdir(mode=0o755, parents=True, exist_ok=False)
         for file in FILES:
             shutil.copyfile(ROOT / 'tools' / file, INSTALL / file)
             os.chmod(INSTALL / file, 0o644)
