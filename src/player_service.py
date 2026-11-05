@@ -228,7 +228,8 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
         # Only this one worker ever touches controller, Sonos, reader and drive power.
         with concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='player-control') as executor:
             def operate(request):
-                if (drive_toc is not None and isinstance(request, dict)
+                if (disc_monitor is None and drive_toc is not None
+                        and isinstance(request, dict)
                         and request.get('command') in ('play', 'play-selected', 'playpause', 'reset')):
                     try:
                         restore_drive_for_explicit_action(controller, power, drive_id, drive_toc)
@@ -249,7 +250,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
             def refresh():
                 nonlocal next_drive_recovery, next_disc_check, drive_toc
                 from player_state import Mode
-                if (drive_toc is not None and power is not None
+                if (disc_monitor is None and drive_toc is not None and power is not None
                         and controller.state.mode in (Mode.STOPPED, Mode.ERROR)
                         and not controller.owned_url and not controller.server.alive()
                         and not controller._joined and not controller._group_uncertain
@@ -386,7 +387,16 @@ def run(argv=None):
             power.start()
         print(f'[M0.19a] service ready; disc={disc_status.mode.value}; '
               'no Sonos action until explicit PLAY', flush=True)
-        monitor = (DiscMonitor(disc_status.device, identity)
+        def on_verified_rebind(new_device):
+            # Same original USB serial, validated by DiscMonitor; only idle.
+            if power is not None:
+                power.rebind_device(new_device,
+                                    reader_active=ctrl.server.reader_active())
+            ctrl.server.device = new_device
+            print(f'[drive] verified USB identity rebind: {new_device}', flush=True)
+
+        monitor = (DiscMonitor(disc_status.device, identity,
+                               on_rebind=on_verified_rebind)
                    if disc_status.device is not None else None)
         serve(ctrl, ns.socket, power=power, drive_id=identity,
               drive_toc=toc, disc_monitor=monitor)
