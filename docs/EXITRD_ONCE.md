@@ -141,3 +141,22 @@ In the two previously supervised real poweroff tests, the operator observed appr
 **Temporal distinction:** The standard final OLED frame can be drawn *before* the final kernel poweroff call and before the firmware ACT LED sequence finishes. Therefore the OLED frame appearing or remaining visible must **not** be interpreted as an independently synchronized safe-to-unplug signal. Operator-facing manual guidance: after a deliberately initiated shutdown, wait until the distinctive ACT LED shutdown sequence has completed and ACT remains off, then disconnect supply if desired, subject to the behavior of the installed Pi model and attached devices. This is a documented normal-shutdown indication, not a guarantee against microSD firmware failure.
 
 The feature-branch exitrd renderer stays locked to `safe-approved=0`; its safe frame must not be enabled by this observation. No GPIO/firmware LED monitor, extra circuitry, persistent exitrd staging or automatic power action has been added. The exact board model has not been independently established in this record, so the applicability of the Raspberry Pi 1–4 LED documentation must be checked for this unit before formal acceptance.
+
+## Explicitly opt-in *unverified* Safe-to-unplug screen (experimental, not enabled)
+
+**Risk warning:** The existing `safetounplug_screen.png` artwork can appear **before the kernel's final poweroff syscall and before the Raspberry Pi's ACT LED shutdown sequence has finished**. A fixed three-second wait **does not certify storage durability, the poweroff outcome, or that it is safe to unplug at the instant the screen appears**. The screen is an experimental convenience, not an objective safety indicator. The operator must still watch for the **completed** documented ACT LED sequence and ensure no unexpected device activity before unplugging.
+
+The standard build remains unchanged and reports `unverified-safe=0 delay-seconds=0 safe-approved=0`. This is an **opt-in separate artifact**, never automatically installed or activated. To build the experimental variant deliberately:
+
+```sh
+EXITRD_UNVERIFIED_SAFE=1 \
+EXITRD_UNVERIFIED_SAFE_ACK=I_ACCEPT_EARLY_SAFE_SCREEN_RISK \
+sh tools/build_exitrd.sh
+build/exitrd-unverified-safe/shutdown --check
+```
+
+Default `build/exitrd/shutdown` is unaffected. The experimental artifact is `build/exitrd-unverified-safe/shutdown`, compiled with `SONOSCD_EXITRD_UNVERIFIED_SAFE=1`. `SONOSCD_EXITRD_SAFE_APPROVED` stays hard-locked to `0`; the build rejects diagnostic mode in combination with the experimental graphic. Omitting the explicit risk acknowledgement rejects the build before producing a binary.
+
+The experimental runtime draws the normal final frame first. **Only for a true poweroff action**, after successful `release_oldroot()`, a parseable post-unmount mount audit with `persistent=0` and `oldroot=0`, and completed `sync()`, it waits three seconds and then draws the pre-existing `Safe to unplug` artwork immediately before the final kernel poweroff syscall. On unmount failure, dirty/failed audit, interrupted delay, reboot or halt, the experimental graphic is not drawn. If the poweroff syscall unexpectedly returns, the runtime repaints the normal final screen before reporting the error. This fallback cannot prevent all possible incorrect impressions because a system may fail between drawing and entering the syscall.
+
+The conservative evidence-state simulator **continues to say `safe-eligible=0` in every case**: the experimental picture is not a safety approval. The previous two hardware acceptance tests were for the normal/diagnostic exitrd, not this artifact. The experimental artifact has not yet been boot-tested; any one-boot staging would require a separately supervised opt-in, freshly verified SHA-256 and no automatic shutdown. Do not stage this mode as a persistent default, and do not merge it to `main` without explicit project approval.
