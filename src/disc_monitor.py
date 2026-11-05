@@ -41,6 +41,7 @@ class DiscMonitor:
         self.identity_reader = identity_reader
         self.lock = lock
         self._disconnected = False
+        self.loaded_toc = None
 
     def poll(self, controller) -> bool:
         """Apply a verified idle observation; return whether status changed.
@@ -95,10 +96,16 @@ class DiscMonitor:
                 return self._apply(controller, DiscStatus(
                     DiscMode.UNREADABLE, device=self.device,
                     error=f'audio TOC: {type(exc).__name__}: {exc}'))
+            self.loaded_toc = disc
             controller.state = controller.state.disc_loaded(
                 tuple(track.number for track in disc.tracks))
             return self._set_status(controller,
                                     DiscStatus.ready(self.device, len(disc.tracks)))
+
+    def rebind_verified(self, device: str):
+        """Existing identity+TOC reconnect preflight must have succeeded first."""
+        self.device = device
+        self._disconnected = False
 
     @staticmethod
     def _set_status(controller, status):
@@ -109,6 +116,7 @@ class DiscMonitor:
 
     def _apply(self, controller, status):
         # Never leave an old track selection after removal or unknown media.
+        self.loaded_toc = None
         if controller.state.track_numbers:
             controller.state = controller.state.disc_removed()
         return self._set_status(controller, status)
