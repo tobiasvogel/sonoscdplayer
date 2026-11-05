@@ -21,6 +21,16 @@
 #error SONOSCD_EXITRD_SAFE_APPROVED must be 0 or 1
 #endif
 
+#ifndef SONOSCD_EXITRD_DIAGNOSTIC
+#define SONOSCD_EXITRD_DIAGNOSTIC 0
+#endif
+#if SONOSCD_EXITRD_DIAGNOSTIC != 0 && SONOSCD_EXITRD_DIAGNOSTIC != 1
+#error SONOSCD_EXITRD_DIAGNOSTIC must be 0 or 1
+#endif
+#if SONOSCD_EXITRD_DIAGNOSTIC && SONOSCD_EXITRD_SAFE_APPROVED
+#error Diagnostic display must never be combined with safe-approved
+#endif
+
 #define EXITRD_MAX_MOUNTS 512
 #define EXITRD_MAX_LINE (64u * 1024u)
 #define EXITRD_MAX_PASSES 16
@@ -134,7 +144,11 @@ static bool backend_matches(size_t size) {
 }
 
 static void show_post_unmount(void) {
-#if SONOSCD_EXITRD_SAFE_APPROVED
+#if SONOSCD_EXITRD_DIAGNOSTIC
+    /* Experimental verification only, NEVER a safe-to-unplug indicator. */
+    const uint8_t *frame = shutdown_frame_diagnostic;
+    const size_t length = sizeof(shutdown_frame_diagnostic);
+#elif SONOSCD_EXITRD_SAFE_APPROVED
     const uint8_t *frame = shutdown_frame_safe;
     const size_t length = sizeof(shutdown_frame_safe);
 #else
@@ -158,9 +172,9 @@ static int system_action(const char *verb, bool *poweroff) {
 
 int main(int argc, char **argv) {
     if (argc == 2 && strcmp(argv[1], "--check") == 0) {
-        printf("exitrd: offline check; backend=%s format=%s safe-approved=%d\n",
+        printf("exitrd: offline check; backend=%s format=%s safe-approved=%d diagnostic=%d\n",
                shutdown_display_backend.name, shutdown_display_backend.pixel_format,
-               SONOSCD_EXITRD_SAFE_APPROVED);
+               SONOSCD_EXITRD_SAFE_APPROVED, SONOSCD_EXITRD_DIAGNOSTIC);
         return 0;
     }
     if (argc == 3 && strcmp(argv[1], "--probe-mountinfo") == 0) {
