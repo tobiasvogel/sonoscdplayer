@@ -24,6 +24,20 @@ int main(void) {
         return 2;
     }
     printf("before=%zu oldroot_present=%d\n", before, root_before);
+    /* Audit is executed from production exitrd.c, not synthetic CLI values. */
+    size_t persistent = 0, oldroot = 0;
+    struct shutdown_evidence blocked = evidence_start();
+    if (audit_mounts("/proc/self/mountinfo", &persistent, &oldroot) != 0 ||
+        oldroot != 3 || persistent != 0) {
+        fputs("unexpected pre-unmount audit\n", stderr);
+        return 1;
+    }
+    evidence_audit(&blocked, true, persistent, oldroot);
+    if (blocked.audit != AUDIT_SKIPPED || evidence_safe(&blocked)) {
+        fputs("audit ran before successful unmount\n", stderr);
+        return 1;
+    }
+
     /* Hold an oldroot child as our cwd: the production unmount routine must
      * refuse to report success while any oldroot mount is still busy.
      * The test never calls show_post_unmount or the reboot syscall.
@@ -47,7 +61,17 @@ int main(void) {
         fputs("busy oldroot not retained\n", stderr);
         return 1;
     }
+    evidence_unmount(&blocked, false);
+    evidence_audit(&blocked, true, persistent, oldroot);
+    evidence_power_request(&blocked);
+    if (blocked.unmount != UNMOUNT_FAILED ||
+        blocked.audit != AUDIT_SKIPPED || evidence_safe(&blocked)) {
+        fputs("busy mount failure incorrectly eligible\n", stderr);
+        return 1;
+    }
     printf("busy_mount_rejected=1 oldroot_still_present=1\n");
+    fputs("busy_evidence: ", stdout);
+    evidence_print(stdout, &blocked);
     if (release_oldroot() != 0) {
         perror("release_oldroot");
         return 1;
@@ -57,6 +81,31 @@ int main(void) {
         fputs("oldroot mounts remain\n", stderr);
         return 1;
     }
+    struct shutdown_evidence succeeded = evidence_start();
+    evidence_unmount(&succeeded, true);
+    persistent = 99;
+    oldroot = 99;
+    if (audit_mounts("/proc/self/mountinfo", &persistent, &oldroot) != 0 ||
+        persistent != 0 || oldroot != 0) {
+        fputs("post-unmount audit did not clear mounts\n", stderr);
+        return 1;
+    }
+    evidence_audit(&succeeded, true, persistent, oldroot);
+    evidence_power_request(&succeeded);
+    if (succeeded.unmount != UNMOUNT_OK ||
+        succeeded.audit != AUDIT_CLEAN || evidence_safe(&succeeded)) {
+        fputs("clean audit incorrectly eligible\n", stderr);
+        return 1;
+    }
+    evidence_power_returned(&succeeded);
+    if (succeeded.power != POWER_RETURNED_ERROR || evidence_safe(&succeeded)) {
+        fputs("returned syscall incorrectly eligible\n", stderr);
+        return 1;
+    }
     printf("after=%zu oldroot_present=%d\n", after, root_after);
+    printf("audit_after persistent=%zu oldroot=%zu safe-eligible=0\n",
+           persistent, oldroot);
+    fputs("returned_power_evidence: ", stdout);
+    evidence_print(stdout, &succeeded);
     return 0;
 }
