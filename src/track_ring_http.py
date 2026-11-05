@@ -72,7 +72,10 @@ class Stream:
             raise ValueError("initial_prebuffer_ms must be 0..30000")
         # 0 preserves M0.9l behaviour. Never request more than the ring can hold.
         requested = (RATE * initial_prebuffer_ms // 1000) // 4 * 4
-        self.initial_prebuffer_bytes = min(max(CHUNK, requested), capacity, expected)
+        # Clamp to the ring itself, not the total RAM budget: the probe cache is
+        # carved out of that budget, and wait_ahead() rejects anything larger
+        # than the ring capacity.
+        self.initial_prebuffer_bytes = min(max(CHUNK, requested), ring_capacity, expected)
         self.error = None
         self.written = start_offset
         self.started = time.monotonic()
