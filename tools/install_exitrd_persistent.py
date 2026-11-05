@@ -152,6 +152,18 @@ def install(expected: str):
             write_config(False)
         except (OSError, InstallError, tomllib.TOMLDecodeError):
             pass
+        # A failed installation must not block the next attempt with leftover
+        # root-owned files. Only remove the directory created by this attempt.
+        if INSTALL.is_dir() and not INSTALL.is_symlink():
+            for file in (*FILES, 'shutdown', 'shutdown.sha256'):
+                try:
+                    safe_remove_file(INSTALL / file)
+                except (OSError, InstallError):
+                    pass
+            try:
+                INSTALL.rmdir()
+            except OSError:
+                pass
         raise
 
 
