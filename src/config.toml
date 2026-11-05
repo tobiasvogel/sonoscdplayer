@@ -17,6 +17,9 @@ keepalive_interval_seconds = 10
 
 [service]
 shutdown_policy = "stop_owned" # stop_owned | leave_playing
+# Experimental manual one-boot OLED mode. Not a verified safe-to-unplug signal.
+# The screen appears before kernel poweroff; wait for completed ACT LED flashes.
+experimental_safe_screen = false
 
 [led_outputs]
 power_pin = 12
