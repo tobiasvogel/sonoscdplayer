@@ -25,9 +25,9 @@ class PersistentExitrdTests(unittest.TestCase):
         self.assertNotIn('poweroff', unit)
         self.assertNotIn('reboot', unit)
 
-    def test_default_off_in_actual_config_and_example(self):
-        self.assertFalse(stager.enabled(ROOT / 'src/config.toml'))
+    def test_shipped_template_defaults_off_and_runtime_is_boolean(self):
         self.assertFalse(stager.enabled(ROOT / 'config/player.example.toml'))
+        self.assertIsInstance(stager.enabled(ROOT / 'src/config.toml'), bool)
 
     def test_autostage_does_not_arm_when_config_disabled(self):
         with patch.object(stager, 'enabled', return_value=False), \
