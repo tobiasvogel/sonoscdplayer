@@ -7,6 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from collections import Counter
 import time
+from .i18n import Translator
 
 @dataclass(frozen=True)
 class Speaker:
@@ -39,8 +40,9 @@ class DiscoverySnapshot:
         return self.speakers[index]
 
 
-def from_devices(devices) -> DiscoverySnapshot:
+def from_devices(devices, *, language='de') -> DiscoverySnapshot:
     """Snapshot SoCo objects immediately; no objects escape to the UI."""
+    unnamed=Translator(language).tr('label.unnamed_speaker')
     by_uid = {}
     for device in devices or ():
         try:
@@ -51,13 +53,13 @@ def from_devices(devices) -> DiscoverySnapshot:
         if not isinstance(uid, str) or not uid.strip():
             continue
         if not isinstance(name, str) or not name.strip():
-            name = 'Unbenannter Lautsprecher'
+            name = unnamed
         by_uid[uid] = Speaker(uid=uid, name=name.strip())
     ordered = sorted(by_uid.values(), key=lambda item: (item.name.casefold(), item.uid))
     return DiscoverySnapshot(tuple(ordered))
 
 
-def discover_speakers(*, timeout=3.0, discover_fn=None) -> DiscoverySnapshot:
+def discover_speakers(*, timeout=3.0, discover_fn=None, language='de') -> DiscoverySnapshot:
     """Use existing SoCo discovery only; bounded attempt, no writes to speakers."""
     if not 0 < timeout <= 10:
         raise ValueError('timeout must be >0 and <=10 seconds')
@@ -65,6 +67,6 @@ def discover_speakers(*, timeout=3.0, discover_fn=None) -> DiscoverySnapshot:
         from soco import discover
         discover_fn = discover
     try:
-        return from_devices(discover_fn(timeout=timeout))
+        return from_devices(discover_fn(timeout=timeout),language=language)
     except Exception as exc:
         return DiscoverySnapshot((), error=type(exc).__name__)
