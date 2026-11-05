@@ -206,6 +206,88 @@ static bool safe_to_unplug_allowed(size_t persistent, size_t oldroot) {
     return false; /* no device-holder or durable-cache-flush proof yet */
 }
 
+/* Explicit fail-closed shutdown evidence state. This only records software
+ * progress. It can never prove hardware power loss or flash persistence. */
+enum unmount_result { UNMOUNT_PENDING, UNMOUNT_OK, UNMOUNT_FAILED };
+enum audit_result { AUDIT_SKIPPED, AUDIT_CLEAN, AUDIT_DIRTY, AUDIT_FAILED };
+enum power_result { POWER_NOT_REQUESTED, POWER_REQUESTED, POWER_RETURNED_ERROR };
+struct shutdown_evidence {
+    enum unmount_result unmount;
+    enum audit_result audit;
+    enum power_result power;
+};
+static struct shutdown_evidence evidence_start(void) {
+    return (struct shutdown_evidence){UNMOUNT_PENDING, AUDIT_SKIPPED, POWER_NOT_REQUESTED};
+}
+static void evidence_unmount(struct shutdown_evidence *e, bool ok) {
+    if (e->unmount != UNMOUNT_PENDING) return;
+    e->unmount = ok ? UNMOUNT_OK : UNMOUNT_FAILED;
+}
+static void evidence_audit(struct shutdown_evidence *e, bool readable,
+                           size_t persistent, size_t oldroot) {
+    if (e->unmount != UNMOUNT_OK || e->audit != AUDIT_SKIPPED) return;
+    e->audit = !readable ? AUDIT_FAILED :
+               (persistent || oldroot) ? AUDIT_DIRTY : AUDIT_CLEAN;
+}
+static void evidence_power_request(struct shutdown_evidence *e) {
+    e->power = POWER_REQUESTED;
+}
+static void evidence_power_returned(struct shutdown_evidence *e) {
+    if (e->power == POWER_REQUESTED) e->power = POWER_RETURNED_ERROR;
+}
+static bool evidence_safe(const struct shutdown_evidence *e) {
+    (void)e;
+    return false; /* controller durability and actual power-off not proven */
+}
+static const char *unmount_name(enum unmount_result status) {
+    switch (status) {
+    case UNMOUNT_OK: return "ok";
+    case UNMOUNT_FAILED: return "failed";
+    default: return "pending";
+    }
+}
+static const char *audit_name(enum audit_result status) {
+    switch (status) {
+    case AUDIT_CLEAN: return "clean";
+    case AUDIT_DIRTY: return "dirty";
+    case AUDIT_FAILED: return "failed";
+    default: return "skipped";
+    }
+}
+static const char *power_name(enum power_result status) {
+    switch (status) {
+    case POWER_REQUESTED: return "requested";
+    case POWER_RETURNED_ERROR: return "returned-error";
+    default: return "not-requested";
+    }
+}
+static void evidence_print(FILE *stream, const struct shutdown_evidence *e) {
+    fprintf(stream, "unmount=%s audit=%s poweroff=%s safe-eligible=%d\n",
+            unmount_name(e->unmount), audit_name(e->audit),
+            power_name(e->power), evidence_safe(e));
+}
+
+/* No kernel operations: deterministic reducer tests for failure ordering.
+ * Input tokens describe simulated outcomes, NOT observed host state. */
+static int simulate_evidence(const char *unmount, const char *audit,
+                             const char *power) {
+    struct shutdown_evidence e = evidence_start();
+    if (strcmp(unmount, "ok") == 0) evidence_unmount(&e, true);
+    else if (strcmp(unmount, "failed") == 0) evidence_unmount(&e, false);
+    else return 2;
+    if (strcmp(audit, "clean") == 0) evidence_audit(&e, true, 0, 0);
+    else if (strcmp(audit, "dirty") == 0) evidence_audit(&e, true, 1, 0);
+    else if (strcmp(audit, "failed") == 0) evidence_audit(&e, false, 0, 0);
+    else return 2;
+    if (strcmp(power, "requested") == 0) evidence_power_request(&e);
+    else if (strcmp(power, "returned-error") == 0) {
+        evidence_power_request(&e);
+        evidence_power_returned(&e);
+    } else return 2;
+    evidence_print(stdout, &e);
+    return 0;
+}
+
 static bool backend_matches(size_t size) {
     return shutdown_display_backend.width == SHUTDOWN_FRAME_WIDTH &&
            shutdown_display_backend.height == SHUTDOWN_FRAME_HEIGHT &&
@@ -259,6 +341,8 @@ int main(int argc, char **argv) {
                persistent, oldroot, safe_to_unplug_allowed(persistent, oldroot));
         return 0;
     }
+    if (argc == 5 && strcmp(argv[1], "--simulate-safety") == 0)
+        return simulate_evidence(argv[2], argv[3], argv[4]);
     if (getpid() != 1 || argc < 2) {
         fputs("exitrd: only executable as shutdown PID 1\n", stderr);
         return 2;
@@ -273,25 +357,38 @@ int main(int argc, char **argv) {
         mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL) < 0 &&
         errno != EBUSY)
         perror("exitrd: proc mount");
+    struct shutdown_evidence evidence = evidence_start();
     sync();
     if (release_oldroot() == 0) {
+        evidence_unmount(&evidence, true);
         fputs("sonoscd-exitrd: oldroot_unmount=success\n", stderr);
         size_t persistent = 0, oldroot = 0;
         if (audit_mounts("/proc/self/mountinfo", &persistent, &oldroot) == 0) {
+            evidence_audit(&evidence, true, persistent, oldroot);
             fprintf(stderr,
                     "sonoscd-exitrd: residual_persistent_mounts=%zu residual_oldroot_mounts=%zu safe-eligible=%d\n",
-                    persistent, oldroot, safe_to_unplug_allowed(persistent, oldroot));
+                    persistent, oldroot, evidence_safe(&evidence));
         } else {
+            evidence_audit(&evidence, false, 0, 0);
             fprintf(stderr, "sonoscd-exitrd: mount_audit=failed safe-eligible=0 errno=%d\n", errno);
         }
         sync();
         if (poweroff) show_post_unmount();
     } else {
-        fprintf(stderr, "sonoscd-exitrd: oldroot_unmount=failed errno=%d (%s)\n", errno, strerror(errno));
+        int saved_errno = errno;
+        evidence_unmount(&evidence, false);
+        fprintf(stderr, "sonoscd-exitrd: oldroot_unmount=failed errno=%d (%s)\n",
+                saved_errno, strerror(saved_errno));
         sync();
     }
+    evidence_power_request(&evidence);
+    fputs("sonoscd-exitrd: ", stderr);
+    evidence_print(stderr, &evidence);
     /* No filesystem writes intentionally issued after the post-unmount frame. */
     syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, action, NULL);
+    evidence_power_returned(&evidence);
+    fputs("sonoscd-exitrd: ", stderr);
+    evidence_print(stderr, &evidence);
     perror("exitrd: reboot syscall failed");
     /* PID 1 must not return with its previous root already unmounted. */
     for (;;) pause();
