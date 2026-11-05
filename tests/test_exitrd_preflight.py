@@ -173,6 +173,48 @@ class ExitrdOnceContracts(unittest.TestCase):
                 with self.assertRaisesRegex(staging.PreflightError, "already separately mounted"):
                     staging.precheck(Path("/nonexistent"), None, activating=False)
 
+    def test_staging_rolls_back_on_failed_binary_check(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as folder:
+            live = Path(folder) / "initramfs"
+            live.mkdir()
+            marker = Path(folder) / "marker"
+            commands = []
+
+            def fake_command(*args):
+                commands.append(args)
+                if args[-1] == "--check":
+                    raise staging.PreflightError("simulated check failure")
+
+            with patch.object(staging, "LIVE", live), \
+                 patch.object(staging, "MARKER", marker), \
+                 patch.object(staging, "run_command", side_effect=fake_command), \
+                 patch.object(staging.os, "geteuid", return_value=0):
+                payload = b"fake binary for mocked check"
+                digest = hashlib.sha256(payload).hexdigest()
+                with self.assertRaisesRegex(staging.PreflightError, "simulated"):
+                    staging.arm_once(payload, digest, {"fsck-root": b""})
+                self.assertEqual(commands[-1], ("umount", str(live)))
+                self.assertFalse(marker.exists())
+
+    def test_explicit_deactivation_validates_digest_before_unmount(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as folder:
+            live = Path(folder) / "initramfs"
+            live.mkdir()
+            marker = Path(folder) / "marker"
+            (live / "shutdown").write_bytes(b"binary")
+            marker.write_text("sha256=" + hashlib.sha256(b"other").hexdigest() + "\\n")
+            with patch.object(staging, "LIVE", live), \
+                 patch.object(staging, "MARKER", marker), \
+                 patch.object(staging, "require_host", return_value="fixture"), \
+                 patch.object(staging, "is_mountpoint", return_value=True), \
+                 patch.object(staging.os, "geteuid", return_value=0), \
+                 patch.object(staging, "run_command") as command:
+                with self.assertRaisesRegex(staging.PreflightError, "digest"):
+                    staging.disarm()
+                command.assert_not_called()
+
     def test_activation_dispatch_can_be_mocked(self):
         with patch.object(staging, "precheck", return_value=(b"payload", "f" * 64, {})):
             with patch.object(staging, "arm_once") as arm:
