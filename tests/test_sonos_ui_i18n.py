@@ -118,6 +118,19 @@ class LocalizationTests(unittest.TestCase):
                     translator.available_languages.cache_clear()
                     translator.catalog.cache_clear()
 
+    def test_unnamed_speakers_use_configured_ui_language(self):
+        from sonos_ui.discovery import from_devices as simple_from_devices
+        from sonos_ui.multi_target import from_devices as grouped_from_devices
+        device=NS(uid='unnamed',player_name=' ')
+        group=NS(coordinator=device,members=(device,))
+        device.group=group
+        self.assertEqual(simple_from_devices((device,),language='en').names,
+                         ('Unnamed speaker',))
+        self.assertEqual(grouped_from_devices((device,),language='en').targets[0].label,
+                         'Unnamed speaker')
+        self.assertEqual(grouped_from_devices((device,),language='de').targets[0].label,
+                         'Unbenannter Lautsprecher')
+
     def test_configured_language_is_initial_menu_language(self):
         menu=InteractiveMenu(discover=lambda *,timeout: speakers(),language='en')
         self.assertEqual(menu.language,'en')
