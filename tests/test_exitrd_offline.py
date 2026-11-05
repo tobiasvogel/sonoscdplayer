@@ -100,6 +100,57 @@ class ExitrdOfflineTests(unittest.TestCase):
             path.write_text(content)
             return self.call('--audit-mountinfo', str(path))
 
+    def simulate(self, unmount, audit, power):
+        return self.call('--simulate-safety', unmount, audit, power)
+
+    def test_shutdown_state_successful_software_path_still_denies_safety(self):
+        result = self.simulate('ok', 'clean', 'requested')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('unmount=ok audit=clean poweroff=requested safe-eligible=0',
+                      result.stdout)
+
+    def test_shutdown_state_unmount_failure_skips_audit(self):
+        for audit in ('clean', 'dirty', 'failed'):
+            with self.subTest(audit=audit):
+                result = self.simulate('failed', audit, 'requested')
+                self.assertEqual(result.returncode, 0)
+                self.assertIn('unmount=failed audit=skipped', result.stdout)
+                self.assertIn('safe-eligible=0', result.stdout)
+
+    def test_shutdown_state_dirty_and_unreadable_audits(self):
+        for audit, expected in (('dirty', 'dirty'), ('failed', 'failed')):
+            with self.subTest(audit=audit):
+                result = self.simulate('ok', audit, 'requested')
+                self.assertEqual(result.returncode, 0)
+                self.assertIn('audit=' + expected, result.stdout)
+                self.assertIn('safe-eligible=0', result.stdout)
+
+    def test_shutdown_state_reboot_syscall_return_is_failure(self):
+        for unmount, audit in (('ok', 'clean'), ('ok', 'dirty'),
+                               ('ok', 'failed'), ('failed', 'clean')):
+            with self.subTest(unmount=unmount, audit=audit):
+                result = self.simulate(unmount, audit, 'returned-error')
+                self.assertEqual(result.returncode, 0)
+                self.assertIn('poweroff=returned-error safe-eligible=0',
+                              result.stdout)
+
+    def test_shutdown_state_invalid_simulated_events_rejected(self):
+        for args in (('maybe', 'clean', 'requested'),
+                     ('ok', 'unknown', 'requested'),
+                     ('ok', 'clean', 'confirmed'),
+                     ('ok', 'clean')):
+            with self.subTest(args=args):
+                result = self.call('--simulate-safety', *args)
+                self.assertNotEqual(result.returncode, 0)
+
+    def test_shutdown_state_never_claims_poweroff_completed(self):
+        source = (ROOT / 'src/shutdown/exitrd.c').read_text()
+        self.assertIn('POWER_RETURNED_ERROR', source)
+        self.assertIn('evidence_power_returned(&evidence);', source)
+        self.assertNotIn('POWER_COMPLETED', source)
+        self.assertIn('return false; /* controller durability', source)
+        self.assertNotIn('const uint8_t *frame = shutdown_frame_safe;', source)
+
     def test_mount_audit_all_volatile_still_denies_safety(self):
         info = (
             '1 0 0:1 / / rw - tmpfs tmpfs rw\n'
