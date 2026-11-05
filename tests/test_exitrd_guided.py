@@ -24,11 +24,17 @@ class GuidedExitrdTests(unittest.TestCase):
         self.assertIn("AT YOUR OWN RISK", SCRIPT.read_text())
 
     def test_invalid_calls_rejected_before_build(self):
-        for args in (("--enable-once",), ("--enable-once", "--config"),
-                     ("--status",), ("--status", "--config", ""),
+        for args in (("--enable-once", "--config"),
+                     ("--status", "--config", ""),
                      ("--unknown",)):
             with self.subTest(args=args):
                 self.assertEqual(self.call(*args).returncode, 2)
+
+    def test_status_on_actual_player_config_is_read_only(self):
+        result = self.call("--status")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("experimental_safe_screen=false", result.stdout)
+        self.assertIn("READ-ONLY", result.stdout)
 
     def test_status_on_default_example_is_read_only(self):
         result = self.call("--status", "--config", str(ROOT / "config/player.example.toml"))
