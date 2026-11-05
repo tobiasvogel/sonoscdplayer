@@ -13,6 +13,7 @@ from disc_startup import (CDS_NO_DISC, CDS_TRAY_OPEN, CDS_DRIVE_NOT_READY,
                           CDS_DISC_OK)
 from disc_state import DiscMode, DiscStatus
 from player_state import PlayerState, Mode
+from player_service import disc_allows_new_play
 
 
 class Server:
@@ -363,6 +364,39 @@ class DiscMonitorTests(unittest.TestCase):
         m, counts = make_monitor([CDS_DISC_OK])
         self.assertFalse(m.validate_before_play(c))
         self.assertEqual(counts, {'media': 0, 'toc': 0})
+
+
+    def test_play_command_guard_blocks_stale_disc(self):
+        c = FakeController()
+        c.state = PlayerState().disc_loaded((1,))
+        c.disc_status = DiscStatus.ready('/dev/sr0', 1)
+        identity = object()
+        old = SimpleNamespace(tracks=[SimpleNamespace(number=1)],
+                              leadout_lsn=12000)
+        new = SimpleNamespace(tracks=[SimpleNamespace(number=1)],
+                              leadout_lsn=16000)
+        m = DiscMonitor('/dev/sr0', identity, media=lambda _: CDS_DISC_OK,
+                        toc=lambda _: new, identity_reader=lambda _: identity,
+                        path_exists=lambda _: True, lock=fake_lock)
+        m.loaded_toc = old
+        for cmd in ('status', 'pause', 'resume'):
+            self.assertTrue(disc_allows_new_play(c, {'command': cmd}, m))
+        self.assertFalse(disc_allows_new_play(
+            c, {'command': 'play', 'uid': 'RINCON_123'}, m))
+        self.assertIs(m.loaded_toc, new)
+        self.assertTrue(disc_allows_new_play(
+            c, {'command': 'play-selected'}, m))
+
+    def test_playpause_guard_runs_only_for_stopped_player(self):
+        c = FakeController()
+        c.state = PlayerState().disc_loaded((1,))
+        c.disc_status = DiscStatus.ready('/dev/sr0', 1)
+        class Monitor:
+            def validate_before_play(self, ctrl):
+                raise AssertionError('playback session must not probe disc')
+        c.state = c.state.start_requested().playback_confirmed()
+        self.assertTrue(disc_allows_new_play(
+            c, {'command': 'playpause', 'uid': 'RINCON_123'}, Monitor()))
 
 
 if __name__ == '__main__':
