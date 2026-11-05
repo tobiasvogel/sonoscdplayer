@@ -9,3 +9,9 @@ The explicit activation option must not be used until a supervised recovery plan
 Only after offline checks and an isolated staging/rollback test should a supervised live shutdown be considered. Do not arm during normal operation.
 
 The default-mode and activation-gating regression cases are included in `tests/test_exitrd_preflight.py`. Run those tests and the shell/static hook tests before any installation. A successful source-level test does not replace an installed-hook hash check.
+
+## PID-1 live-handover readiness (not yet activated)
+
+The staging helper now creates the required `oldroot`, `dev`, `proc`, `sys` and `run` directory targets in the separate RAM root. Exitrd reports its PID-1 entry and oldroot unmount result on the shutdown console (`sonoscd-exitrd: ...`). Such console messages **do not persist automatically across poweroff**; record them through an already configured external console before claiming the handover was verified. The pre-exitrd final OLED frame is a fallback, not diagnostic proof.
+
+Before the first live handover, rebuild `build/exitrd/shutdown`, run the offline tests and re-run isolated staging/rollback against the new build. Do not use an old digest for activation. Do not activate `safe-approved=1`.
