@@ -170,7 +170,7 @@ class Renderer:
                               width=12,height=14)
         if m.checkbox_mode:
             # No false claim of an acknowledged target from draft checkboxes.
-            self.bottom(canvas,status=f'{len(m.checked_indices)} markiert',
+            self.bottom(canvas,status=self.tr('status.marked_short',count=len(m.checked_indices)),
                         footer=self.tr('footer.turn_press'))
         else:
             current=(m.speakers[m.selected_index] if m.selected_index is not None

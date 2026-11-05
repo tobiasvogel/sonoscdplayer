@@ -6,6 +6,7 @@ new live ownership and topology checks in the player service.
 """
 from __future__ import annotations
 from dataclasses import dataclass, replace
+from .i18n import Translator
 
 @dataclass(frozen=True)
 class Target:
@@ -23,13 +24,14 @@ class Topology:
         return frozenset(target.key for target in self.targets)
 
 
-def from_devices(devices):
+def from_devices(devices, *, language='de'):
     """List individual discovered speakers, as in M0.16a.
 
     Existing Sonos group membership is read-only metadata. Never collapse
     speakers into a synthetic "+N" entry. Nor does an individual checkbox
     authorize independent transport commands to a grouped member.
     """
+    unnamed=Translator(language).tr('label.unnamed_speaker')
     entries = {}
     errors = 0
     for device in devices or ():
@@ -48,11 +50,11 @@ def from_devices(devices):
                 member_uid, member_name = member.uid, member.player_name
                 if not isinstance(member_uid, str) or not member_uid or not isinstance(member_name, str):
                     raise ValueError('invalid group member')
-                info.append((member_uid, member_name.strip() or 'Unbenannter Lautsprecher'))
+                info.append((member_uid, member_name.strip() or unnamed))
             if uid not in {member_uid for member_uid, _ in info} or coordinator_uid not in {member_uid for member_uid, _ in info}:
                 raise ValueError('inconsistent group')
             info.sort(key=lambda item: (item[1].casefold(), item[0]))
-            label = name.strip() or 'Unbenannter Lautsprecher'
+            label = name.strip() or unnamed
             target = Target(uid, label, tuple(member_uid for member_uid, _ in info),
                             tuple(member_name for _, member_name in info))
             if uid in entries and entries[uid] != target:
@@ -64,14 +66,14 @@ def from_devices(devices):
     return Topology(targets, 'IncompleteTopology' if errors else None)
 
 
-def discover_targets(*,timeout=3,discover_fn=None):
+def discover_targets(*,timeout=3,discover_fn=None,language='de'):
     if not 0 < timeout <= 10:
         raise ValueError('timeout must be > 0 and <= 10')
     if discover_fn is None:
         from soco import discover
         discover_fn=discover
     try:
-        return from_devices(discover_fn(timeout=timeout))
+        return from_devices(discover_fn(timeout=timeout),language=language)
     except Exception as exc:
         return Topology((),type(exc).__name__)
 

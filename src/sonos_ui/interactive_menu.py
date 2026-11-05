@@ -10,7 +10,7 @@ from dataclasses import replace
 import time
 from .multi_target import MultiSelection, discover_targets
 from .multi_render import MultiRenderer
-from .i18n import Translator
+from .i18n import Translator, available_languages
 from .single_target import select_one, TargetSelectionError
 from .target_rpc_client import submit_target
 from .selection_plan import plan_from_applied
@@ -20,8 +20,9 @@ class InteractiveMenu:
     def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None):
         self.state = MultiSelection()
         self.language = Translator(language).language
+        self.languages = available_languages()
         self.language_picker = False
-        self.language_focus = ('de','en').index(self.language)
+        self.language_focus = self.languages.index(self.language)
         self.active = False
         self._discover = discover
         self._refresh_seconds = refresh_seconds
@@ -42,9 +43,13 @@ class InteractiveMenu:
         if self._worker is not None and self._worker.is_alive():
             return
         self._next_refresh = now + self._refresh_seconds
+        language=self.language
         def work():
             try:
-                result = self._discover(timeout=3.0)
+                if self._discover is discover_targets:
+                    result = discover_targets(timeout=3.0, language=language)
+                else:
+                    result = self._discover(timeout=3.0)
             except Exception as exc:
                 from .multi_target import Topology
                 result = Topology((), type(exc).__name__)
@@ -138,14 +143,16 @@ class InteractiveMenu:
             return False
         if self.language_picker:
             if (name, event) == ('encoder','right'):
-                self.language_focus = min(1, self.language_focus+1)
+                self.language_focus = min(len(self.languages)-1, self.language_focus+1)
             elif (name,event) == ('encoder','left'):
                 self.language_focus = max(0,self.language_focus-1)
             elif (name,event) == ('encoder_sw','pressed'):
-                self.language = ('de','en')[self.language_focus]
+                self.language = self.languages[self.language_focus]
                 self.renderer = MultiRenderer(language=self.language)
                 self.language_picker = False
                 self.state = replace(self.state, notice='')
+                # Rebuild localized fallback names after a user language switch.
+                self._next_refresh = 0.0
             else:
                 return False
             return True
@@ -162,7 +169,7 @@ class InteractiveMenu:
             self.state = replace(self.state, notice='')
         elif self.state.notice == 'menu.language':
             self.language_picker = True
-            self.language_focus = ('de','en').index(self.language)
+            self.language_focus = self.languages.index(self.language)
             self.state = replace(self.state, notice='')
         return True
 
@@ -172,12 +179,16 @@ class InteractiveMenu:
             t=self.renderer.theme
             im=Image.new('RGB',(128,128),t.background)
             self.renderer.shell(im,self.renderer.tr('menu.language'))
-            for index,key in enumerate(('menu.language_de','menu.language_en')):
-                y=34+index*24
+            # 128px OLED: keep focused language visible even with many files.
+            top=max(0,min(max(0,len(self.languages)-4),self.language_focus-1))
+            for row_index, index in enumerate(range(top,min(top+4,len(self.languages)))):
+                lang=self.languages[index]
+                y=22+row_index*22
                 if index==self.language_focus:
                     ImageDraw.Draw(im).rounded_rectangle((4,y,123,y+19),radius=3,fill=t.accent)
                 col=t.selection_text if index==self.language_focus else t.primary
-                self.renderer.text(im,(10,y+3),self.renderer.tr(key),fill=col,size=11,width=110,height=15)
+                label=self.renderer.translator.language_name(lang)
+                self.renderer.text(im,(10,y+3),label,fill=col,size=11,width=110,height=15)
             self.renderer.bottom(im,status=self.renderer.tr('status.local_only'),
                                  footer=self.renderer.tr('footer.confirm'))
             return image_to_frame(im)

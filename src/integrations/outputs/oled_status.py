@@ -99,32 +99,37 @@ def short_text(value, max_chars=20):
     return str(value or '')[:max_chars]
 
 
-def status_frame(state=None, error=None):
-    """Simple legible OLED status; avoid claiming live Sonos reachability."""
+def status_frame(state=None, error=None, *, language='en'):
+    """Legacy OLED status, localized without changing status protocol fields."""
+    from sonos_ui.i18n import Translator
+    tr=Translator(language).tr
     img=Image.new('L',(128,128),0)
     draw=ImageDraw.Draw(img)
     f=ImageFont.load_default()
-    draw.text((5,4),'SONOS CD PLAYER',font=f,fill=255)
+    draw.text((5,4),tr('legacy.header'),font=f,fill=255)
     draw.line((4,19,123,19),fill=88)
     if error is not None:
-        draw.text((6,32),'SERVICE OFFLINE',font=f,fill=245)
-        draw.text((6,53),'No local status',font=f,fill=155)
-        draw.text((6,78),'Waiting...',font=f,fill=155)
+        draw.text((6,32),tr('legacy.offline'),font=f,fill=245)
+        draw.text((6,53),tr('legacy.no_local_status'),font=f,fill=155)
+        draw.text((6,78),tr('legacy.waiting'),font=f,fill=155)
     else:
-        player=state.get('player') or {}
-        sonos=state.get('sonos') or {}
-        stream=state.get('stream') or {}
-        mode=short_text(player.get('mode','UNKNOWN'),17)
-        draw.text((6,29),mode,font=f,fill=255)
+        player=(state or {}).get('player') or {}
+        sonos=(state or {}).get('sonos') or {}
+        stream=(state or {}).get('stream') or {}
+        mode=player.get('mode')
+        mode_key='legacy.mode.'+mode if isinstance(mode,str) and mode in (
+            'STOPPED','PLAYING','PAUSED','STARTING','ERROR') else 'legacy.mode.UNKNOWN'
+        draw.text((6,29),short_text(tr(mode_key),17),font=f,fill=255)
         track=player.get('track')
         count=player.get('track_count')
         track=str(track) if isinstance(track,int) and track>0 else '--'
         count=str(count) if isinstance(count,int) and count>0 else '--'
-        draw.text((6,52),f'Track {track}/{count}',font=f,fill=215)
+        draw.text((6,52),tr('legacy.track',track=track,count=count),font=f,fill=215)
         # Cached transport is NOT an independent reachability check.
-        transport=short_text(sonos.get('transport') or 'unknown',16)
-        draw.text((6,75),'Sonos: '+transport,font=f,fill=154)
-        draw.text((6,98),'Stream: '+('active' if stream.get('active') else 'idle'),font=f,fill=154)
+        transport=short_text(sonos.get('transport') or tr('legacy.transport_unknown'),16)
+        draw.text((6,75),tr('legacy.sonos',transport=transport),font=f,fill=154)
+        stream_state=tr('legacy.stream_active') if stream.get('active') else tr('legacy.stream_idle')
+        draw.text((6,98),tr('legacy.stream',state=stream_state),font=f,fill=154)
     draw.line((4,121,123,121),fill=66)
     return image_to_frame(img)
 
@@ -136,7 +141,7 @@ def modern_status_frame(state=None, error=None, *, cover_mode='auto', language='
     player writes or speculative album/cover/target metadata.
     """
     if error is not None or state is None:
-        return status_frame(error=error or 'No local status')
+        return status_frame(error=error or 'No local status',language=language)
     from sonos_ui.player_adapter import project_status
     from sonos_ui.render import Renderer
     display = project_status(state)
@@ -342,7 +347,7 @@ def main(argv=None):
                     state=hold.success(ready_state if ready_state is not None else request_status(args.socket), time.monotonic())
                     ready_state=None
                     frame=(menu.frame(image_to_frame) if menu is not None and menu.active else
-                           modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state))
+                           modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state,language=(menu.language if menu is not None else language)))
                     label={'screen':'status','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
                 except (OSError,ValueError,TimeoutError,TypeError) as exc:
                     # The player_service socket is single-threaded. While PLAY waits
@@ -353,11 +358,11 @@ def main(argv=None):
                     state=hold.failure(time.monotonic(), 50.0 if busy else None)
                     if state is not None:
                         frame=(menu.frame(image_to_frame) if menu is not None and menu.active else
-                               modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state))
+                               modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state,language=(menu.language if menu is not None else language)))
                         label={'screen':'status_cached','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
                     else:
                         frame=(menu.frame(image_to_frame) if menu is not None and menu.active
-                               else status_frame(error=str(exc)))
+                               else status_frame(error=str(exc),language=(menu.language if menu is not None else language)))
                         label={'screen':'service_offline','error':type(exc).__name__,'hardware':args.execute}
                 current=bytes(frame.data)
                 if current!=previous:
