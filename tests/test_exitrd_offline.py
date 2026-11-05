@@ -81,9 +81,9 @@ class ExitrdOfflineTests(unittest.TestCase):
         self.assertNotIn('MNT_FORCE', source)
         self.assertIn('if (poweroff) show_post_unmount()', source)
 
-    def test_late_hook_defers_poweroff_frame_to_staged_exitrd(self):
+    def test_late_hook_keeps_final_fallback_with_staged_exitrd(self):
         script = (ROOT / 'systemd/sonoscdplayer-final-shutdown-hook').read_text()
-        self.assertIn('if [ "$phase" = final ] && [ -x /run/initramfs/shutdown ]; then', script)
+        self.assertNotIn('if [ "$phase" = final ] && [ -x /run/initramfs/shutdown ]; then', script)
         with tempfile.TemporaryDirectory() as directory:
             staged = Path(directory) / 'exitrd'
             staged.write_text('#!/bin/sh\\nexit 0\\n')
@@ -100,7 +100,7 @@ class ExitrdOfflineTests(unittest.TestCase):
             for action in ('poweroff', 'reboot'):
                 self.assertEqual(subprocess.run(['sh', str(hook), action],
                                                 check=False, timeout=3).returncode, 0)
-            self.assertEqual(calls.read_text().splitlines(), ['reboot'])
+            self.assertEqual(calls.read_text().splitlines(), ['final', 'reboot'])
 
     def test_build_does_not_install_or_stage_exitrd(self):
         script = (ROOT / 'tools/build_exitrd.sh').read_text()
