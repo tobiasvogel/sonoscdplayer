@@ -6,6 +6,7 @@ insertion/removal monitoring is deliberately deferred to M0.19b.
 from __future__ import annotations
 
 import fcntl
+import os
 from pathlib import Path
 import re
 
@@ -30,8 +31,12 @@ def optical_devices(*, sys_root=Path('/sys/class/block'),
 
 def drive_media_status(device: str) -> int:
     """One read-only ioctl; absence of reliable status is not 'no disc'."""
-    with open(device, 'rb', buffering=0) as handle:
-        return fcntl.ioctl(handle.fileno(), CDROM_DRIVE_STATUS, 0)
+    # Nonblocking open avoids waiting for media on drives with an empty tray.
+    fd = os.open(device, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        return fcntl.ioctl(fd, CDROM_DRIVE_STATUS, 0)
+    finally:
+        os.close(fd)
 
 
 def classify_unavailable(device: str | None, media_status=None,
