@@ -160,3 +160,13 @@ Default `build/exitrd/shutdown` is unaffected. The experimental artifact is `bui
 The experimental runtime draws the normal final frame first. **Only for a true poweroff action**, after successful `release_oldroot()`, a parseable post-unmount mount audit with `persistent=0` and `oldroot=0`, and completed `sync()`, it waits three seconds and then draws the pre-existing `Safe to unplug` artwork immediately before the final kernel poweroff syscall. On unmount failure, dirty/failed audit, interrupted delay, reboot or halt, the experimental graphic is not drawn. If the poweroff syscall unexpectedly returns, the runtime repaints the normal final screen before reporting the error. This fallback cannot prevent all possible incorrect impressions because a system may fail between drawing and entering the syscall.
 
 The conservative evidence-state simulator **continues to say `safe-eligible=0` in every case**: the experimental picture is not a safety approval. The previous two hardware acceptance tests were for the normal/diagnostic exitrd, not this artifact. The experimental artifact has not yet been boot-tested; any one-boot staging would require a separately supervised opt-in, freshly verified SHA-256 and no automatic shutdown. Do not stage this mode as a persistent default, and do not merge it to `main` without explicit project approval.
+
+## 2026-11-05 experimental-build 54-test offline acceptance
+
+The operator pulled the source-assertion correction from feature branch commit `e854c25` and executed the `test_exitrd_*.py` regression suite on the Raspberry Pi: **54 tests passed in 6.722 seconds**. The separately built experimental binary's offline check returned:
+
+```text
+exitrd: offline check; backend=ssd1327 format=gray4-packed safe-approved=0 diagnostic=0 unverified-safe=1 delay-seconds=3
+```
+
+This confirms the **offline regression suite and binary build flags**, not the timing, OLED transition, systemd PID-1 handover or final ACT LED signal for this experimental variant. The opt-in binary is **not** automatically staged, and the prior supervised real poweroff tests used different builds. The existing `Safe to unplug` artwork still appears *before* the final poweroff syscall in this opt-in path, even with the three-second delay; the operator must not unplug based on the OLED text alone. Explicit one-boot staging and an operator-controlled physical test require a separate deliberate decision. No persistent configuration was enabled.
