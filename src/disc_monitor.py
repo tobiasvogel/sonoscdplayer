@@ -108,6 +108,55 @@ class DiscMonitor:
             return self._set_status(controller,
                                     DiscStatus.ready(self.device, len(disc.tracks)))
 
+    def validate_before_play(self, controller) -> bool:
+        """Revalidate physical disc identity at the explicit PLAY boundary.
+
+        A changed/absent CD invalidates stale selection and rejects this PLAY.
+        The caller may retry only after observing the new track list.
+        No Sonos calls are made. The single serialized worker prevents an
+        overlapping monitor poll while this method is running.
+        """
+        if not idle_for_disc_io(controller):
+            return False
+        current = controller.disc_status
+        if (self._disconnected or self.identity is None or
+                current is None or current.mode != DiscMode.READY or
+                current.device != self.device or not self.path_exists(self.device)):
+            self._mark_disconnected(controller) if not self.path_exists(self.device) else None
+            return False
+        if self.identity_reader(self.device) != self.identity:
+            self._mark_disconnected(controller,
+                                    'drive reconnect requires verified identity')
+            return False
+        with self.lock(self.device, blocking=False) as acquired:
+            if not acquired:
+                return False
+            try:
+                if self.media(self.device) != CDS_DISC_OK:
+                    self._apply(controller, DiscStatus(DiscMode.LOADING, self.device))
+                    return False
+                disc = self.read_toc(self.device)
+            except (OSError, ValueError, RuntimeError, TimeoutError) as exc:
+                self._apply(controller, DiscStatus(
+                    DiscMode.UNREADABLE, self.device,
+                    error=f'PLAY revalidation: {type(exc).__name__}: {exc}'))
+                return False
+            if not disc.tracks:
+                self._apply(controller, DiscStatus(
+                    DiscMode.UNREADABLE, self.device,
+                    error='PLAY revalidation: empty TOC'))
+                return False
+            if self.loaded_toc is None or disc != self.loaded_toc:
+                # Do not play the newly inserted disc on an old selection,
+                # even when the two discs have the same track count.
+                self.loaded_toc = disc
+                controller.state = controller.state.disc_loaded(
+                    tuple(t.number for t in disc.tracks))
+                self._set_status(controller,
+                                 DiscStatus.ready(self.device, len(disc.tracks)))
+                return False
+            return True
+
     def _recover_or_hold(self, controller):
         # Never guess a drive by /dev/srN or adopt a missing/duplicate serial.
         if self.identity is None:
