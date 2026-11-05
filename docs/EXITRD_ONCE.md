@@ -92,3 +92,17 @@ build/exitrd/shutdown --simulate-safety ok clean returned-error
 All combinations must report `safe-eligible=0`. The simulator does not unmount, render, activate exitrd, sync devices, reboot, or power off. The installed static C shutdown fallback and final OLED frame remain unchanged. The compile-time lock rejects `SONOSCD_EXITRD_SAFE_APPROVED=1` for any build. The prior successful hardware validation applies to the earlier exitrd code, **not** this new untested build.
 
 This is an evidence tracker, not an authorization algorithm. Outstanding separate evidence: SD card firmware/controller persistence, device holder behavior beyond mount inventory, errors from sync/writeback, actual power state, and adverse shutdown cases. Do not make a safe-unplug claim based on successful unmount/audit alone.
+
+## 2026-11-05 Raspberry Pi evidence-state offline acceptance
+
+Operator ran the feature branch (commit `487bfc0`) on the Raspberry Pi, built the normal exitrd (`diagnostic=0`, `safe-approved=0`) and ran the `test_exitrd_*.py` suite: **49 tests passed in 4.072 s**. The five `--simulate-safety` cases printed:
+
+```text
+unmount=ok audit=clean poweroff=requested safe-eligible=0
+unmount=failed audit=skipped poweroff=requested safe-eligible=0
+unmount=ok audit=dirty poweroff=requested safe-eligible=0
+unmount=ok audit=failed poweroff=requested safe-eligible=0
+unmount=ok audit=clean poweroff=returned-error safe-eligible=0
+```
+
+The offline-only guard confirmed that no live exitrd was staged. No shutdown or power-cycle was performed in this acceptance. The test outcomes validate the simulator, not actual error injection under systemd PID 1; media-cache durability and actual power-off remain outside its evidence scope. `safe-approved=0` and no persistent activation remain mandatory.
