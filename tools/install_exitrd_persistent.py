@@ -180,6 +180,12 @@ def remove():
         # Refuse to disarm an exitrd that does not belong to this installer.
         if not MARKER.is_file() or MARKER.is_symlink():
             raise InstallError('unrecognized staged exitrd; leaving it untouched')
+        expected_file = INSTALL / 'shutdown.sha256'
+        if not expected_file.is_file() or expected_file.is_symlink():
+            raise InstallError('installed digest missing; cannot identify staged exitrd')
+        expected_digest = expected_file.read_text(encoding='ascii').strip()
+        if MARKER.read_text() != f'sha256={expected_digest}\n':
+            raise InstallError('staged exitrd is not this installation; refusing unmount')
         disarm()
     for file in (*FILES, 'shutdown', 'shutdown.sha256'):
         safe_remove_file(INSTALL / file)
