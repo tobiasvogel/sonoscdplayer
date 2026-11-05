@@ -17,6 +17,9 @@ keepalive_interval_seconds = 10
 
 [service]
 shutdown_policy = "stop_owned" # stop_owned | leave_playing
+# Experimental OLED mode, enabled via installer; default disabled.
+# Screen precedes kernel poweroff. Wait for completed ACT LED shutdown flashes.
+experimental_safe_screen = false
 
 [led_outputs]
 power_pin = 12

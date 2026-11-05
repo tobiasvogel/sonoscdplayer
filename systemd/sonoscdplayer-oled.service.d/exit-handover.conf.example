@@ -1,0 +1,5 @@
+# Optional only when the shutdown-screen one-shot and binary are installed.
+# Preserves the last frame on every OLED process exit (also service restarts).
+# Does not enable Sonos control or change the existing ExecStart.
+[Service]
+Environment=SONOSCDPLAYER_PRESERVE_DISPLAY_ON_EXIT=1

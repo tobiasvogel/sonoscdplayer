@@ -73,6 +73,10 @@ Sonos playback requires a suitable streaming and control integration. The specif
 
 The planned configuration options include an editable YAML file, a **local browser-based setup interface**, and on-device settings for everyday use. For first-time Wi-Fi setup, a **temporary, secured device-specific Wi-Fi hotspot** and local provisioning page are planned on supported hardware. Wi-Fi credentials can also be entered with the rotary encoder as a fallback. These are planned features, not currently available services.
 
+## Optional experimental OLED shutdown screen
+
+The optional "Safe to unplug" graphic can be installed or removed using a single management script. **Experimental:** The graphic appears before final poweroff. Wait for the ACT LED shutdown sequence to finish before disconnecting power. See the [short installation guide](docs/EXPERIMENTAL_SHUTDOWN.md).
+
 ## Contributing
 
 Contributions are welcome: software, compatible hardware reports, wiring diagrams, enclosure models, build write-ups, and constructive testing feedback. For code, start with an issue describing the problem and proposed approach.

@@ -17,6 +17,9 @@ keepalive_interval_seconds = 10
 
 [service]
 shutdown_policy = "stop_owned" # stop_owned | leave_playing
+# EXPERIMENTAL: use the explicit installer to enable/disable auto-staging.
+# Graphic precedes poweroff; wait for completed ACT LED shutdown flashes.
+experimental_safe_screen = false
 
 [led_outputs]
 power_pin = 12

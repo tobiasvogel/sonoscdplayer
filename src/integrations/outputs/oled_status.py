@@ -8,6 +8,8 @@ import argparse
 from contextlib import nullcontext
 import math
 import json
+import os
+import signal
 from pathlib import Path
 import socket
 import time
@@ -17,6 +19,37 @@ from .oled_ambient import OLEDAmbientConfig, OLEDContrastControl
 
 DEFAULT_SOCKET = '/tmp/sonoscdplayer-control.sock'
 DEFAULT_LOGO = Path(__file__).resolve().parents[2] / 'data' / 'start_screen.png'
+SHUTDOWN_PRESERVE_MARKER = Path('/run/sonoscdplayer-oled-shutdown-preserve')
+
+
+def preserve_display_on_exit(flag=False, environ=None):
+    """Opt-in handover. Exact '1' is used for a systemd Environment drop-in."""
+    if environ is None:
+        environ = os.environ
+    return flag or environ.get('SONOSCDPLAYER_PRESERVE_DISPLAY_ON_EXIT') == '1'
+
+
+def preserve_display_for_shutdown(flag=False, environ=None, marker_path=SHUTDOWN_PRESERVE_MARKER):
+    """Preserve on explicit opt-in or when the shutdown-order unit has armed it.
+
+    The root-owned marker is set only by the separate systemd shutdown sentinel,
+    which stops BEFORE the OLED service on system shutdown. Ordinary OLED
+    restarts do not stop that sentinel, so they keep the historical blanking.
+    """
+    return preserve_display_on_exit(flag, environ) or marker_path.is_file()
+
+
+def player_ready_timeout(default_seconds, *, preserve=False, environ=None):
+    """Use a short readiness wait only for an explicitly armed handover resume.
+
+    The ordinary boot path retains its configured timeout. Opt-in is exact '1'
+    and requires preserve-display mode, so enabling fast resume alone is inert.
+    """
+    if environ is None:
+        environ = os.environ
+    if (preserve and environ.get('SONOSCDPLAYER_HANDOVER_FAST_RESUME') == '1'):
+        return min(default_seconds, 2.0)
+    return default_seconds
 
 
 def request_status(path=DEFAULT_SOCKET, timeout=1.5):
@@ -167,6 +200,9 @@ def main(argv=None):
     p.add_argument('--socket',default=DEFAULT_SOCKET)
     p.add_argument('--splash',default=str(DEFAULT_LOGO))
     p.add_argument('--adopt-boot-splash',action='store_true',help='Adopt firmware-initialized OLED without reset; requires verified firmware splash')
+    p.add_argument('--preserve-display-on-exit',action='store_true',
+                   help='On renderer exit, release SPI/GPIO without DISPLAY OFF; '
+                        'requires an explicitly coordinated display handover')
     p.add_argument('--splash-seconds',type=float,default=None,help='Legacy fixed splash duration; default waits for a valid player status')
     p.add_argument('--splash-ready-timeout',type=float,default=30.0,help='Maximum wait for player status, then show SERVICE OFFLINE')
     p.add_argument('--seconds',type=float,default=30)
@@ -257,6 +293,11 @@ def main(argv=None):
         menu = InteractiveMenu(language=language, target_rpc=sender,
                                group_target_rpc=group_sender)
         receiver_context = EventReceiver(args.ui_events_socket)
+    def stop_on_sigterm(_signum, _frame):
+        # systemd's normal SIGTERM must run finally and release SPI/GPIO.
+        raise SystemExit(0)
+
+    previous_sigterm = signal.signal(signal.SIGTERM, stop_on_sigterm)
     try:
         if driver: driver.open(adopt_existing=args.adopt_boot_splash)
         end=time.monotonic()+args.seconds if args.seconds else None
@@ -275,7 +316,11 @@ def main(argv=None):
         elif not args.adopt_boot_splash and args.splash_seconds != 0:
             print(json.dumps({'screen':'splash_skipped','reason':'PNG unavailable or invalid'}),flush=True)
         if args.adopt_boot_splash:
-            ready_state=wait_for_player_ready(request_status,args.socket,max_wait_seconds=args.splash_ready_timeout)
+            ready_state=wait_for_player_ready(
+                request_status, args.socket,
+                max_wait_seconds=player_ready_timeout(
+                    args.splash_ready_timeout,
+                    preserve=preserve_display_on_exit(args.preserve_display_on_exit)))
         if ready_state is not None:
             hold.success(ready_state,time.monotonic())
         with receiver_context as ui_events:
@@ -321,6 +366,17 @@ def main(argv=None):
                     previous=current
                 time.sleep(args.refresh_ms/1000 if end is None else min(args.refresh_ms/1000,max(0,end-time.monotonic())))
     finally:
-        if driver: driver.close()
+        try:
+            if driver:
+                preserve = preserve_display_for_shutdown(args.preserve_display_on_exit)
+                print(json.dumps({
+                    'oled_exit': 'close',
+                    'shutdown_marker_present': SHUTDOWN_PRESERVE_MARKER.is_file(),
+                    'preserve': preserve,
+                    'blank': not preserve,
+                }), flush=True)
+                driver.close(blank=not preserve)
+        finally:
+            signal.signal(signal.SIGTERM, previous_sigterm)
 
 if __name__=='__main__': main()

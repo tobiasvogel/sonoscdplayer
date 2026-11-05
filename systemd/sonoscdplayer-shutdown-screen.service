@@ -1,0 +1,18 @@
+# Optional early shutdown display handover; not enabled by default.
+# Before= reverses during stop: OLED/front-end stops and releases SPI/GPIO first.
+[Unit]
+Description=SonosCDPlayer shutdown display handover (experimental)
+Before=sonoscdplayer-oled.service sonoscdplayer-frontend.service
+After=local-fs.target
+ConditionPathExists=/dev/spidev0.0
+ConditionFileIsExecutable=/usr/local/libexec/sonoscdplayer-shutdown-display
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+RemainAfterExit=yes
+ExecStop=-/usr/local/libexec/sonoscdplayer-shutdown-display transition
+TimeoutStopSec=5s
+
+[Install]
+WantedBy=sonoscdplayer.target
