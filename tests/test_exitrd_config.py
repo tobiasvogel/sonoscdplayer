@@ -24,7 +24,11 @@ class ExitrdConfigTests(unittest.TestCase):
 
     def test_shipped_default_is_disabled(self):
         self.assertFalse(config.read_enabled())
-        self.assertIn('experimental_safe_screen = false', config.CONFIG.read_text())
+        self.assertIn('experimental_safe_screen = false', config.TEMPLATE.read_text())
+
+    def test_missing_local_override_defaults_to_off(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertFalse(config.read_enabled(Path(directory) / 'missing.ini'))
 
     def test_parser_rejects_invalid_and_extra_keys(self):
         for data in ('', '[shutdown]\nexperimental_safe_screen = yes\n',
