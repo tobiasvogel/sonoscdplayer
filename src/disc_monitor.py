@@ -41,6 +41,7 @@ class DiscMonitor:
         self.identity_reader = identity_reader
         self.lock = lock
         self._disconnected = False
+        self._disconnect_error = None
         self.loaded_toc = None
 
     def poll(self, controller) -> bool:
@@ -54,15 +55,16 @@ class DiscMonitor:
             return False
 
         if not self.path_exists(self.device):
-            self._disconnected = True
-            return self._apply(controller, DiscStatus(DiscMode.NO_DRIVE))
+            return self._mark_disconnected(controller)
 
         current_id = self.identity_reader(self.device)
-        if self._disconnected or (self.identity is not None and current_id != self.identity):
-            # A disappearing/replaced USB node is not proof of original drive.
-            self._disconnected = True
-            return self._apply(controller, DiscStatus(
-                DiscMode.NO_DRIVE, error='drive reconnect requires verified identity'))
+        if self._disconnected:
+            # Once disconnected, only a separately verified rebind may resume
+            # drive IO. Keep the exact same public state across repeated polls.
+            return self._mark_disconnected(controller)
+        if self.identity is not None and current_id != self.identity:
+            return self._mark_disconnected(
+                controller, 'drive reconnect requires verified identity')
 
         with self.lock(self.device, blocking=False) as acquired:
             if not acquired:
@@ -106,6 +108,14 @@ class DiscMonitor:
         """Existing identity+TOC reconnect preflight must have succeeded first."""
         self.device = device
         self._disconnected = False
+        self._disconnect_error = None
+
+    def _mark_disconnected(self, controller, reason=None):
+        if not self._disconnected:
+            self._disconnect_error = reason
+        self._disconnected = True
+        return self._apply(controller, DiscStatus(
+            DiscMode.NO_DRIVE, error=self._disconnect_error))
 
     @staticmethod
     def _set_status(controller, status):
