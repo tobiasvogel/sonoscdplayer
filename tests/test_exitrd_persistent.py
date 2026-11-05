@@ -76,6 +76,42 @@ class PersistentExitrdTests(unittest.TestCase):
                 with self.assertRaises(installer.InstallError):
                     installer.verified_config_text(source, True)
 
+    def test_uninstall_removes_only_owned_pycache(self):
+        with tempfile.TemporaryDirectory() as temp:
+            installed = Path(temp) / 'sonoscdplayer-exitrd'
+            installed.mkdir()
+            cache = installed / '__pycache__'
+            cache.mkdir()
+            (cache / 'exitrd_once.cpython-313.pyc').write_bytes(b'compiled')
+            (cache / 'exitrd_preflight.cpython-313.pyc').write_bytes(b'compiled')
+            installer.remove_owned_bytecode(installed)
+            self.assertFalse(cache.exists())
+            # Safe to repeat following a partially completed uninstall.
+            installer.remove_owned_bytecode(installed)
+
+    def test_uninstall_refuses_unknown_cache_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            installed = Path(temp) / 'sonoscdplayer-exitrd'
+            installed.mkdir()
+            cache = installed / '__pycache__'
+            cache.mkdir()
+            unknown = cache / 'unrelated.cpython-313.pyc'
+            unknown.write_bytes(b'keep')
+            with self.assertRaises(installer.InstallError):
+                installer.remove_owned_bytecode(installed)
+            self.assertTrue(unknown.is_file())
+
+    def test_uninstall_refuses_symlinked_cache(self):
+        with tempfile.TemporaryDirectory() as temp:
+            installed = Path(temp) / 'sonoscdplayer-exitrd'
+            installed.mkdir()
+            elsewhere = Path(temp) / 'external'
+            elsewhere.mkdir()
+            (installed / '__pycache__').symlink_to(elsewhere, target_is_directory=True)
+            with self.assertRaises(installer.InstallError):
+                installer.remove_owned_bytecode(installed)
+            self.assertTrue(elsewhere.is_dir())
+
     def test_management_requires_interactive_consent(self):
         source = (ROOT / 'tools/manage_experimental_exitrd.sh').read_text()
         self.assertIn('--install', source)
