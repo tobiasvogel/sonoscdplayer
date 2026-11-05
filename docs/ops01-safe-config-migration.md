@@ -143,8 +143,15 @@ PYTHONPATH=src python3 -m unittest discover \
   -s tests -p 'test_ops01_*.py' -v
 ```
 
-**Reference discrepancy to investigate:** The user-observed first dry-run
-reported missing `service.experimental_safe_screen`, while the version of
-`src/config.toml` fetched from the remote branch for this implementation
-did not contain that key. Confirm the exact local checkout/template before
-interpreting the result; never silently reconcile or inject this option.
+**Reference discrepancy resolved during review:** The current
+`main` reference defines `service.experimental_safe_screen = false`, which
+explains the observed missing protected key in production. The original
+OPS-01 branch predates the experimental shutdown feature. The option must
+remain protected and must never be silently injected, enabled or disabled by
+the migration planner. Review coverage includes both missing disabled
+defaults and preservation of any existing local choice.
+
+**Review integration:** The reviewed OPS-01 files have been carried onto a
+fresh branch from the current `main`. This avoids merging the former
+OPS-01 branch's 172-commit divergence. M0.19 remains independently gated.
+No apply or rollback implementation is included.
