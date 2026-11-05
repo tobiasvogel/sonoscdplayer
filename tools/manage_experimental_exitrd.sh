@@ -1,5 +1,5 @@
 #!/bin/sh
-# Explicit one-boot opt-in management; does not run poweroff or install services.
+# Guided experimental exitrd management; no poweroff/reboot issued.
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -12,12 +12,10 @@ usage() {
 Usage:
   sh tools/manage_experimental_exitrd.sh --status [--config /path/to/player.toml]
   sh tools/manage_experimental_exitrd.sh --enable-once [--config /path/to/player.toml]
-  sh tools/manage_experimental_exitrd.sh --disable
+  sh tools/manage_experimental_exitrd.sh --install\n  sh tools/manage_experimental_exitrd.sh --uninstall\n  sh tools/manage_experimental_exitrd.sh --disable
 
 By default the script uses src/config.toml (the player service config).
-Before --enable-once set [service] experimental_safe_screen = true there. This script builds the experiment, verifies its mode and
-SHA-256, and stages it for ONLY THIS BOOT after an interactive acknowledgement.
-It never shuts down, enables a systemd service or arranges re-arming at boot.
+The --install option sets [service].experimental_safe_screen = true in src/config.toml,\nbuilds a verified binary, and installs a root-owned boot service. It will re-arm\nat each boot until --uninstall disables it. --enable-once remains RAM-only.\nThe script never initiates shutdown or reboot.
 WARNING: The OLED safe graphic appears BEFORE kernel poweroff. Do not unplug
 until the Raspberry Pi ACT LED has completed its final shutdown sequence.
 EOF
@@ -29,8 +27,45 @@ if [ "$ACTION" = "--help" ] || [ "$ACTION" = "-h" ]; then
 fi
 
 case "$ACTION" in
+    --uninstall)
+        [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+        sudo "$PYTHON" "$ROOT/tools/install_exitrd_persistent.py" --uninstall
+        exit
+        ;;
+    --install)
+        [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+        [ -t 0 ] || { echo 'Interactive terminal required' >&2; exit 1; }
+        cat >&2 <<'WARNING'
+
+WARNING: EXPERIMENTAL PERSISTENT INSTALLATION, AT YOUR OWN RISK.
+The "Safe to unplug" graphic appears BEFORE the kernel's final poweroff.
+The 3-second delay is NOT evidence of a completed safe shutdown.
+NEVER unplug before the ACT LED's shutdown blink sequence has fully ended.
+The boot service will re-arm the experimental exitrd after EACH startup.
+Unexpected exitrd errors may prevent a clean shutdown.
+WARNING
+        printf '%s' 'Type YES-I-ACCEPT to install permanently: ' >&2
+        IFS= read -r REPLY
+        [ "$REPLY" = 'YES-I-ACCEPT' ] || { echo 'Cancelled.' >&2; exit 1; }
+        (
+            unset BUILD_DIR EXITRD_DIAGNOSTIC
+            EXITRD_UNVERIFIED_SAFE=1 \
+            EXITRD_UNVERIFIED_SAFE_ACK=I_ACCEPT_EARLY_SAFE_SCREEN_RISK \
+                sh "$ROOT/tools/build_exitrd.sh"
+        )
+        BIN="$ROOT/build/exitrd-unverified-safe/shutdown"
+        HASH=$(sha256sum "$BIN" | awk '{print $1}')
+        sudo "$PYTHON" "$ROOT/tools/install_exitrd_persistent.py" \
+            --install --expected-sha256 "$HASH" \
+            --risk-ack I_ACCEPT_EARLY_SAFE_SCREEN_RISK
+        exit
+        ;;
     --disable)
         [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+        if systemctl is-enabled --quiet sonoscdplayer-exitrd.service; then
+            echo 'Persistent installation active: use --uninstall, not --disable.' >&2
+            exit 1
+        fi
         if ! mountpoint -q /run/initramfs; then
             echo 'No staged one-boot exitrd detected. Nothing to deactivate.'
             exit 0
@@ -53,6 +88,11 @@ case "$ACTION" in
 esac
 
 "$PYTHON" "$ROOT/tools/exitrd_player_config.py" --config "$CONFIG"
+if systemctl is-enabled --quiet sonoscdplayer-exitrd.service; then
+    echo "Persistent boot service: ENABLED"
+else
+    echo "Persistent boot service: disabled"
+fi
 if mountpoint -q /run/initramfs; then
     echo "RAM exitrd mount: staged (inspect with sudo /run/initramfs/shutdown --check)"
 else
@@ -65,6 +105,10 @@ fi
 
 # Config and host preflight fail before any build/activation. No existing RAM
 # exitrd may be overwritten, even if its ownership cannot be determined.
+if systemctl is-enabled --quiet sonoscdplayer-exitrd.service; then
+    echo "Refusing: persistent service enabled; use --uninstall first" >&2
+    exit 1
+fi
 if mountpoint -q /run/initramfs; then
     echo "Refusing: /run/initramfs is already mounted; use --disable only if ours" >&2
     exit 1
