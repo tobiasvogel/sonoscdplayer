@@ -134,7 +134,7 @@ class ExitrdOfflineTests(unittest.TestCase):
         for content in ('broken\n',
                         '1 0 0:1 / / rw - tmpfs\n',
                         '1 0 0:1 / / rw - tmpfs tmpfs\n',
-                        '1 0 0:1 / /bad\0xx rw - tmpfs tmpfs rw\n'):
+                        '1 0 0:1 / /bad\\0xx rw - tmpfs tmpfs rw\n'):
             with self.subTest(content=repr(content[:45])):
                 self.assertNotEqual(self.audit(content).returncode, 0)
 
