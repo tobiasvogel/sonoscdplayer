@@ -175,6 +175,10 @@ int main(int argc, char **argv) {
         fputs("exitrd: only executable as shutdown PID 1\n", stderr);
         return 2;
     }
+    /* Console-only diagnostics for an externally captured shutdown log.
+     * Do not write to the old root or claim storage safety. */
+    fprintf(stderr, "sonoscd-exitrd: entered PID1 verb=%s safe-approved=%d\n",
+            argv[1], SONOSCD_EXITRD_SAFE_APPROVED);
     bool poweroff;
     int action = system_action(argv[1], &poweroff);
     if (access("/proc/self/mountinfo", R_OK) != 0 &&
@@ -183,10 +187,11 @@ int main(int argc, char **argv) {
         perror("exitrd: proc mount");
     sync();
     if (release_oldroot() == 0) {
+        fputs("sonoscd-exitrd: oldroot_unmount=success\n", stderr);
         sync();
         if (poweroff) show_post_unmount();
     } else {
-        fprintf(stderr, "exitrd: root not fully released: %s\n", strerror(errno));
+        fprintf(stderr, "sonoscd-exitrd: oldroot_unmount=failed errno=%d (%s)\n", errno, strerror(errno));
         sync();
     }
     /* No filesystem writes intentionally issued after the post-unmount frame. */
