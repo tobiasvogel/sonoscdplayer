@@ -8,10 +8,10 @@
 #include "display_backend.h"
 #include "shutdown_frames.h"
 
-static const char *phase_for_action(const char *verb, int exitrd_present) {
+static const char *phase_for_action(const char *verb) {
     if (strcmp(verb, "reboot") == 0)
         return "reboot";
-    if (strcmp(verb, "poweroff") == 0 && !exitrd_present)
+    if (strcmp(verb, "poweroff") == 0)
         return "final";
     /* halt, kexec and unsupported actions must not claim poweroff. */
     return NULL;
@@ -23,11 +23,11 @@ int main(int argc, char **argv) {
         fprintf(stderr, "usage: %s poweroff|reboot|halt|kexec [--dry-run]\n", argv[0]);
         return 2;
     }
-    /* An executable exitrd takes ownership of the late poweroff frame.
-     * As in the legacy shell hook, reboot remains this hook's responsibility.
-     * No real exitrd is written or executed here. */
+    /* Always draw the last-resort final frame before exitrd handover.
+     * A working exitrd can redraw after releasing oldroot. If its launch
+     * fails, the earlier frame is still visible. Not a storage-safe claim. */
     int exitrd_present = access("/run/initramfs/shutdown", X_OK) == 0;
-    const char *phase = phase_for_action(argv[1], exitrd_present);
+    const char *phase = phase_for_action(argv[1]);
     if (argc == 3) {
         printf("action=%s phase=%s exitrd_present=%d backend=%s safe-approved=0\n",
                argv[1], phase ? phase : "none",
