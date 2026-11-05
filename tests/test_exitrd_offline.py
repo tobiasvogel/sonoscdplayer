@@ -92,6 +92,57 @@ class ExitrdOfflineTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('oldroot_mounts=2 oldroot_present=1', result.stdout)
 
+    def audit(self, content):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'mountinfo'
+            path.write_text(content)
+            return self.call('--audit-mountinfo', str(path))
+
+    def test_mount_audit_all_volatile_still_denies_safety(self):
+        info = (
+            '1 0 0:1 / / rw - tmpfs tmpfs rw\\n'
+            '2 1 0:2 / /proc rw - proc proc rw\\n'
+            '3 1 0:3 / /dev rw - devtmpfs devtmpfs rw\\n'
+        )
+        result = self.audit(info)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('persistent_mounts=0 oldroot_mounts=0 safe-eligible=0',
+                      result.stdout)
+
+    def test_mount_audit_detects_residual_storage_and_oldroot(self):
+        info = (
+            '1 0 0:1 / / rw - tmpfs tmpfs rw\\n'
+            '2 1 179:2 / /oldroot rw - ext4 /dev/mmcblk0p2 rw\\n'
+            '3 2 179:1 / /oldroot/boot rw - vfat /dev/mmcblk0p1 rw\\n'
+        )
+        result = self.audit(info)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('persistent_mounts=2 oldroot_mounts=2 safe-eligible=0',
+                      result.stdout)
+
+    def test_mount_audit_unknown_filesystem_is_conservatively_persistent(self):
+        info = ('1 0 0:1 / / rw - tmpfs tmpfs rw\\n'
+                '2 1 0:42 / /mystery ro - surprise_fs none ro\\n')
+        result = self.audit(info)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('persistent_mounts=1 oldroot_mounts=0 safe-eligible=0',
+                      result.stdout)
+
+    def test_mount_audit_rejects_malformed_or_missing_input(self):
+        for content in ('broken\\n',
+                        '1 0 0:1 / / rw - tmpfs\\n',
+                        '1 0 0:1 / / rw - tmpfs tmpfs\\n',
+                        '1 0 0:1 / /bad\\0xx rw - tmpfs tmpfs rw\\n'):
+            with self.subTest(content=repr(content[:45])):
+                self.assertNotEqual(self.audit(content).returncode, 0)
+
+    def test_mount_audit_ignores_similar_non_oldroot_prefix(self):
+        result = self.audit(
+            '1 0 0:1 / / rw - tmpfs tmpfs rw\\n'
+            '2 1 0:2 / /oldroot-other rw - tmpfs tmpfs rw\\n')
+        self.assertEqual(result.returncode, 0)
+        self.assertIn('oldroot_mounts=0 safe-eligible=0', result.stdout)
+
     def test_missing_oldroot_is_not_accepted(self):
         result = self.probe('1 0 8:1 / / rw - ext4 /dev/sda1 rw\n')
         self.assertEqual(result.returncode, 0)
