@@ -179,37 +179,10 @@ This confirms the **offline regression suite and binary build flags**, not the t
 
 The tested activation was RAM-only and nonpersistent; a normal reboot removes it. No permanent feature configuration or systemd staging unit was enabled. `main` remains unchanged. Next design task: an explicit default-off operator-controlled configuration for experimental staging with opt-in risk acknowledgement, rollback and observability, without converting the experimental frame into a safety claim.
 
-## Default-off local configuration for opt-in experimental screen
+## Configuration decision correction — 2026-11-05
 
-The repository now ships the sample `config/shutdown.ini`:
+The stand-alone `config/shutdown.ini` and `tools/exitrd_config.py` implementation was withdrawn as inconsistent with SonosCDPlayer's existing `config.toml` convention. It would duplicate the project's configuration mechanism and introduce an unexpected file format. No INI file should be created on the Raspberry Pi. The `test_exitrd_config.py` tests for that rejected helper were also removed.
 
-```ini
-[shutdown]
-experimental_safe_screen = false
-```
+**Pending:** Locate and inspect the actual deployed TOML configuration path, existing parser, schema/default handling, and service start-up behavior before integrating the experimental shutdown option in the established configuration. A proposed default is `[shutdown] experimental_safe_screen = false`, but this is **not yet implemented**; do not describe it as available. Keep shutdown staging as a separate, explicit, opt-in administrative operation with SHA checking and risk acknowledgements, not a side effect of merely loading configuration.
 
-A standalone helper, `tools/exitrd_config.py`, reads the **operator-owned local override** `/etc/sonoscdplayer/shutdown.ini`; a missing override means **disabled**. It does not read from, or alter, the player service's configuration. It does not install a unit or stage anything on boot. The repository template is unchanged by local opt-in, keeping `git pull --ff-only` possible.
-
-For an **operator-controlled local opt-in** (this example only creates a config file; it does not arm exitrd or shut down the Pi):
-
-```sh
-sudo install -d -m 0755 /etc/sonoscdplayer
-sudo install -m 0644 config/shutdown.ini /etc/sonoscdplayer/shutdown.ini
-sudoedit /etc/sonoscdplayer/shutdown.ini
-# set experimental_safe_screen = true
-python3 tools/exitrd_config.py
-```
-
-After explicitly building `build/exitrd-unverified-safe/shutdown` with the separate risk-acknowledged build, a **separate** manually invoked, once-per-boot activation requires the exact file SHA-256 and **both** acknowledgement tokens:
-
-```sh
-SHA=$(sha256sum build/exitrd-unverified-safe/shutdown | awk '{print $1}')
-sudo python3 tools/exitrd_config.py --activate-once \
-  --expected-sha256 "$SHA" \
-  --acknowledge I_UNDERSTAND_EXITRD_CAN_PREVENT_CLEAN_SHUTDOWN \
-  --acknowledge-risk I_ACCEPT_EARLY_SAFE_SCREEN_RISK
-```
-
-Status `python3 tools/exitrd_config.py` is read-only; the helper refuses unknown/duplicate INI options, symlink configs, missing risk acknowledgements, wrong binary mode, SHA mismatch and existing exitrd staging. No action ever calls poweroff. For an armed one-boot exitrd, `sudo python3 tools/exitrd_config.py --deactivate` requests rollback via the existing digest-checked `exitrd_once.disarm()` method, **even if the INI is disabled or corrupted**. To disable future experimental use, set `experimental_safe_screen = false` or remove the local override. Disabling the config is not an automatic disarm for a currently staged one-boot exitrd; invoke `--deactivate` before shutdown if already armed.
-
-**Danger:** This config only permits a manually staged experimental binary, never enables a verified safety status. Its existing `Safe to unplug` bitmap appears **before** the actual kernel poweroff syscall, so the user must still wait for the **finished ACT LED shutdown sequence** before disconnecting power. The option is an experiment under operator responsibility, not a reliable early-unplug signal. No persistent auto-arming has been introduced, and `main` stays untouched. The new configuration helper and tests must be validated offline on the Pi before a new supervised activation.
+Previously tested opt-in manual build and `exitrd_once.py` one-boot activation remain available and unchanged. `safe-approved=0` and ACT LED completion requirements remain unchanged. `main` remains untouched.
