@@ -29,10 +29,13 @@ class LocalizationTests(unittest.TestCase):
     def test_all_translations_format_with_matching_fields(self):
         import string
         fmt=string.Formatter()
-        for key in catalog('en'):
-            en={name for _,name,_,_ in fmt.parse(catalog('en')[key]) if name}
-            de={name for _,name,_,_ in fmt.parse(catalog('de')[key]) if name}
-            self.assertEqual(en,de,key)
+        en_catalog=catalog('en')
+        for lang in available_languages():
+            self.assertEqual(set(en_catalog),set(catalog(lang)),lang)
+            for key in en_catalog:
+                en={name for _,name,_,_ in fmt.parse(en_catalog[key]) if name}
+                other={name for _,name,_,_ in fmt.parse(catalog(lang)[key]) if name}
+                self.assertEqual(en,other,(lang,key))
 
     def test_unknown_language_falls_back_to_english(self):
         self.assertEqual(Translator('zz').tr('menu.back'),'Back')
@@ -75,6 +78,50 @@ class LocalizationTests(unittest.TestCase):
         menu.event('encoder_sw','pressed')
         self.assertEqual(menu.language,'en')
         self.assertFalse(menu.language_picker)
+
+    def test_new_locale_file_is_available_without_python_registration(self):
+        from sonos_ui.i18n import translator
+        from integrations.outputs.oled_status import status_frame
+        from unittest.mock import patch as mock_patch
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp)
+            original=__import__('importlib').resources.files('sonos_ui.i18n.locales')
+            for lang in ('de','en'):
+                (directory/(lang+'.json')).write_text(
+                    original.joinpath(lang+'.json').read_text(encoding='utf8'),
+                    encoding='utf8')
+            es=dict(catalog('en'))
+            es.update({'language.name':'Español','menu.back':'Atrás',
+                       'status.marked_short':'{count} marcados'})
+            (directory/'es.json').write_text(json.dumps(es),encoding='utf8')
+            with mock_patch.object(translator.resources,'files',return_value=directory):
+                translator.available_languages.cache_clear()
+                translator.catalog.cache_clear()
+                try:
+                    self.assertEqual(translator.available_languages(),('de','en','es'))
+                    self.assertEqual(UIConfig(language='es').language,'es')
+                    menu=InteractiveMenu(discover=lambda *,timeout: speakers(),language='de')
+                    self.assertEqual(menu.languages,('de','en','es'))
+                    menu.event('encoder_sw','pressed',now=0)
+                    menu.state=menu.state.update(speakers())
+                    menu.state=replace(menu.state,focus=2)
+                    menu.event('encoder_sw','pressed',now=1)
+                    menu.event('encoder','right')
+                    menu.event('encoder','right')
+                    menu.event('encoder_sw','pressed')
+                    self.assertEqual(menu.language,'es')
+                    self.assertEqual(menu.renderer.tr('menu.back'),'Atrás')
+                    self.assertEqual(Renderer(language='es').tr('status.marked_short',count=2),
+                                     '2 marcados')
+                    self.assertEqual(len(status_frame(error='offline',language='es').data),8192)
+                finally:
+                    translator.available_languages.cache_clear()
+                    translator.catalog.cache_clear()
+
+    def test_configured_language_is_initial_menu_language(self):
+        menu=InteractiveMenu(discover=lambda *,timeout: speakers(),language='en')
+        self.assertEqual(menu.language,'en')
+        self.assertEqual(menu.language_focus,menu.languages.index('en'))
 
     def test_connect_does_not_open_menu(self):
         menu=InteractiveMenu(discover=lambda *,timeout: speakers())
