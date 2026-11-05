@@ -68,3 +68,27 @@ This is **not** a live eligibility check: on a normally booted Pi it will correc
 **Critical hard lock:** `SONOSCD_EXITRD_SAFE_APPROVED=1` now produces a compile-time error, and the C renderer no longer selects `shutdown_frame_safe`. The conservative gate returns `safe-eligible=0` even when all the listed mounts are volatile. Do not interpret a zero persistent-mount count as storage-level durability evidence. It is possible for writable block-device handles, in-flight I/O, controller caches, and failures in the physical medium to evade a mount-only inspection. Filesystem and block-layer ordering/flush semantics, active device holders, boot media layout, and failure behavior require separate criteria and tests before considering any future safe graphic.
 
 The prior two supervised poweroffs tested the **earlier** binaries; this new audit change has not been hardware-tested and must not be activated until its offline tests pass. `main` remains untouched. No persistent exitrd activation was added.
+
+## Shutdown evidence state machine (offline regression gate)
+
+The experimental exitrd has an explicit **evidence state machine**, which records three independent results in strict order:
+
+- `unmount=pending|ok|failed`
+- `audit=skipped|clean|dirty|failed` (the audit is skipped if oldroot unmount failed)
+- `poweroff=not-requested|requested|returned-error`
+
+The kernel `reboot(2)` poweroff/halt/reboot request normally does not return after success; a return is explicitly classified as failure. `poweroff=requested` does **not** mean that physical power has been removed. These states are emitted only to the shutdown console at runtime, not persisted to the old root filesystem.
+
+Use the no-side-effect offline reducer simulator for regression cases:
+
+```sh
+build/exitrd/shutdown --simulate-safety ok clean requested
+build/exitrd/shutdown --simulate-safety failed clean requested
+build/exitrd/shutdown --simulate-safety ok dirty requested
+build/exitrd/shutdown --simulate-safety ok failed requested
+build/exitrd/shutdown --simulate-safety ok clean returned-error
+```
+
+All combinations must report `safe-eligible=0`. The simulator does not unmount, render, activate exitrd, sync devices, reboot, or power off. The installed static C shutdown fallback and final OLED frame remain unchanged. The compile-time lock rejects `SONOSCD_EXITRD_SAFE_APPROVED=1` for any build. The prior successful hardware validation applies to the earlier exitrd code, **not** this new untested build.
+
+This is an evidence tracker, not an authorization algorithm. Outstanding separate evidence: SD card firmware/controller persistence, device holder behavior beyond mount inventory, errors from sync/writeback, actual power state, and adverse shutdown cases. Do not make a safe-unplug claim based on successful unmount/audit alone.
