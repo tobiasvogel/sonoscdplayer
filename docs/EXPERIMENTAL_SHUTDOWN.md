@@ -22,3 +22,5 @@ Die Installation erstellt das benötigte Binary, aktiviert die Option in `src/co
 Für einen einzelnen Shutdown ohne dauerhafte Installation gibt es weiterhin `--enable-once` (nur wenn `[service].experimental_safe_screen = true` in `src/config.toml` gesetzt ist) und `--disable`.
 
 **Voraussetzung:** Unterstützter Raspberry Pi mit angeschlossenem SSD1327-OLED und den benötigten SPI/GPIO-Geräten.
+
+**Hardwaretest (05.11.2026):** Installation und automatische Wiederaktivierung nach einem vollständigen Aus-/Einschaltzyklus erfolgreich geprüft.
