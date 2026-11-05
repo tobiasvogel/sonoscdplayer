@@ -186,3 +186,36 @@ The stand-alone `config/shutdown.ini` and `tools/exitrd_config.py` implementatio
 **Pending:** Locate and inspect the actual deployed TOML configuration path, existing parser, schema/default handling, and service start-up behavior before integrating the experimental shutdown option in the established configuration. A proposed default is `[shutdown] experimental_safe_screen = false`, but this is **not yet implemented**; do not describe it as available. Keep shutdown staging as a separate, explicit, opt-in administrative operation with SHA checking and risk acknowledgements, not a side effect of merely loading configuration.
 
 Previously tested opt-in manual build and `exitrd_once.py` one-boot activation remain available and unchanged. `safe-approved=0` and ACT LED completion requirements remain unchanged. `main` remains untouched.
+
+## Existing player TOML integration (default off)
+
+Shutdown display selection belongs in **`config/player.example.toml`**, in the existing `[service]` table beside `shutdown_policy`, **not** in `ui.example.toml` or any additional INI file:
+
+```toml
+[service]
+shutdown_policy = "stop_owned"
+experimental_safe_screen = false
+```
+
+The sample defaults to false. Older deployed player TOML files without this option also default to false. The existing service/player loader is **not** changed to arm anything; a local `true` only enables a separate **explicit administrator action**. No new service, auto-install, recurring boot staging, or automatic poweroff is introduced. The separate `tools/exitrd_player_config.py` helper accepts the location of the actual deployed player TOML via mandatory `--config`, avoiding guesses about where the installation stores it. Python 3.11+ `tomllib` strictly parses the file; missing/symlinked/invalid files and non-boolean values fail closed.
+
+After updating your *actual* player TOML with `experimental_safe_screen = true` under `[service]` and building the separate acknowledged experimental artifact, inspect the selection read-only with:
+
+```sh
+python3 tools/exitrd_player_config.py --config /ACTUAL/PATH/player.toml
+```
+
+For a deliberately approved **one-boot activation only**:
+
+```sh
+SHA=$(sha256sum build/exitrd-unverified-safe/shutdown | awk '{print $1}')
+sudo python3 tools/exitrd_player_config.py \
+  --config /ACTUAL/PATH/player.toml \
+  --activate-once --expected-sha256 "$SHA" \
+  --acknowledge I_UNDERSTAND_EXITRD_CAN_PREVENT_CLEAN_SHUTDOWN \
+  --acknowledge-risk I_ACCEPT_EARLY_SAFE_SCREEN_RISK
+```
+
+The helper checks the expected binary's offline mode string (`safe-approved=0 diagnostic=0 unverified-safe=1 delay-seconds=3`), the real ELF/SHA/host preflight through the established once-helper, then stages only into RAM for one shutdown. To roll back before shutdown: `sudo python3 tools/exitrd_player_config.py --config /ACTUAL/PATH/player.toml --deactivate`; rollback is possible even if the TOML was removed/corrupted. Editing the player TOML back to false by itself does not undo an already staged exitrd.
+
+**Important:** This is a manual administration interface, not yet integration with the player's live settings UI or its normal config loader. The opt-in `Safe to unplug` bitmap is still drawn *before* the final kernel poweroff syscall. Wait until the ACT LED's documented shutdown sequence has fully ended before disconnecting power. The option does not create a verified safe-to-unplug state. The new helper and tests are not yet accepted on the Pi.
