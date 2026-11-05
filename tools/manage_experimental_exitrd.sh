@@ -12,10 +12,15 @@ usage() {
 Usage:
   sh tools/manage_experimental_exitrd.sh --status [--config /path/to/player.toml]
   sh tools/manage_experimental_exitrd.sh --enable-once [--config /path/to/player.toml]
-  sh tools/manage_experimental_exitrd.sh --install\n  sh tools/manage_experimental_exitrd.sh --uninstall\n  sh tools/manage_experimental_exitrd.sh --disable
+  sh tools/manage_experimental_exitrd.sh --install
+  sh tools/manage_experimental_exitrd.sh --uninstall
+  sh tools/manage_experimental_exitrd.sh --disable
 
 By default the script uses src/config.toml (the player service config).
-The --install option sets [service].experimental_safe_screen = true in src/config.toml,\nbuilds a verified binary, and installs a root-owned boot service. It will re-arm\nat each boot until --uninstall disables it. --enable-once remains RAM-only.\nThe script never initiates shutdown or reboot.
+The --install option sets [service].experimental_safe_screen = true in src/config.toml,
+builds a verified binary, and installs a root-owned boot service. It will re-arm
+at each boot until --uninstall disables it. --enable-once remains RAM-only.
+The script never initiates shutdown or reboot.
 WARNING: The OLED safe graphic appears BEFORE kernel poweroff. Do not unplug
 until the Raspberry Pi ACT LED has completed its final shutdown sequence.
 EOF
