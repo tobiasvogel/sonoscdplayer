@@ -69,7 +69,12 @@ class ExitrdOfflineTests(unittest.TestCase):
         self.assertIn('const uint8_t *frame = shutdown_frame_final;', source)
         self.assertIn('#if SONOSCD_EXITRD_SAFE_APPROVED != 0', source)
         self.assertIn('#error Safe-to-unplug rendering is locked', source)
-        self.assertNotIn('const uint8_t *frame = shutdown_frame_safe;', source)
+        self.assertIn('#if SONOSCD_EXITRD_UNVERIFIED_SAFE', source)
+        self.assertIn('const uint8_t *frame = shutdown_frame_safe;', source)
+        self.assertIn('if (experimental_frame_allowed(&evidence, poweroff))', source)
+        self.assertIn('e->unmount == UNMOUNT_OK', source)
+        self.assertIn('e->audit == AUDIT_CLEAN', source)
+        self.assertIn('if (experimental_delay()) show_experimental_frame();', source)
         self.assertIn('#if SONOSCD_EXITRD_DIAGNOSTIC', source)
         self.assertIn('if (poweroff) show_post_unmount();', source)
         self.assertIn('if (release_oldroot() == 0)', source)
@@ -149,7 +154,12 @@ class ExitrdOfflineTests(unittest.TestCase):
         self.assertIn('evidence_power_returned(&evidence);', source)
         self.assertNotIn('POWER_COMPLETED', source)
         self.assertIn('return false; /* controller durability', source)
-        self.assertNotIn('const uint8_t *frame = shutdown_frame_safe;', source)
+        self.assertIn('#if SONOSCD_EXITRD_UNVERIFIED_SAFE', source)
+        self.assertIn('const uint8_t *frame = shutdown_frame_safe;', source)
+        self.assertIn('if (experimental_frame_allowed(&evidence, poweroff))', source)
+        self.assertIn('e->unmount == UNMOUNT_OK', source)
+        self.assertIn('e->audit == AUDIT_CLEAN', source)
+        self.assertIn('if (experimental_delay()) show_experimental_frame();', source)
 
     def test_mount_audit_all_volatile_still_denies_safety(self):
         info = (
