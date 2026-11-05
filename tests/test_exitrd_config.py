@@ -112,7 +112,6 @@ class ExitrdConfigTests(unittest.TestCase):
         source = (ROOT / 'tools/exitrd_config.py').read_text()
         self.assertNotIn('systemctl', source)
         self.assertNotIn('SYS_reboot', source)
-        self.assertNotIn('arm_once(payload, digest, preserved)\n        return', '')
         self.assertIn('if not args.activate_once:', source)
         self.assertIn('exitrd_once.arm_once(payload, digest, preserved)', source)
 
