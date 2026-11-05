@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <sys/mount.h>
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -30,6 +31,19 @@
 #if SONOSCD_EXITRD_DIAGNOSTIC && SONOSCD_EXITRD_SAFE_APPROVED
 #error Diagnostic display must never be combined with safe-approved
 #endif
+
+/* This is NOT a verified completion signal. A human must still wait for
+ * the ACT LED shutdown pattern to finish before disconnecting power. */
+#ifndef SONOSCD_EXITRD_UNVERIFIED_SAFE
+#define SONOSCD_EXITRD_UNVERIFIED_SAFE 0
+#endif
+#if SONOSCD_EXITRD_UNVERIFIED_SAFE != 0 && SONOSCD_EXITRD_UNVERIFIED_SAFE != 1
+#error SONOSCD_EXITRD_UNVERIFIED_SAFE must be 0 or 1
+#endif
+#if SONOSCD_EXITRD_UNVERIFIED_SAFE && SONOSCD_EXITRD_DIAGNOSTIC
+#error Experimental safe image cannot be combined with diagnostics
+#endif
+#define SONOSCD_EXITRD_EXPERIMENT_DELAY_SECONDS 3
 
 #define EXITRD_MAX_MOUNTS 512
 #define EXITRD_MAX_LINE (64u * 1024u)
@@ -309,6 +323,39 @@ static void show_post_unmount(void) {
         fputs("exitrd: final OLED frame unavailable\n", stderr);
 }
 
+/* The delay is an opt-in visual buffer before the kernel poweroff syscall.
+ * It CANNOT prove the ACT LED sequence has completed (it has not yet started).
+ * Return false on interrupted sleep: do not draw an unverified safe frame. */
+static bool experimental_delay(void) {
+#if SONOSCD_EXITRD_UNVERIFIED_SAFE
+    struct timespec duration = {SONOSCD_EXITRD_EXPERIMENT_DELAY_SECONDS, 0};
+    return nanosleep(&duration, NULL) == 0;
+#else
+    return false;
+#endif
+}
+
+static bool experimental_frame_allowed(const struct shutdown_evidence *e,
+                                       bool poweroff) {
+#if SONOSCD_EXITRD_UNVERIFIED_SAFE
+    return poweroff && e->unmount == UNMOUNT_OK &&
+           e->audit == AUDIT_CLEAN;
+#else
+    (void)e;
+    (void)poweroff;
+    return false;
+#endif
+}
+
+static void show_experimental_frame(void) {
+#if SONOSCD_EXITRD_UNVERIFIED_SAFE
+    const uint8_t *frame = shutdown_frame_safe;
+    const size_t length = sizeof(shutdown_frame_safe);
+    if (!backend_matches(length) || shutdown_display_backend.show(frame, length) != 0)
+        fputs("exitrd: experimental safe frame unavailable\n", stderr);
+#endif
+}
+
 static int system_action(const char *verb, bool *poweroff) {
     *poweroff = false;
     if (strcmp(verb, "poweroff") == 0) { *poweroff = true; return LINUX_REBOOT_CMD_POWER_OFF; }
@@ -321,9 +368,11 @@ static int system_action(const char *verb, bool *poweroff) {
 
 int main(int argc, char **argv) {
     if (argc == 2 && strcmp(argv[1], "--check") == 0) {
-        printf("exitrd: offline check; backend=%s format=%s safe-approved=%d diagnostic=%d\n",
+        printf("exitrd: offline check; backend=%s format=%s safe-approved=%d diagnostic=%d unverified-safe=%d delay-seconds=%d\n",
                shutdown_display_backend.name, shutdown_display_backend.pixel_format,
-               SONOSCD_EXITRD_SAFE_APPROVED, SONOSCD_EXITRD_DIAGNOSTIC);
+               SONOSCD_EXITRD_SAFE_APPROVED, SONOSCD_EXITRD_DIAGNOSTIC,
+               SONOSCD_EXITRD_UNVERIFIED_SAFE,
+               SONOSCD_EXITRD_UNVERIFIED_SAFE ? SONOSCD_EXITRD_EXPERIMENT_DELAY_SECONDS : 0);
         return 0;
     }
     if (argc == 3 && strcmp(argv[1], "--probe-mountinfo") == 0) {
@@ -374,6 +423,11 @@ int main(int argc, char **argv) {
         }
         sync();
         if (poweroff) show_post_unmount();
+        if (experimental_frame_allowed(&evidence, poweroff)) {
+            fputs("sonoscd-exitrd: WARNING unverified safe graphic; NOT a completed poweroff indication\n", stderr);
+            if (experimental_delay()) show_experimental_frame();
+            else fputs("sonoscd-exitrd: delay interrupted; retaining final screen\n", stderr);
+        }
     } else {
         int saved_errno = errno;
         evidence_unmount(&evidence, false);
@@ -387,6 +441,8 @@ int main(int argc, char **argv) {
     /* No filesystem writes intentionally issued after the post-unmount frame. */
     syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, action, NULL);
     evidence_power_returned(&evidence);
+    /* Repaint normal final if the syscall returned after an experimental image. */
+    if (poweroff) show_post_unmount();
     fputs("sonoscd-exitrd: ", stderr);
     evidence_print(stderr, &evidence);
     perror("exitrd: reboot syscall failed");
