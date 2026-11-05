@@ -162,8 +162,12 @@ class DiscMonitorTests(unittest.TestCase):
         m.path_exists = lambda _: exists[0]
         self.assertTrue(m.poll(c))
         self.assertEqual(c.disc_status.mode, DiscMode.NO_DRIVE)
+        first = c.disc_status.snapshot()
+        self.assertFalse(m.poll(c))  # repeated missing path is not a transition
+        self.assertEqual(c.disc_status.snapshot(), first)
         exists[0] = True
-        self.assertFalse(m.poll(c))
+        self.assertFalse(m.poll(c))  # same node is still unverified after reconnect
+        self.assertEqual(c.disc_status.snapshot(), first)
         self.assertEqual(counts['media'], 0)
         self.assertEqual(c.disc_status.mode, DiscMode.NO_DRIVE)
 
@@ -173,6 +177,10 @@ class DiscMonitorTests(unittest.TestCase):
         m.identity = object()
         self.assertTrue(m.poll(c))
         self.assertEqual(c.disc_status.mode, DiscMode.NO_DRIVE)
+        status = c.disc_status.snapshot()
+        self.assertIn('verified identity', status['error'])
+        self.assertFalse(m.poll(c))  # no repeated status changes or media reads
+        self.assertEqual(c.disc_status.snapshot(), status)
         self.assertEqual(counts['media'], 0)
 
     def test_ready_disc_not_probed_when_stream_owns_session(self):
