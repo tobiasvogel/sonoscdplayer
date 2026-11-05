@@ -18,7 +18,6 @@ import sys
 import tempfile
 import tomllib
 
-from exitrd_player_config import enabled_from_player_config
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL = Path('/usr/local/libexec/sonoscdplayer-exitrd')
@@ -130,6 +129,11 @@ def install(expected: str):
         write_config(True)
         command('systemctl', 'daemon-reload')
         command('systemctl', 'enable', '--now', NAME)
+        from exitrd_once import LIVE, MARKER, require_host, is_mountpoint
+        if (not is_mountpoint(LIVE, require_host()) or
+                not MARKER.is_file() or
+                MARKER.read_text() != f'sha256={expected}\\n'):
+            raise InstallError('boot stager did not confirm the expected RAM exitrd')
         print('INSTALLED and RAM-staged; automatically re-armed on future boots.')
         print('NO POWEROFF TRIGGERED. Wait for ACT LED after any later shutdown.')
     except BaseException:
@@ -139,6 +143,12 @@ def install(expected: str):
             UNIT.unlink()
         subprocess.run(['systemctl', 'daemon-reload'], check=False, timeout=20)
         try:
+            from exitrd_once import LIVE, MARKER, require_host, is_mountpoint, disarm
+            if is_mountpoint(LIVE, require_host()) and MARKER.is_file():
+                disarm()
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+        try:
             write_config(False)
         except (OSError, InstallError, tomllib.TOMLDecodeError):
             pass
@@ -147,7 +157,8 @@ def install(expected: str):
 
 def remove():
     # Always disable autostaging before attempting any RAM cleanup.
-    command('systemctl', 'disable', NAME)
+    if UNIT.exists() or UNIT.is_symlink():
+        command('systemctl', 'disable', NAME)
     if UNIT.exists() or UNIT.is_symlink():
         safe_remove_file(UNIT)
     command('systemctl', 'daemon-reload')
