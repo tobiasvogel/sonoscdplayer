@@ -215,6 +215,25 @@ class ExitrdOnceContracts(unittest.TestCase):
                     staging.disarm()
                 command.assert_not_called()
 
+    def test_staging_creates_root_handover_mountpoints(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as folder:
+            live = Path(folder) / "initramfs"
+            live.mkdir()
+            marker = Path(folder) / "marker"
+            payload = b"mocked binary"
+            digest = hashlib.sha256(payload).hexdigest()
+            with patch.object(staging, "LIVE", live), \
+                 patch.object(staging, "MARKER", marker), \
+                 patch.object(staging, "run_command"), \
+                 patch.object(staging.os, "geteuid", return_value=0):
+                staging.arm_once(payload, digest, {"fsck-root": b""})
+                for name in ("oldroot", "dev", "proc", "sys", "run"):
+                    with self.subTest(path=name):
+                        self.assertTrue((live / name).is_dir())
+                self.assertEqual((live / "shutdown").read_bytes(), payload)
+                self.assertEqual((live / "fsck-root").read_bytes(), b"")
+
     def test_activation_dispatch_can_be_mocked(self):
         with patch.object(staging, "precheck", return_value=(b"payload", "f" * 64, {})):
             with patch.object(staging, "arm_once") as arm:
