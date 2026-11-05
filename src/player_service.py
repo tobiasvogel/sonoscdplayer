@@ -23,6 +23,9 @@ import time
 import tomllib
 
 from cd_toc import read_toc
+from disc_startup import inspect_initial_disc
+from disc_monitor import DiscMonitor
+from player_state import PlayerState, Mode
 from drive_power import DrivePowerManager, load_config
 from drive_identity import usb_identity, recovered_device
 from player_controller import Controller, ProcessServer, routed_source_ip
@@ -129,6 +132,19 @@ def handle_command(controller, request, selection=None):
         return response(controller, ok=False, error=f'{type(exc).__name__}: {exc}')
 
 
+def disc_allows_new_play(controller, request, monitor):
+    """Only explicit new PLAY needs physical TOC revalidation.
+
+    PAUSE/RESUME and status remain side-effect free. A changed but
+    successfully validated CD keeps the explicit PLAY authorized; unsafe
+    or unreadable media never contacts Sonos on this path.
+    """
+    return (monitor is None or not isinstance(request, dict)
+            or request.get('command') not in ('play', 'play-selected', 'playpause')
+            or controller.state.mode != Mode.STOPPED
+            or monitor.validate_before_play(controller))
+
+
 class StatusPublisher:
     """Immutable cached read-only response; NEVER authorizes a Sonos action."""
     def __init__(self, controller, power=None):
@@ -199,7 +215,7 @@ def restore_drive_for_explicit_action(controller, power, original_id, original_t
     return True
 
 
-def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None):
+def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None):
     path = Path(socket_path).expanduser().absolute()
     if not path.parent.is_dir():
         raise ValueError('socket parent directory does not exist')
@@ -225,7 +241,15 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
         # Only this one worker ever touches controller, Sonos, reader and drive power.
         with concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='player-control') as executor:
             def operate(request):
-                if (drive_toc is not None and isinstance(request, dict)
+                # Check the *physical* TOC immediately before a new PLAY. The
+                # 3-second cached monitor status must not authorize stale media.
+                if not disc_allows_new_play(controller, request, disc_monitor):
+                    reply = response(controller, ok=False,
+                                     error='disc unavailable, unreadable or unverified; inspect status before PLAY')
+                    publisher.publish(controller, power)
+                    return reply
+                if (disc_monitor is None and drive_toc is not None
+                        and isinstance(request, dict)
                         and request.get('command') in ('play', 'play-selected', 'playpause', 'reset')):
                     try:
                         restore_drive_for_explicit_action(controller, power, drive_id, drive_toc)
@@ -241,10 +265,12 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
             # probing healthy drives and preserve the normal keepalive cadence.
             next_drive_recovery = 0.0
 
+            next_disc_check = 0.0
+
             def refresh():
-                nonlocal next_drive_recovery
+                nonlocal next_drive_recovery, next_disc_check, drive_toc
                 from player_state import Mode
-                if (drive_toc is not None and power is not None
+                if (disc_monitor is None and drive_toc is not None and power is not None
                         and controller.state.mode in (Mode.STOPPED, Mode.ERROR)
                         and not controller.owned_url and not controller.server.alive()
                         and not controller._joined and not controller._group_uncertain
@@ -257,13 +283,27 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     if (missing or changed) and now >= next_drive_recovery:
                         next_drive_recovery = now + max(10.0, power.config['interval'])
                         try:
-                            restore_drive_for_explicit_action(
-                                controller, power, drive_id, drive_toc)
+                            if restore_drive_for_explicit_action(
+                                    controller, power, drive_id, drive_toc) and disc_monitor is not None:
+                                disc_monitor.rebind_verified(controller.server.device)
                         except (OSError, RuntimeError, ValueError) as exc:
                             print(f'[drive] idle USB recovery deferred: {type(exc).__name__}: {exc}',
                                   flush=True)
                 controller.refresh()
-                if power is not None:
+                now = time.monotonic()
+                # Safe status inspection only. NEVER touch optical media while
+                # reader/stream/group ownership is attached.
+                if disc_monitor is not None and now >= next_disc_check:
+                    next_disc_check = now + 3.0
+                    try:
+                        changed = disc_monitor.poll(controller)
+                        if changed:
+                            drive_toc = disc_monitor.loaded_toc
+                            print(f'[disc] {controller.disc_status.mode.value}', flush=True)
+                    except (OSError, RuntimeError, ValueError) as exc:
+                        print(f'[disc] monitor deferred: {type(exc).__name__}: {exc}', flush=True)
+                if power is not None and (controller.disc_status is None or
+                                          controller.disc_status.mode.value == 'READY'):
                     power.tick(reader_active=controller.server.reader_active())
                 publisher.publish(controller, power)
 
@@ -339,10 +379,10 @@ def run(argv=None):
     shutdown_policy = 'stop_owned'
     try:
         refuse_existing_control_socket(ns.socket)
-        device = detect_drive(base) if ns.device == 'auto' else ns.device
-        toc = read_toc(device)
-        identity = usb_identity(device)
-        state = prepare_selection(toc, 1)
+        disc_status, toc = inspect_initial_disc(base, requested_device=ns.device)
+        device = disc_status.device or '/dev/sr0'  # placeholder, never opened without a READY TOC
+        identity = usb_identity(device) if disc_status.device is not None else None
+        state = prepare_selection(toc, 1) if toc is not None else PlayerState()
         with conf.open('rb') as handle:
             settings = tomllib.load(handle)
             shutdown_policy = settings.get('service', {}).get('shutdown_policy', 'stop_owned')
@@ -359,10 +399,29 @@ def run(argv=None):
                           ProcessServer(base, device, conf, ns.port,
                                         startup_prebuffer=startup_enabled,
                                         startup_timeout=float(startup_timeout)), route=routed_source_ip)
-        power = DrivePowerManager(device, load_config(conf))
-        power.start()
-        print('[M0.12b-r7] ready; no Sonos action until explicit PLAY', flush=True)
-        serve(ctrl, ns.socket, power=power, drive_id=identity, drive_toc=toc)
+        ctrl.disc_status = disc_status
+        # Never issue start/keepalive motor commands when no readable disc was
+        # selected. M0.19b will implement safe idle discovery and reloading.
+        if toc is not None:
+            power = DrivePowerManager(device, load_config(conf))
+            power.start()
+        print(f'[M0.19a] service ready; disc={disc_status.mode.value}; '
+              'no Sonos action until explicit PLAY', flush=True)
+        def on_verified_rebind(new_device):
+            # Same original USB serial, validated by DiscMonitor; only idle.
+            if power is not None:
+                power.rebind_device(new_device,
+                                    reader_active=ctrl.server.reader_active())
+            ctrl.server.device = new_device
+            print(f'[drive] verified USB identity rebind: {new_device}', flush=True)
+
+        monitor = (DiscMonitor(disc_status.device, identity,
+                               on_rebind=on_verified_rebind)
+                   if disc_status.device is not None else None)
+        if monitor is not None:
+            monitor.loaded_toc = toc  # verified startup TOC, never stale
+        serve(ctrl, ns.socket, power=power, drive_id=identity,
+              drive_toc=toc, disc_monitor=monitor)
     except KeyboardInterrupt:
         print('\n[M0.12b-r7] shutdown requested', flush=True)
     except Exception as exc:
