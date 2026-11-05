@@ -311,5 +311,65 @@ class ExitrdDiagnosticOfflineTests(unittest.TestCase):
             frames = (Path(directory) / 'shutdown_frames.h').read_text()
             self.assertNotIn('shutdown_frame_diagnostic', frames)
 
+
+class ExitrdUnverifiedSafeBuildTests(unittest.TestCase):
+    """Experimental early graphic must be deliberate, isolated and never 'approved'."""
+
+    def build(self, directory, **extra):
+        env = {**os.environ, 'BUILD_DIR': str(directory),
+               'EXITRD_DIAGNOSTIC': '0', 'EXITRD_UNVERIFIED_SAFE': '1', **extra}
+        return subprocess.run(['sh', str(ROOT / 'tools/build_exitrd.sh')],
+                              env=env, text=True, capture_output=True, timeout=40)
+
+    def test_unverified_build_requires_explicit_acknowledgement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.build(directory)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('BEFORE final kernel poweroff', result.stderr)
+            self.assertFalse((Path(directory) / 'shutdown').exists())
+
+    def test_unverified_build_is_not_diagnostic(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.build(
+                directory, EXITRD_DIAGNOSTIC='1',
+                EXITRD_UNVERIFIED_SAFE_ACK='I_ACCEPT_EARLY_SAFE_SCREEN_RISK')
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('cannot be combined', result.stderr)
+
+    def test_explicit_build_remains_unapproved_and_offline_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.build(
+                directory, EXITRD_UNVERIFIED_SAFE_ACK='I_ACCEPT_EARLY_SAFE_SCREEN_RISK')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('safe-approved=0', result.stdout)
+            self.assertIn('unverified-safe=1 delay-seconds=3', result.stdout)
+            self.assertIn('Do NOT unplug until ACT LED', result.stderr)
+            binary = Path(directory) / 'shutdown'
+            self.assertEqual(subprocess.run([str(binary), 'poweroff'],
+                            capture_output=True, timeout=5).returncode, 2)
+            self.assertIn('shutdown_frame_safe[8192]',
+                          (Path(directory) / 'shutdown_frames.h').read_text())
+
+    def test_normal_build_stays_unverified_safe_disabled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(['sh', str(ROOT / 'tools/build_exitrd.sh')],
+                env={**os.environ, 'BUILD_DIR': directory, 'EXITRD_DIAGNOSTIC': '0',
+                     'EXITRD_UNVERIFIED_SAFE': '0'},
+                text=True, capture_output=True, timeout=40)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('unverified-safe=0 delay-seconds=0', result.stdout)
+            self.assertIn('safe-approved=0', result.stdout)
+
+    def test_source_requires_clean_audit_and_reverts_after_syscall_failure(self):
+        source = (ROOT / 'src/shutdown/exitrd.c').read_text()
+        self.assertIn('e->unmount == UNMOUNT_OK', source)
+        self.assertIn('e->audit == AUDIT_CLEAN', source)
+        self.assertIn('return poweroff &&', source)
+        self.assertIn('if (experimental_delay()) show_experimental_frame();', source)
+        self.assertIn('if (poweroff) show_post_unmount();', source)
+        self.assertIn('evidence_power_returned(&evidence);', source)
+        self.assertIn('SONOSCD_EXITRD_EXPERIMENT_DELAY_SECONDS 3', source)
+
+
 if __name__ == '__main__':
     unittest.main()
