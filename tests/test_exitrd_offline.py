@@ -67,7 +67,9 @@ class ExitrdOfflineTests(unittest.TestCase):
     def test_normal_exitrd_uses_final_only_after_successful_poweroff_unmount(self):
         source = (ROOT / 'src/shutdown/exitrd.c').read_text()
         self.assertIn('const uint8_t *frame = shutdown_frame_final;', source)
-        self.assertIn('#elif SONOSCD_EXITRD_SAFE_APPROVED', source)
+        self.assertIn('#if SONOSCD_EXITRD_SAFE_APPROVED != 0', source)
+        self.assertIn('#error Safe-to-unplug rendering is locked', source)
+        self.assertNotIn('const uint8_t *frame = shutdown_frame_safe;', source)
         self.assertIn('#if SONOSCD_EXITRD_DIAGNOSTIC', source)
         self.assertIn('if (poweroff) show_post_unmount();', source)
         self.assertIn('if (release_oldroot() == 0)', source)
@@ -135,6 +137,12 @@ class ExitrdOfflineTests(unittest.TestCase):
                         '1 0 0:1 / /bad\0xx rw - tmpfs tmpfs rw\n'):
             with self.subTest(content=repr(content[:45])):
                 self.assertNotEqual(self.audit(content).returncode, 0)
+
+    def test_mount_audit_empty_inventory_never_authorizes_safety(self):
+        result = self.audit('')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('persistent_mounts=0 oldroot_mounts=0 safe-eligible=0',
+                      result.stdout)
 
     def test_mount_audit_ignores_similar_non_oldroot_prefix(self):
         result = self.audit(
