@@ -1,26 +1,26 @@
-# Experimentelle OLED-Abschaltanzeige
+# Experimental OLED Shutdown Screen
 
-Optionales Feature für SonosCDPlayer auf dem Raspberry Pi: Beim Ausschalten wird eine experimentelle „Safe to unplug“-Grafik angezeigt.
+Optional feature for SonosCDPlayer on a supported Raspberry Pi. It displays an experimental "Safe to unplug" graphic during shutdown.
 
-**Warnung:** Experimentell, Nutzung auf eigene Gefahr. Die Grafik erscheint technisch **vor** dem endgültigen Ausschalten. Erst nach der vollständig abgeschlossenen ACT-LED-Abschaltsequenz die Stromversorgung trennen. Die 3 Sekunden Verzögerung sind **keine** Sicherheitsgarantie.
+**Warning:** Experimental feature — use at your own risk. The graphic appears **before** the final kernel poweroff. **Do not disconnect power until the ACT LED has completed its shutdown blinking sequence.** The three-second delay is not a safety guarantee.
 
-Im Projektverzeichnis:
+From the project directory:
 
 ```sh
-# Status anzeigen
+# Check status
 sh tools/manage_experimental_exitrd.sh --status
 
-# Einmalig dauerhaft installieren (interaktive Bestätigung erforderlich)
+# Install persistently (interactive confirmation required)
 sh tools/manage_experimental_exitrd.sh --install
 
-# Vollständig deaktivieren und deinstallieren
+# Disable and uninstall
 sh tools/manage_experimental_exitrd.sh --uninstall
 ```
 
-Die Installation erstellt das benötigte Binary, aktiviert die Option in `src/config.toml` und richtet einen systemd-Dienst für die automatische Bereitstellung bei jedem Start ein. Die Deinstallation entfernt den Dienst und deaktiviert die Option wieder. **Keiner der Befehle führt einen Shutdown oder Neustart aus.**
+Installation builds the required binary, enables the option in `src/config.toml`, and installs a systemd service that prepares the feature at each startup. Uninstallation removes the service and disables the option. **These commands do not shut down or reboot the Raspberry Pi.**
 
-Für einen einzelnen Shutdown ohne dauerhafte Installation gibt es weiterhin `--enable-once` (nur wenn `[service].experimental_safe_screen = true` in `src/config.toml` gesetzt ist) und `--disable`.
+For one shutdown only, `--enable-once` and `--disable` remain available. One-time activation requires `[service].experimental_safe_screen = true` in `src/config.toml`.
 
-**Voraussetzung:** Unterstützter Raspberry Pi mit angeschlossenem SSD1327-OLED und den benötigten SPI/GPIO-Geräten.
+**Requirements:** Supported Raspberry Pi with an SSD1327 OLED and the required SPI/GPIO devices.
 
-**Hardwaretest (05.11.2026):** Installation und automatische Wiederaktivierung nach einem vollständigen Aus-/Einschaltzyklus erfolgreich geprüft.
+**Hardware verified (November 5, 2026):** Persistent installation and automatic re-arming after a full shutdown and power-on cycle were successfully tested.
