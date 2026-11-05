@@ -25,7 +25,7 @@ import tomllib
 from cd_toc import read_toc
 from disc_startup import inspect_initial_disc
 from disc_monitor import DiscMonitor
-from player_state import PlayerState
+from player_state import PlayerState, Mode
 from drive_power import DrivePowerManager, load_config
 from drive_identity import usb_identity, recovered_device
 from player_controller import Controller, ProcessServer, routed_source_ip
