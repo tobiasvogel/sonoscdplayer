@@ -23,7 +23,7 @@ class ExitrdConfigTests(unittest.TestCase):
         return path
 
     def test_shipped_default_is_disabled(self):
-        self.assertFalse(config.read_enabled())
+        self.assertFalse(config.read_enabled(config.TEMPLATE))
         self.assertIn('experimental_safe_screen = false', config.TEMPLATE.read_text())
 
     def test_missing_local_override_defaults_to_off(self):
