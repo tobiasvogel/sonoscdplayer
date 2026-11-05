@@ -17,8 +17,8 @@
 #ifndef SONOSCD_EXITRD_SAFE_APPROVED
 #define SONOSCD_EXITRD_SAFE_APPROVED 0
 #endif
-#if SONOSCD_EXITRD_SAFE_APPROVED != 0 && SONOSCD_EXITRD_SAFE_APPROVED != 1
-#error SONOSCD_EXITRD_SAFE_APPROVED must be 0 or 1
+#if SONOSCD_EXITRD_SAFE_APPROVED != 0
+#error Safe-to-unplug rendering is locked until independent durability evidence is implemented
 #endif
 
 #ifndef SONOSCD_EXITRD_DIAGNOSTIC
@@ -218,9 +218,6 @@ static void show_post_unmount(void) {
     /* Experimental verification only, NEVER a safe-to-unplug indicator. */
     const uint8_t *frame = shutdown_frame_diagnostic;
     const size_t length = sizeof(shutdown_frame_diagnostic);
-#elif SONOSCD_EXITRD_SAFE_APPROVED
-    const uint8_t *frame = shutdown_frame_safe;
-    const size_t length = sizeof(shutdown_frame_safe);
 #else
     /* Storage durability and OLED persistence are not hardware-verified. */
     const uint8_t *frame = shutdown_frame_final;
@@ -282,8 +279,8 @@ int main(int argc, char **argv) {
         size_t persistent = 0, oldroot = 0;
         if (audit_mounts("/proc/self/mountinfo", &persistent, &oldroot) == 0) {
             fprintf(stderr,
-                    "sonoscd-exitrd: residual_persistent_mounts=%zu residual_oldroot_mounts=%zu safe-eligible=0\n",
-                    persistent, oldroot);
+                    "sonoscd-exitrd: residual_persistent_mounts=%zu residual_oldroot_mounts=%zu safe-eligible=%d\n",
+                    persistent, oldroot, safe_to_unplug_allowed(persistent, oldroot));
         } else {
             fprintf(stderr, "sonoscd-exitrd: mount_audit=failed safe-eligible=0 errno=%d\n", errno);
         }
