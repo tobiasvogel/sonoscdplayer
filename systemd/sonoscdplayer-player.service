@@ -13,7 +13,9 @@ WorkingDirectory=/home/pi/src/sonoscdplayer/src
 RuntimeDirectory=sonoscdplayer
 RuntimeDirectoryMode=0700
 UMask=0077
-ExecStart=/usr/bin/python3 -u player_service.py --config config.toml --socket /run/sonoscdplayer/control.sock
+# The installed SoCo dependency lives in this project venv, not system Python.
+# A local m016b-config.conf may override the config path to player.toml.
+ExecStart=/home/pi/sonoscdplayer/.venv/bin/python -u player_service.py --config config.toml --socket /run/sonoscdplayer/control.sock
 # Do not automatically restart the Sonos owner until crash/ownership behavior is validated.
 Restart=no
 TimeoutStopSec=15
