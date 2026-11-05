@@ -175,7 +175,7 @@ static int audit_mounts(const char *path, size_t *persistent, size_t *oldroot) {
             token = strtok_r(NULL, " ", &save);
         if (!token || !(fstype = strtok_r(NULL, " ", &save)) ||
             !strtok_r(NULL, " ", &save) ||
-            !strtok_r(NULL, " \\n", &save)) {
+            !strtok_r(NULL, " \n", &save)) {
             errno = EINVAL;
             goto done;
         }
