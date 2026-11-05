@@ -117,3 +117,19 @@ The isolated mount-namespace/chroot test `tools/test_exitrd_unmount_isolated.sh`
 - A simulated kernel poweroff syscall returning an error is explicitly classified `poweroff=returned-error`, still without safety authorization.
 
 The test does not call the PID-1 main function, render the OLED, issue a real reboot/poweroff syscall, or mount at the host's `/run/initramfs`. The fixture is created exclusively inside a private mount namespace and chroot. This test **does not prove real device cache flushes, SD-card persistence, or the physical power state**. It is intentionally separate from the earlier two supervised poweroff trials.
+
+## 2026-11-05 isolated production C integration acceptance
+
+**Operator-observed Raspberry Pi test:** Following fast-forward to branch commit `3eb866f`, the normal exitrd compiled (`safe-approved=0`, `diagnostic=0`), and `bash tools/test_exitrd_unmount_isolated.sh` passed. The private mount namespace and chroot held three nested synthetic tmpfs mounts under `/oldroot`. The production `release_oldroot()`, `audit_mounts()` and state reducer produced:
+
+```text
+before=3 oldroot_present=1
+busy_mount_rejected=1 oldroot_still_present=1
+busy_evidence: unmount=failed audit=skipped poweroff=requested safe-eligible=0
+after=0 oldroot_present=0
+audit_after persistent=0 oldroot=0 safe-eligible=0
+returned_power_evidence: unmount=ok audit=clean poweroff=returned-error safe-eligible=0
+=== ISOLATED C UNMOUNT TEST PASSED ===
+```
+
+The full `test_exitrd_*.py` suite subsequently reported **49 tests passed in 4.095 seconds**. The host activation guard finished successfully; no exitrd was staged on the host, and no shutdown was triggered. This accepts integration of the production unmount, mount inventory and evidence-state failure handling **in a private tmpfs test fixture only**. It does not establish actual MMC durability, real shutdown failure injection, or power-loss safety. The safe graphical claim remains compile-time blocked.
