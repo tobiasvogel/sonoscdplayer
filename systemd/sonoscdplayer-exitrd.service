@@ -10,6 +10,7 @@ Type=oneshot
 ExecStart=/usr/bin/python3 /usr/local/libexec/sonoscdplayer-exitrd/exitrd_autostage.py --config /home/pi/src/sonoscdplayer/src/config.toml --binary /usr/local/libexec/sonoscdplayer-exitrd/shutdown --sha-file /usr/local/libexec/sonoscdplayer-exitrd/shutdown.sha256
 TimeoutStartSec=45
 UMask=0077
+Environment=PYTHONDONTWRITEBYTECODE=1
 NoNewPrivileges=yes
 
 [Install]
