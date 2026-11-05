@@ -24,6 +24,7 @@ import tomllib
 
 from cd_toc import read_toc
 from disc_startup import inspect_initial_disc
+from disc_monitor import DiscMonitor
 from player_state import PlayerState
 from drive_power import DrivePowerManager, load_config
 from drive_identity import usb_identity, recovered_device
@@ -201,7 +202,7 @@ def restore_drive_for_explicit_action(controller, power, original_id, original_t
     return True
 
 
-def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None):
+def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None):
     path = Path(socket_path).expanduser().absolute()
     if not path.parent.is_dir():
         raise ValueError('socket parent directory does not exist')
@@ -243,8 +244,10 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
             # probing healthy drives and preserve the normal keepalive cadence.
             next_drive_recovery = 0.0
 
+            next_disc_check = 0.0
+
             def refresh():
-                nonlocal next_drive_recovery
+                nonlocal next_drive_recovery, next_disc_check, drive_toc
                 from player_state import Mode
                 if (drive_toc is not None and power is not None
                         and controller.state.mode in (Mode.STOPPED, Mode.ERROR)
@@ -259,13 +262,27 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     if (missing or changed) and now >= next_drive_recovery:
                         next_drive_recovery = now + max(10.0, power.config['interval'])
                         try:
-                            restore_drive_for_explicit_action(
-                                controller, power, drive_id, drive_toc)
+                            if restore_drive_for_explicit_action(
+                                    controller, power, drive_id, drive_toc) and disc_monitor is not None:
+                                disc_monitor.rebind_verified(controller.server.device)
                         except (OSError, RuntimeError, ValueError) as exc:
                             print(f'[drive] idle USB recovery deferred: {type(exc).__name__}: {exc}',
                                   flush=True)
                 controller.refresh()
-                if power is not None:
+                now = time.monotonic()
+                # Safe status inspection only. NEVER touch optical media while
+                # reader/stream/group ownership is attached.
+                if disc_monitor is not None and now >= next_disc_check:
+                    next_disc_check = now + 3.0
+                    try:
+                        changed = disc_monitor.poll(controller)
+                        if changed:
+                            drive_toc = disc_monitor.loaded_toc
+                            print(f'[disc] {controller.disc_status.mode.value}', flush=True)
+                    except (OSError, RuntimeError, ValueError) as exc:
+                        print(f'[disc] monitor deferred: {type(exc).__name__}: {exc}', flush=True)
+                if power is not None and (controller.disc_status is None or
+                                          controller.disc_status.mode.value == 'READY'):
                     power.tick(reader_active=controller.server.reader_active())
                 publisher.publish(controller, power)
 
@@ -343,7 +360,7 @@ def run(argv=None):
         refuse_existing_control_socket(ns.socket)
         disc_status, toc = inspect_initial_disc(base, requested_device=ns.device)
         device = disc_status.device or '/dev/sr0'  # placeholder, never opened without a READY TOC
-        identity = usb_identity(device) if toc is not None else None
+        identity = usb_identity(device) if disc_status.device is not None else None
         state = prepare_selection(toc, 1) if toc is not None else PlayerState()
         with conf.open('rb') as handle:
             settings = tomllib.load(handle)
@@ -369,7 +386,10 @@ def run(argv=None):
             power.start()
         print(f'[M0.19a] service ready; disc={disc_status.mode.value}; '
               'no Sonos action until explicit PLAY', flush=True)
-        serve(ctrl, ns.socket, power=power, drive_id=identity, drive_toc=toc)
+        monitor = (DiscMonitor(disc_status.device, identity)
+                   if disc_status.device is not None else None)
+        serve(ctrl, ns.socket, power=power, drive_id=identity,
+              drive_toc=toc, disc_monitor=monitor)
     except KeyboardInterrupt:
         print('\n[M0.12b-r7] shutdown requested', flush=True)
     except Exception as exc:
