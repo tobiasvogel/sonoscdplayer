@@ -155,3 +155,64 @@ defaults and preservation of any existing local choice.
 fresh branch from the current `main`. This avoids merging the former
 OPS-01 branch's 172-commit divergence. M0.19 remains independently gated.
 No apply or rollback implementation is included.
+
+## OPS-01 completion workstream (2026-11-05)
+
+The read-only inspector and planner from PR #8 are an accepted first slice,
+**not** a complete migration. Development on
+`feature/ops01-safe-config-apply` must preserve the following gates.
+
+### Phase 1: offline apply/rollback implementation
+
+- Separate `--plan` from `--apply` and `--rollback`. Never infer permission to
+  write from a structurally compatible report. Existing read-only commands
+  must retain their behavior and exit codes.
+- No generic merge of template TOML into production. Only audited, inert,
+  allowlisted new keys may be proposed; protected subtrees (`service`,
+  `drive_power`, GPIO, buttons, encoder, and identity/UID) are never
+  changed by the automated writer.
+- Before any writes, construct a proposed candidate and validate its parsed
+  contents against the original plus the individually authorized additions.
+  Preserve every existing value, table, and non-allowlisted extra key.
+  Reject unsupported syntax/ambiguous placement, invalid TOML, or unexpected
+  candidate differences; never silently rewrite the entire local file.
+- Resolve the effective target from systemd, inspect path and parent directory
+  without following symlinks, and reject nonregular files, permissions errors,
+  unexpected owner/mode, and hard-link ambiguities. The exact expected
+  original checksum is an apply precondition to prevent stale plans.
+- Require distinct, explicit operator consent for the exact candidate and
+  target. A CLI flag alone is not permission to stop services, send Sonos
+  commands, or apply any unrelated settings.
+- Before applying, verify the player is idle (`STOPPED`, no active reader or
+  stream, no Sonos ownership or pending group recovery); reject stale,
+  unknown, or unavailable state. Detect concurrent modifications by verifying
+  original identity/checksum immediately before replacement.
+- Backup the unmodified source with owner-only permissions, sync the backup,
+  write a private temporary candidate in the same directory, reparse it,
+  atomically replace the target, and sync the parent directory. On failures
+  fail closed; if restoration is needed, use a separately validated backup
+  path and atomic restore. Never restart services automatically.
+- Explicit rollback requires backup identity/integrity and an expected
+  checksum for the current target; reject any other drift. Keep immutable
+  backup provenance and do not print contents, credentials or UIDs.
+- Never apply or rollback against the live
+  `/home/pi/sonoscdplayer/player.toml` without a separate approved
+  maintenance window and a dry-run + offline test record.
+
+### Phase 2: required verification
+
+- Test happy-path apply and rollback solely in temporary directories with
+  synthetic TOML, including nested keys and unrelated local extras.
+- Test stale checksum, symbolic/hard links, permissions, nonregular files,
+  malformed TOML, protected keys, changed template defaults, and injected
+  failure before and after backup/replace. Verify no accidental write and
+  no secret exposure, including error messages.
+- Test explicit gates against absent/active/unknown player status and pending
+  group recovery; exercise crash-safe rerun/rollback semantics.
+- Run `PYTHONPATH=src /home/pi/sonoscdplayer/.venv/bin/python -m unittest discover -s tests`
+  on the Pi without changing production services. Review the diff and
+  release documentation before a separately approved live rehearsal.
+
+The existing production `m016b-config.conf` and `m019-venv.conf` overrides
+are not managed by OPS-01. No button `--execute`, OLED RPC, drive-power
+change, or shutdown-hook setting is implied by completion of these phases.
