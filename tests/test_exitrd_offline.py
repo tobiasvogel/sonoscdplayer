@@ -109,5 +109,67 @@ class ExitrdOfflineTests(unittest.TestCase):
         self.assertNotIn('SONOSCD_EXITRD_SAFE_APPROVED=1', script)
 
 
+
+class ExitrdDiagnosticOfflineTests(unittest.TestCase):
+    """Opt-in graphical proof only; no PID1, SPI, mounts, or poweroff."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory()
+        cls.binary = Path(cls.temp.name) / 'shutdown'
+        result = subprocess.run(
+            ['sh', str(ROOT / 'tools/build_exitrd.sh')],
+            env={**os.environ, 'BUILD_DIR': cls.temp.name, 'EXITRD_DIAGNOSTIC': '1'},
+            text=True, capture_output=True, timeout=40)
+        if result.returncode:
+            cls.temp.cleanup()
+            raise AssertionError(result.stdout + result.stderr)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    def test_diagnostic_build_is_explicit_and_not_safe_approved(self):
+        check = subprocess.run([str(self.binary), '--check'],
+                               capture_output=True, text=True, timeout=5, check=True)
+        self.assertIn('diagnostic=1', check.stdout)
+        self.assertIn('safe-approved=0', check.stdout)
+        frames = (Path(self.temp.name) / 'shutdown_frames.h').read_text()
+        self.assertIn('shutdown_frame_diagnostic[8192]', frames)
+
+    def test_diagnostic_binary_never_runs_poweroff_outside_pid1(self):
+        result = subprocess.run([str(self.binary), 'poweroff'],
+                                capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 2)
+
+    def test_diagnostic_frame_is_distinct_and_has_no_safe_message(self):
+        import sys
+        sys.path.insert(0, str(ROOT / 'tools'))
+        from build_shutdown_renderer import diagnostic_frame, pack_ssd1327
+        test_frame = diagnostic_frame()
+        normal_frame = pack_ssd1327(ROOT / 'src/data/pleasewait_screen.png')
+        safe_frame = pack_ssd1327(ROOT / 'src/data/safetounplug_screen.png')
+        self.assertEqual(len(test_frame), 8192)
+        self.assertNotEqual(test_frame, normal_frame)
+        self.assertNotEqual(test_frame, safe_frame)
+
+    def test_diagnostic_render_only_after_oldroot_success(self):
+        source = (ROOT / 'src/shutdown/exitrd.c').read_text()
+        success = source.index('if (release_oldroot() == 0)')
+        draw = source.index('if (poweroff) show_post_unmount()', success)
+        failure = source.index('oldroot_unmount=failed', draw)
+        self.assertLess(success, draw)
+        self.assertLess(draw, failure)
+
+    def test_default_build_remains_non_diagnostic(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(['sh', str(ROOT / 'tools/build_exitrd.sh')],
+                env={**os.environ, 'BUILD_DIR': directory, 'EXITRD_DIAGNOSTIC': '0'},
+                capture_output=True, text=True, timeout=40, check=True)
+            self.assertIn('diagnostic=0', result.stdout)
+            self.assertIn('safe-approved=0', result.stdout)
+            frames = (Path(directory) / 'shutdown_frames.h').read_text()
+            self.assertNotIn('shutdown_frame_diagnostic', frames)
+
 if __name__ == '__main__':
     unittest.main()
