@@ -111,10 +111,10 @@ class DiscMonitor:
     def validate_before_play(self, controller) -> bool:
         """Revalidate physical disc identity at the explicit PLAY boundary.
 
-        A changed/absent CD invalidates stale selection and rejects this PLAY.
-        The caller may retry only after observing the new track list.
-        No Sonos calls are made. The single serialized worker prevents an
-        overlapping monitor poll while this method is running.
+        A changed, readable CD replaces the old track selection with track 1
+        and allows the already explicit PLAY to continue. Missing/unreadable
+        media or unverified USB identity blocks PLAY. No Sonos calls are made
+        here; the serialized worker prevents concurrent monitor polling.
         """
         if not idle_for_disc_io(controller):
             return False
@@ -147,14 +147,15 @@ class DiscMonitor:
                     error='PLAY revalidation: empty TOC'))
                 return False
             if self.loaded_toc is None or disc != self.loaded_toc:
-                # Do not play the newly inserted disc on an old selection,
-                # even when the two discs have the same track count.
+                # Play the newly inserted disc only with its freshly validated
+                # TOC and a reset selection (track 1), never the old selection.
+                # The user's explicit PLAY remains the sole playback trigger.
                 self.loaded_toc = disc
                 controller.state = controller.state.disc_loaded(
                     tuple(t.number for t in disc.tracks))
                 self._set_status(controller,
                                  DiscStatus.ready(self.device, len(disc.tracks)))
-                return False
+                return True
             return True
 
     def _recover_or_hold(self, controller):
