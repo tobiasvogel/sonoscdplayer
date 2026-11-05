@@ -12,7 +12,6 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 HOOK = ROOT / "systemd" / "sonoscdplayer-final-shutdown-hook"
 RENDERER_LINE = "renderer=/usr/local/libexec/sonoscdplayer-shutdown-display"
-EXITRD_CHECK = "[ -x /run/initramfs/shutdown ]"
 
 
 class FinalShutdownHookTests(unittest.TestCase):
@@ -30,9 +29,7 @@ class FinalShutdownHookTests(unittest.TestCase):
         self.exitrd = self.directory / "mock-exitrd"
         hook = HOOK.read_text(encoding="utf-8")
         self.assertEqual(hook.count(RENDERER_LINE), 1)
-        self.assertEqual(hook.count(EXITRD_CHECK), 1)
         hook = hook.replace(RENDERER_LINE, f"renderer={self.renderer}")
-        hook = hook.replace(EXITRD_CHECK, f'[ -x "{self.exitrd}" ]')
         self.hook = self.directory / "hook"
         self.hook.write_text(hook, encoding="utf-8")
 
@@ -54,10 +51,10 @@ class FinalShutdownHookTests(unittest.TestCase):
             with self.subTest(verb=verb):
                 self.assertEqual(self.execute(verb), [])
 
-    def test_active_exitrd_owns_poweroff_final(self):
+    def test_active_exitrd_keeps_fallback_final(self):
         self.exitrd.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         self.exitrd.chmod(0o700)
-        self.assertEqual(self.execute("poweroff"), [])
+        self.assertEqual(self.execute("poweroff"), ["final"])
 
     def test_active_exitrd_does_not_suppress_reboot(self):
         self.exitrd.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
