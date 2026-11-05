@@ -98,11 +98,7 @@ def safe_remove_file(path: Path):
 
 
 def remove_owned_bytecode(directory: Path) -> None:
-    """Remove only bytecode generated from our three installed Python helpers.
-
-    Refuse unknown entries instead of recursively deleting a privileged path.
-    This also handles an interrupted/uninstalled installation on retry.
-    """
+    """Delete only recognized Python bytecode from our installed modules."""
     cache = directory / '__pycache__'
     if cache.is_symlink():
         raise InstallError('refusing symlinked __pycache__')
@@ -111,8 +107,18 @@ def remove_owned_bytecode(directory: Path) -> None:
     if not cache.is_dir():
         raise InstallError('installed __pycache__ is not a directory')
     allowed = re.compile(
-        r'^(?:exitrd_autostage|exitrd_once|exitrd_preflight)\\.cpython-\\d+'
-        r'(?:\\.opt-\\d+)?\\.pyc
+        r'^(?:exitrd_autostage|exitrd_once|exitrd_preflight)\.cpython-\d+'
+        r'(?:\.opt-\d+)?\.pyc$')
+    contents = list(cache.iterdir())
+    for item in contents:
+        if item.is_symlink() or not item.is_file() or not allowed.fullmatch(item.name):
+            raise InstallError(f'unknown file in installed __pycache__: {item.name}')
+    for item in contents:
+        item.unlink()
+    cache.rmdir()
+
+
+def install(expected: str):
     if UNIT.exists() or UNIT.is_symlink() or INSTALL.exists() or INSTALL.is_symlink():
         raise InstallError('feature already installed or conflicting installation exists; uninstall first')
     if len(expected) != 64 or any(x not in '0123456789abcdef' for x in expected):
