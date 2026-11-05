@@ -204,7 +204,7 @@ class ExitrdOnceContracts(unittest.TestCase):
             live.mkdir()
             marker = Path(folder) / "marker"
             (live / "shutdown").write_bytes(b"binary")
-            marker.write_text("sha256=" + hashlib.sha256(b"other").hexdigest() + "\\n")
+            marker.write_text("sha256=" + hashlib.sha256(b"other").hexdigest() + "\n")
             with patch.object(staging, "LIVE", live), \
                  patch.object(staging, "MARKER", marker), \
                  patch.object(staging, "require_host", return_value="fixture"), \
