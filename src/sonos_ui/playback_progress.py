@@ -19,7 +19,7 @@ def parse_position(value):
     return total if total <= 359999 else None
 
 
-def verified_progress(info, owned_uri):
+def verified_progress(info, owned_uri, *, duration_fallback=None):
     """Return a bounded position/duration only for this exact owned URI."""
     if not isinstance(info, dict) or not owned_uri or info.get('uri') != owned_uri:
         return None
@@ -31,6 +31,8 @@ def verified_progress(info, owned_uri):
     # present it as a known track length or extrapolate the position.
     if duration == 0:
         duration = None
+    if duration is None and type(duration_fallback) is int and 0 < duration_fallback <= 359999:
+        duration = duration_fallback
     if duration is not None and elapsed > duration:
         return None
     return {'elapsed_seconds': elapsed, 'duration_seconds': duration}
