@@ -241,6 +241,21 @@ def submit_maintenance_work(executor, barrier, operation, *args):
     return barrier.submit(executor, operation, *args)
 
 
+def simulate_internal_maintenance_drain(barrier, executor, controller, *,
+                                        timeout=5.0):
+    """Offline-only bridge from the service admission helpers to idle fencing.
+
+    This function is deliberately NOT called by run() or serve(). There is
+    no CLI flag, socket command, startup hook or production apply path to it.
+    Tests may call it with a synthetic controller, a guarded worker and an
+    offline barrier to verify that the service's command/refresh submission
+    route and the idle fence share the same executor.
+    """
+    from tools.config_maintenance_coordinator import drain_and_sample_offline
+    return drain_and_sample_offline(
+        barrier, executor, controller, timeout=timeout)
+
+
 def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, maintenance_barrier=None):
     path = Path(socket_path).expanduser().absolute()
     if not path.parent.is_dir():
