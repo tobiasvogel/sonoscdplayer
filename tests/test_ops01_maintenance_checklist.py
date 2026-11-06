@@ -128,9 +128,9 @@ class OperationalChecklistTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             current = Path(root) / "synthetic-current.toml"
             template = Path(root) / "synthetic-reference.toml"
-            current.write_text('[service]\\nshutdown_policy="none"\\n')
-            template.write_text('[service]\\nshutdown_policy="none"\\n'
-                                'experimental_safe_screen=false\\n')
+            current.write_text('[service]\nshutdown_policy="none"\n')
+            template.write_text('[service]\nshutdown_policy="none"\n'
+                                'experimental_safe_screen=false\n')
             def runner(argv, **_kwargs):
                 if argv[:3] != ["systemctl", "show",
                                 "sonoscdplayer-player.service"] and argv[:2] != ["systemctl", "show"]:
@@ -139,11 +139,11 @@ class OperationalChecklistTests(unittest.TestCase):
                     output = ("ExecStart={ path=/usr/bin/python3 ; argv[]="
                               "/usr/bin/python3 player_service.py --config "
                               + str(current) +
-                              " --socket /run/synthetic.sock ; ignore_errors=no ; }\\n")
+                              " --socket /run/synthetic.sock ; ignore_errors=no ; }\n")
                 else:
-                    output = ("LoadState=loaded\\nActiveState=active\\n"
-                              "SubState=running\\nPartOf=sonoscdplayer.target\\n"
-                              "ExecStart=PRIVATE_SYSTEMD_VALUE\\nExecStop=\\n")
+                    output = ("LoadState=loaded\nActiveState=active\n"
+                              "SubState=running\nPartOf=sonoscdplayer.target\n"
+                              "ExecStart=PRIVATE_SYSTEMD_VALUE\nExecStop=\n")
                 return subprocess.CompletedProcess(argv, 0, output, "")
             preflight = inspect_maintenance_preflight(
                 runner=runner, template_path=template)
@@ -161,8 +161,8 @@ class OperationalChecklistTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             current = Path(root) / "synthetic-current.toml"
             template = Path(root) / "synthetic-reference.toml"
-            current.write_text('x=1\\n')
-            template.write_text('[invalid\\nPRIVATE_TOML_VALUE')
+            current.write_text('x=1\n')
+            template.write_text('[invalid\nPRIVATE_TOML_VALUE')
             def runner(argv, **_kwargs):
                 if argv[:2] != ["systemctl", "show"]:
                     raise AssertionError("systemd mutation forbidden")
@@ -170,11 +170,11 @@ class OperationalChecklistTests(unittest.TestCase):
                     output = ("ExecStart={ path=/usr/bin/python3 ; argv[]="
                               "/usr/bin/python3 player_service.py --config "
                               + str(current) +
-                              " --socket /run/synthetic.sock ; ignore_errors=no ; }\\n")
+                              " --socket /run/synthetic.sock ; ignore_errors=no ; }\n")
                 else:
-                    output = ("LoadState=loaded\\nActiveState=inactive\\n"
-                              "SubState=dead\\nPartOf=sonoscdplayer.target\\n"
-                              "ExecStart=PRIVATE_SYSTEMD_VALUE\\nExecStop=\\n")
+                    output = ("LoadState=loaded\nActiveState=inactive\n"
+                              "SubState=dead\nPartOf=sonoscdplayer.target\n"
+                              "ExecStart=PRIVATE_SYSTEMD_VALUE\nExecStop=\n")
                 return subprocess.CompletedProcess(argv, 0, output, "")
             preflight = inspect_maintenance_preflight(
                 runner=runner, template_path=template)
