@@ -1,6 +1,7 @@
 """OPS-01 offline FIFO fence tests; synthetic controller only."""
 import concurrent.futures
 import threading
+import time
 import types
 import unittest
 
@@ -55,7 +56,12 @@ class WorkerIdleFenceTests(unittest.TestCase):
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as orchestrator:
                 check = orchestrator.submit(
                     freeze_after_worker_drain, gate, pool, ctrl, timeout=4)
-                self.assertTrue(check.running())
+                end = time.monotonic() + 2
+                while gate.state != BarrierState.DRAINING and time.monotonic() < end:
+                    time.sleep(0.001)
+                self.assertEqual(gate.state, BarrierState.DRAINING)
+                with self.assertRaises(AdmissionRefused):
+                    gate.submit(pool, lambda: None)
                 release.set()
                 old.result(timeout=3)
                 with self.assertRaises(AdmissionRefused):
