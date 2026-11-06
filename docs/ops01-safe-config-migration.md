@@ -306,3 +306,49 @@ maintenance protocol, an exclusive cross-service coordination mechanism,
 robust path/permission rules and a transactionally safe race strategy,
 plus explicitly scoped failure tests. A successful offline gate is not
 authorization to stop the player or migrate `player.toml`.
+
+### Code-review checkpoint after 527/527 Pi regression (2026-11-06)
+
+**Verified baseline:** `539be09`, 527/527 tests, Raspberry Pi. All new
+work is on `feature/ops01-safe-config-apply`; no production file has been
+migrated, and the pull request remains Draft.
+
+**Review findings; do not treat sandbox tests as production acceptance:**
+
+1. **P0 — No production cutover protocol.** The current maintenance and idle
+   assessors only inspect caller-provided/cached evidence and always return
+   `write_authorized=false`. There is no verified lease coordinating the
+   player, socket command processing, CD reader and all configuration writers.
+   A `STOPPED` snapshot cannot grant a migration.
+2. **P0 — Noncooperating writer/TOCTOU gap.** `flock` serializes cooperating
+   sandbox operations, but cannot prevent another process from replacing the
+   current pathname after its final identity check and before `os.replace`.
+   Do not expose a writer for the installed configuration until the lifecycle,
+   process exclusion, directory ownership and replace boundary are proven
+   safe under the chosen maintenance protocol.
+3. **P1 — Durable state and failure injection.** The sandbox journals the
+   intended candidate but has no durable completed/rolled-back marker;
+   a completed rollback remains classified as `not_replaced`. The backup
+   and intent can be left in partial states on an interrupted write, and the
+   present tests do not inject `ENOSPC`/`EIO`/`fsync` failures at every step.
+   Define explicit transaction states and recovery behavior, including when
+   manual intervention is required, before production adoption.
+4. **P1 — Filesystem and permission model.** The sandbox's target and
+   replacement use private `0600` files. Production needs checks of parent
+   directory and path components, trusted owner/group, original ownership and
+   mode preservation, symlinks and hardlinks, safe recovery after directory
+   reopening, and retention/cleanup policy for backup and journal. The
+   independent inspector currently validates artifact mode but does not
+   authenticate provenance against an actor who can write the directory.
+5. **P1 — Transaction inspection consistency.** Read-only recovery inspection
+   does not itself hold the writer lock. It must be coordinated with
+   transactional transitions or produce a documented retry/indeterminate
+   result when files change between reads. The sandbox rollback re-arms state
+   using its own in-memory fields; production cannot trust that shortcut.
+
+**Priority and next gate:** Design and test a restricted maintenance
+lifecycle first, with service truly inactive, a verified single config writer,
+secure stable directory, fail-closed operator approval, and no Sonos mutations.
+Then add fault-injection and post-restart recovery tests. Only after an
+independent review and separate permission may a production-specific
+apply/rollback interface be considered. Keep the private tracker outside Git.
