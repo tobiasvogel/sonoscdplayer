@@ -142,6 +142,48 @@ class OwnershipChangeTests(unittest.TestCase):
         self.assertEqual(speaker.operations, [])
 
 
+
+class TrackChangeOwnershipTests(unittest.TestCase):
+    """A track button may not stop an unknown Sonos session."""
+
+    def test_foreign_uri_race_blocks_track_change_without_stop(self):
+        for mode, direction in ((Mode.PLAYING, 'next'),
+                                (Mode.PAUSED, 'previous')):
+            with self.subTest(mode=mode, direction=direction):
+                ctrl, speaker, server = owned_controller(mode)
+                # Choose a non-boundary track in both directions.
+                ctrl.state = PlayerState(mode, (1, 2, 3), 2)
+                speaker.on_uri_read = lambda n: setattr(
+                    speaker, 'uri', FOREIGN_URL) if n == 2 else None
+                with self.assertRaises(RuntimeError):
+                    ctrl.change(direction)
+                self.assertEqual(speaker.operations, [])
+                self.assertFalse(server.closed)
+
+    def test_foreign_transport_race_blocks_track_change(self):
+        for mode in (Mode.PLAYING, Mode.PAUSED):
+            with self.subTest(mode=mode):
+                ctrl, speaker, server = owned_controller(mode)
+                ctrl.state = PlayerState(mode, (1, 2, 3), 2)
+                speaker.on_transport_read = lambda n: setattr(
+                    speaker, 'transport', 'STOPPED') if n == 2 else None
+                with self.assertRaises(RuntimeError):
+                    ctrl.change('next')
+                self.assertEqual(speaker.operations, [])
+                self.assertFalse(server.closed)
+
+    def test_changed_group_blocks_track_change(self):
+        ctrl, speaker, server = owned_controller()
+        ctrl.state = PlayerState(Mode.PLAYING, (1, 2, 3), 2)
+        outsider = FakeSonos(uid='RINCON_FOREIGN')
+        speaker.on_uri_read = lambda n: speaker.group.members.append(
+            outsider) if n == 1 else None
+        with self.assertRaises(RuntimeError):
+            ctrl.change('next')
+        self.assertEqual(speaker.operations, [])
+        self.assertFalse(server.closed)
+
+
 class GroupRecoveryTests(unittest.TestCase):
     def _group(self):
         coordinator = FakeSonos()

@@ -38,6 +38,8 @@ TRANSPORT_RESPONSE_TIMEOUTS = {
     'pause': 10.0,
     'resume': 10.0,
     'stop': 10.0,
+    'next': 130.0,
+    'previous': 130.0,
 }
 DEFAULT_COMMAND_RESPONSE_TIMEOUT = 1.0
 
@@ -142,12 +144,12 @@ def handle_event(name, event, *, commands=False, execute=False, socket_path=DEFA
             print(f'command preview: {command}', flush=True)
         return
     if target_executor is not None:
-        # Initial safe-execute rollout permits PLAY/PAUSE only. Other hardware
-        # buttons remain previews until they have their own acceptance tests.
+        # Explicitly allow only policy-checked transport actions. Other hardware
+        # buttons remain blocked in safe execute mode.
         if command == 'playpause':
             target_executor.submit()
-        elif command == 'stop':
-            target_executor.submit('stop')
+        elif command in ('stop', 'next', 'previous'):
+            target_executor.submit(command)
         else:
             print(f'command skipped in safe execute mode: {command}', flush=True)
         return
@@ -235,11 +237,11 @@ def main():
     group.add_argument('--gpio', action='store_true')
     group.add_argument('--simulate', type=Path, metavar='JSONL')
     p.add_argument('--commands', action='store_true', help='show allowed command mappings')
-    p.add_argument('--execute', action='store_true', help='execute safe PLAY/PAUSE and STOP only (requires --selected-target-execute)')
+    p.add_argument('--execute', action='store_true', help='execute safe PLAY/PAUSE, STOP and track changes (requires --selected-target-execute)')
     p.add_argument('--selected-target-preview', action='store_true',
                    help='read-only status/get-target planning for PLAY/PAUSE; never sends transport')
     p.add_argument('--selected-target-execute', action='store_true',
-                   help='with --execute: safe state-checked one-shot PLAY/PAUSE and STOP')
+                   help='with --execute: safe state-checked one-shot transport actions')
     p.add_argument('--socket', default=DEFAULT_SOCKET)
     p.add_argument('--ui-events-socket', default=None,
                    help='optional nonblocking read-only UI event observer')
