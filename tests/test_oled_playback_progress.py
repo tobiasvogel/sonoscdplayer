@@ -130,6 +130,23 @@ class PlaybackProgressTests(unittest.TestCase):
             **with_progress,'player':{**base['player'],'mode':'PAUSED'}})).tobytes()
         self.assertNotEqual(paused,progressed)
 
+    def test_start_stop_error_and_no_disc_are_explicit(self):
+        snapshots = (
+            ('STARTING',1,9,'idle','STARTING'),
+            ('STOPPED',1,9,'idle','STOPPED'),
+            ('ERROR',1,9,'idle','ERROR'),
+            ('NO_DISC',None,0,'idle','NO_DISC'),
+        )
+        for mode,track,count,view,phase in snapshots:
+            with self.subTest(mode=mode):
+                snap={'schema_version':1,'player':{'mode':mode,'track':track,
+                                                  'track_count':count}}
+                model=project_status(snap)
+                self.assertEqual(model.view,view)
+                self.assertEqual(model.disc_phase,phase)
+                frame=Renderer(language='de').render(model)
+                self.assertEqual(frame.size,(128,128))
+
     def test_bad_progress_never_makes_up_times(self):
         state={'schema_version':1,'player':{'mode':'PLAYING','track':1,'track_count':9},
                'sonos':{'owned':True}}
