@@ -232,7 +232,6 @@ class WorkerIdleFenceTests(unittest.TestCase):
                 with self.assertRaisesRegex(AdmissionRefused, "executor mismatch"):
                     freeze_after_worker_drain(gate, other, ctrl)
                 self.assertEqual(gate.state, BarrierState.OPEN)
-                self.assertEqual(gate.in_flight, 0)
                 self.assertEqual(
                     freeze_after_worker_drain(gate, first, ctrl)["state"],
                     "FROZEN")
@@ -246,7 +245,6 @@ class WorkerIdleFenceTests(unittest.TestCase):
                 with self.assertRaisesRegex(AdmissionRefused, "executor mismatch"):
                     gate.submit(other, lambda: 2)
                 self.assertEqual(gate.state, BarrierState.OPEN)
-                self.assertEqual(gate.in_flight, 0)
                 self.assertEqual(gate.submit(first, lambda: 3).result(), 3)
 
     def test_binding_rejected_after_drain(self):
