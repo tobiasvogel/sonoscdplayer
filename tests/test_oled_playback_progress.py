@@ -56,6 +56,12 @@ class PlaybackProgressTests(unittest.TestCase):
         self.assertIsNone(verified_progress({**info, 'position':'0:04:00'}, URI))
         self.assertEqual(verified_progress({**info, 'duration':'0:00:00'},URI),
                          {'elapsed_seconds': 25, 'duration_seconds': None})
+        self.assertEqual(verified_progress({**info, 'duration':'0:00:00'},URI,
+                                           duration_fallback=210),
+                         {'elapsed_seconds':25,'duration_seconds':210})
+        self.assertIsNone(verified_progress({**info,'position':'0:04:00',
+                                            'duration':'0:00:00'},URI,
+                                           duration_fallback=210))
 
     def test_controller_only_caches_owned_time_for_display(self):
         player = FakePlayer()
@@ -71,6 +77,19 @@ class PlaybackProgressTests(unittest.TestCase):
         player.uri = 'http://foreign.invalid/music'
         ctrl.refresh()
         self.assertNotIn('progress',ctrl.status_snapshot())
+
+    def test_cached_toc_duration_does_not_read_disc(self):
+        from cd_toc import DiscTOC, Track
+        player = FakePlayer(duration='0:00:00')
+        ctrl = Controller(PlayerState(Mode.PLAYING,(1,),1), 'local-test',
+                          '127.0.0.1',8765,FakeServer(),verify=lambda uid:player)
+        ctrl.player = player
+        ctrl.owned_url = URI
+        ctrl.seen_playing = True
+        ctrl.display_toc = DiscTOC((Track(1,0,75*210,2,False),),75*210)
+        ctrl.refresh()
+        self.assertEqual(ctrl.status_snapshot()['progress'],
+                         {'elapsed_seconds':25,'duration_seconds':210})
 
     def test_timing_failure_does_not_fail_playback(self):
         player = FakePlayer()
