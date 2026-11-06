@@ -540,3 +540,43 @@ activation conditions, plus a sanitized unit-file review covering
 command-line values. Include OLED shutdown sentinel before proposing any
 target or service stop. Stop and restart operations still require separate
 explicit consent.
+
+### Raspberry Pi lifecycle metadata — third read-only inspection (2026-11-06)
+
+The operator inspected effective unit lifecycle properties without exposing
+raw `ExecStart` or `ExecStop` command arguments:
+
+| Unit | Type | Restart | Stop timeout | Explicit ExecStop | Other relevant behavior |
+| --- | --- | --- | --- | --- | --- |
+| `sonoscdplayer-player.service` | simple | no | 15s | absent | SIGTERM (15), control-group kill, SIGKILL fallback |
+| `sonoscdplayer-buttons.service` | simple | on-failure | 5s | absent | SIGTERM (15), control-group kill, SIGKILL fallback |
+| `sonoscdplayer-oled.service` | simple | on-failure | 5s | absent | SIGTERM (15), control-group kill, SIGKILL fallback |
+| `sonoscdplayer-led.service` | simple | on-failure | 5s | absent | SIGTERM (15), control-group kill, SIGKILL fallback |
+| `sonoscdplayer-oled-shutdown-sentinel.service` | oneshot | no | 5s | **present** | RemainAfterExit=yes, SIGKILL fallback |
+| `sonoscdplayer-early-power-led.service` | simple | no | 3s | absent | conflicts with normal LED |
+| `sonoscdplayer-exitrd.service` | oneshot | no | 1min 30s | absent | shutdown-related unit |
+| `sonoscdplayer.target` | target | n/a | n/a | absent | wanted by multi-user.target; conflicts with shutdown.target |
+
+The player unit has no systemd `ExecStop`, **but the Python program's
+`finally` block calls `shutdown_owned(shutdown_policy)`**. That logic may
+send Sonos STOP for verified owned playback; stopping the service is not
+side-effect-free. A 15-second stop timeout with forced kill is particularly
+unsafe if the CD reader or group recovery is still active.
+
+**New P0 concern:** the OLED shutdown sentinel is active/exited and has an
+`ExecStop` of unknown content. It has no `PartOf=sonoscdplayer.target`
+and is not in the target's `ConsistsOf`, but future explicit stops,
+shutdown transactions, or dependency changes could run its stop action.
+Do not assume the command is harmless or implicitly invoke it.
+
+No `ExecStartPre`, `ExecStopPost`, `ExecReload` or `ExecCondition`
+was reported for any of the inspected units. None has a reported `OnFailure`
+or `Upholds` relationship. `RefuseManualStop=no` does not mean that a
+manual stop is safe.
+
+**Next gate:** inspect the *meaning* of the sentinel's `ExecStop` locally
+without publishing any sensitive command-line values or invoking it. Review
+the unit's `ExecStop` and shutdown-hook dependencies, then report only
+whether it (a) writes a display/framebuffer, (b) invokes a player/Sonos
+command, (c) modifies GPIO or drive power, or (d) triggers a system shutdown.
+A safe maintenance sequence remains undesigned and unauthorized.
