@@ -43,7 +43,8 @@ def _show(unit, runner):
         if key in _PROPERTIES and key not in fields:
             fields[key] = value
     if (any(name not in fields for name in ("LoadState", "ActiveState",
-                                            "SubState", "ExecStart", "PartOf"))
+                                            "SubState"))
+            or (unit == _PLAYER and "PartOf" not in fields)
             or fields["ActiveState"] not in _STATES):
         return None
     # Explicitly discard ExecStart/ExecStop text; they may contain private
@@ -64,6 +65,8 @@ def inspect_maintenance_runtime(*, runner=subprocess.run):
             issues.append("unavailable_" + unit.split(".")[0])
         elif record["LoadState"] != "loaded":
             issues.append("unit_not_loaded_" + unit.split(".")[0])
+        elif record["ActiveState"] == "failed":
+            issues.append("unit_failed_" + unit.split(".")[0])
 
     player = records[_PLAYER]
     target = records[_TARGET]
