@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 import subprocess
 
 from .config_dry_run import InspectionError, effective_config_path, read_toml
@@ -91,10 +92,15 @@ def inspect_maintenance_preflight(*, template_path=None,
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--template",
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--template",
                         help="optional reference TOML path for read-only proposal")
+    source.add_argument("--repository-template", action="store_true",
+                        help="compare with the versioned src/config.toml from this checkout")
     args = parser.parse_args(argv)
-    report = inspect_maintenance_preflight(template_path=args.template)
+    reference = (Path(__file__).resolve().parents[1] / "config.toml"
+                 if args.repository_template else args.template)
+    report = inspect_maintenance_preflight(template_path=reference)
     print(json.dumps(report, sort_keys=True))
     return 0  # Diagnostic execution succeeded; never implies readiness.
 
