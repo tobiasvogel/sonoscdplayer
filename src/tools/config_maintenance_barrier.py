@@ -49,6 +49,8 @@ class OfflineMaintenanceBarrier:
         self._state = BarrierState.OPEN
         self._next_ticket = 0
         self._active: set[int] = set()
+        # A fence must sample the very same serialized worker that owns jobs.
+        self._bound_executor = None
         self._drained = threading.Condition(self._guard)
 
     @property
@@ -80,6 +82,19 @@ class OfflineMaintenanceBarrier:
             self._active.add(ticket)
             return ticket
 
+    def bind_executor(self, executor) -> None:
+        """Pin all tracked submissions and a future fence to one worker pool.
+
+        Identity is checked under the same lock as admission and DRAINING.
+        This does not detect untracked direct executor submissions.
+        """
+        with self._guard:
+            if self._state != BarrierState.OPEN:
+                raise AdmissionRefused("cannot bind after admission closes")
+            if self._bound_executor is not None and self._bound_executor is not executor:
+                raise AdmissionRefused("maintenance worker executor mismatch")
+            self._bound_executor = executor
+
     def submit(self, executor, operation, *args):
         """Submit work and issue its ticket in ONE admission critical section.
 
@@ -90,6 +105,9 @@ class OfflineMaintenanceBarrier:
         with self._guard:
             if self._state != BarrierState.OPEN:
                 raise AdmissionRefused("maintenance admission closed")
+            if self._bound_executor is not None and self._bound_executor is not executor:
+                raise AdmissionRefused("maintenance worker executor mismatch")
+            self._bound_executor = executor
             self._next_ticket += 1
             ticket = self._next_ticket
             self._active.add(ticket)
