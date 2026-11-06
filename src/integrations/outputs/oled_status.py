@@ -149,6 +149,14 @@ def modern_status_frame(state=None, error=None, *, cover_mode='auto', language='
     return image_to_frame(image)
 
 
+def safe_modern_status_frame(state, *, cover_mode='auto', language='de'):
+    """Never crash the display worker on malformed/cached player status."""
+    try:
+        return modern_status_frame(state, cover_mode=cover_mode, language=language)
+    except (ValueError, TypeError, KeyError):
+        return status_frame(error='invalid player status', language=language)
+
+
 class StatusHold:
     """Keep last good snapshot briefly across a temporary local socket failure."""
     def __init__(self, grace_seconds=4.0):
@@ -347,7 +355,7 @@ def main(argv=None):
                     state=hold.success(ready_state if ready_state is not None else request_status(args.socket), time.monotonic())
                     ready_state=None
                     frame=(menu.frame(image_to_frame) if menu is not None and menu.active else
-                           modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state,language=(menu.language if menu is not None else language)))
+                           safe_modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state,language=(menu.language if menu is not None else language)))
                     label={'screen':'status','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
                 except (OSError,ValueError,TimeoutError,TypeError) as exc:
                     # The player_service socket is single-threaded. While PLAY waits
