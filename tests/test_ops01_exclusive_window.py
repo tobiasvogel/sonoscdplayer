@@ -93,7 +93,7 @@ class ExclusiveWindowTests(unittest.TestCase):
             self.assertEqual(barrier.state, BarrierState.CLOSED)
             self.assertFalse(result["sandbox_lock_held"])
 
-    def test_changed_bytes_during_drain_reject_and_cleanly_cancel(self):
+    def test_changed_bytes_during_drain_fail_closed(self):
         with OfflineSandbox() as sandbox, GuardedWorkerExecutor() as executor:
             sandbox.seed(ORIGINAL)
             window, barrier = self.make_window(sandbox, executor)
@@ -111,7 +111,8 @@ class ExclusiveWindowTests(unittest.TestCase):
             with patch.object(module, "_observe", side_effect=edit_after_baseline):
                 with self.assertRaises(WindowRefused):
                     window.begin(FakeController())
-            self.assertEqual(barrier.state, BarrierState.OPEN)
+            self.assertEqual(barrier.state, BarrierState.CLOSED)
+            self.assertEqual(window.report()["lifecycle_state"], "HALTED")
             self.assertFalse(window.report()["sandbox_lock_held"])
             with sandbox_writer_lock(sandbox._dirfd):
                 pass
@@ -125,8 +126,35 @@ class ExclusiveWindowTests(unittest.TestCase):
             (sandbox.directory / "current.toml").write_bytes(b'x=2\n')
             with self.assertRaises(WindowRefused):
                 window.record_change_possible()
-            self.assertEqual(barrier.state, BarrierState.OPEN)
+            self.assertEqual(barrier.state, BarrierState.CLOSED)
+            self.assertTrue(window.report()["recovery_review_required"])
             self.assertFalse(window.report()["sandbox_lock_held"])
+
+    def test_change_just_before_clean_finish_stays_closed(self):
+        with OfflineSandbox() as sandbox, GuardedWorkerExecutor() as executor:
+            sandbox.seed(ORIGINAL)
+            window, barrier = self.make_window(sandbox, executor)
+            window.begin(FakeController())
+            (sandbox.directory / "current.toml").write_bytes(b'x=9\n')
+            with self.assertRaises(WindowRefused):
+                window.finish()
+            self.assertEqual(barrier.state, BarrierState.CLOSED)
+            self.assertEqual(window.report()["lifecycle_state"], "HALTED")
+            self.assertFalse(window.report()["sandbox_lock_held"])
+            self.assertFalse(window.report()["sandbox_identity_rechecked"])
+
+    def test_successful_check_never_claims_writer_exclusion(self):
+        with OfflineSandbox() as sandbox, GuardedWorkerExecutor() as executor:
+            sandbox.seed(ORIGINAL)
+            window, barrier = self.make_window(sandbox, executor)
+            report = window.begin(FakeController())
+            self.assertTrue(report["sandbox_identity_rechecked"])
+            self.assertFalse(report["sandbox_identity_is_exclusive_proof"])
+            self.assertFalse(report["external_writers_excluded"])
+            self.assertFalse(report["write_authorized"])
+            report = window.finish()
+            self.assertFalse(report["sandbox_identity_rechecked"])
+            self.assertEqual(barrier.state, BarrierState.OPEN)
 
     def test_lock_contention_prevents_window_and_can_recover(self):
         with OfflineSandbox() as sandbox, GuardedWorkerExecutor() as executor:
