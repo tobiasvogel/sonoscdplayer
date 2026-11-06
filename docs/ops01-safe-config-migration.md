@@ -264,3 +264,19 @@ Do not wire this diagnostic result directly to a writer.
 The OPS-01 implementation remains sandbox-only and the pull request remains
 Draft. The most recent Pi-wide verified test result before this addition was
 **507/507**, at commit `259e99e`; newer tests require their own Pi run.
+
+### Cooperative sandbox writer lock (2026-11-06)
+
+A stable, private `ops01-writer.lock` is now held using a nonblocking POSIX
+`flock` during sandbox seed/apply/rollback. The lock file is never unlinked
+and must remain an owner-owned regular file with mode `0600` and one link.
+A second cooperating process must fail closed while the lock is held.
+
+This is an **advisory lock only**. External tools that edit `player.toml`
+without acquiring the same lock can still race between the pathname identity
+check and `os.replace`. It does not remove that TOCTOU problem or prove a
+safe production writer. The lock accepts an already-open sandbox directory
+descriptor only and does not enable production apply.
+
+The five new lock tests require confirmation on the Raspberry Pi. The last
+confirmed full regression before this change was **515/515** at `46b8136`.
