@@ -505,3 +505,38 @@ the target and adjacent UI/shutdown units, and `systemctl list-dependencies`
 names only. No `systemctl stop/start/restart`, no unit edits, and no
 configuration writes. The Pi's development checkout at the time was still
 `539be09`, while this later documentation was committed only to GitHub.
+
+### Raspberry Pi systemd inventory — target dependency graph (2026-11-06)
+
+Second operator read-only inspection confirmed:
+
+- `sonoscdplayer.target`: `active/active`, `enabled`;
+  `Wants=` player, buttons, OLED, LED and OLED shutdown sentinel.
+- `ConsistsOf=` player, buttons, OLED and LED. Each of these four units
+  independently reported `PartOf=sonoscdplayer.target`.
+  **Stopping the target would propagate a stop request to these four units.**
+  It is therefore *not* a safe unapproved maintenance preparation.
+- Player `Restart=no`; buttons, OLED and LED `Restart=on-failure`.
+  All four are currently `active/running`.
+- OLED shutdown sentinel `active/exited`, `Restart=no`,
+  `PartOf=` empty; it is wanted by the target but not in its
+  `ConsistsOf` list. Do **not** assume a target stop also stops the
+  sentinel, or assume it has no shutdown effects.
+- Early-power LED `inactive/dead` and exitrd `inactive/dead`;
+  neither is in the target dependency list currently shown.
+
+**Safety implication:** A target stop is not a no-op or a reliable
+single-service quiescence primitive. It can stop multiple running
+components, and player service exit may invoke a Sonos STOP depending on
+validated ownership and shutdown policy. The service states do not prove
+whether the CD reader or groups are inactive. Nothing has been stopped,
+restarted or rewritten as part of these observations.
+
+**Next read-only gate:** inspect effective unit definitions *without
+disclosing private `ExecStart` arguments, environment or identifiers*.
+Collect only unit metadata for `ExecStop` presence, stop propagation and
+activation conditions, plus a sanitized unit-file review covering
+`[Unit]`, `[Service]` lifecycle directives and `[Install]` without
+command-line values. Include OLED shutdown sentinel before proposing any
+target or service stop. Stop and restart operations still require separate
+explicit consent.
