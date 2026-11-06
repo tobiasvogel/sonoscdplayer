@@ -143,6 +143,7 @@ class Controller:
         self.seen_playing = False
         self.start_monotonic = None
         self._display_progress = None  # read-only Sonos timing; never used to control PLAY
+        self.display_toc = None  # validated startup/idle TOC; never read disc for display
         self.stopped_since = None
         self.status_hook = None  # optional read-only snapshot publisher
         self.disc_status = None  # optional M0.19 independent disc observation
@@ -327,8 +328,13 @@ class Controller:
                     and transport in ('PLAYING', 'PAUSED_PLAYBACK')
                     and self.owned_url):
                 try:
+                    duration = None
+                    if self.display_toc is not None and self.state.selected_track is not None:
+                        track = self.display_toc.get_track(self.state.selected_track)
+                        duration = int(track.duration_seconds + 0.5)
                     self._display_progress = verified_progress(
-                        player.get_current_track_info(), self.owned_url)
+                        player.get_current_track_info(), self.owned_url,
+                        duration_fallback=duration)
                 except Exception:
                     pass
         except Exception as exc:
