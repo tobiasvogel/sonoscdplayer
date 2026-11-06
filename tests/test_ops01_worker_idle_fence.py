@@ -118,12 +118,18 @@ class WorkerIdleFenceTests(unittest.TestCase):
         submitting = threading.Thread(target=submit_task)
         submitting.start()
         self.assertTrue(entered.wait(2))
-        draining = threading.Thread(target=gate.begin_draining)
+        drain_finished = threading.Event()
+
+        def drain():
+            gate.begin_draining()
+            drain_finished.set()
+
+        draining = threading.Thread(target=drain)
         draining.start()
         try:
-            # begin_draining cannot acquire the admission lock until
-            # executor.submit has actually accepted the earlier task.
-            self.assertEqual(gate.state, BarrierState.OPEN)
+            # No deadlocking inspection of gate.state while its lock is held.
+            # Drain cannot return before the queued submission is released.
+            self.assertFalse(drain_finished.wait(timeout=0.02))
         finally:
             release.set()
             submitting.join(timeout=4)
