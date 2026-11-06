@@ -1,5 +1,6 @@
 """OPS-01 guarded-worker regression tests; synthetic work only."""
 import concurrent.futures
+import threading
 import unittest
 
 from player_service import submit_maintenance_work
@@ -84,6 +85,70 @@ class GuardedWorkerTests(unittest.TestCase):
             with self.assertRaisesRegex(AdmissionRefused, "executor mismatch"):
                 freeze_after_worker_drain(barrier, other, IdleController())
             self.assertEqual(barrier.state, BarrierState.OPEN)
+
+    def test_superclass_submit_cannot_bypass_guard(self):
+        ran = []
+        with GuardedWorkerExecutor() as pool:
+            self.assertNotIsInstance(pool, concurrent.futures.ThreadPoolExecutor)
+            with self.assertRaises(TypeError):
+                concurrent.futures.ThreadPoolExecutor.submit(
+                    pool, lambda: ran.append("bypass"))
+        self.assertEqual(ran, [])
+
+    def test_cancelled_queued_job_cannot_freeze_while_running(self):
+        barrier = OfflineMaintenanceBarrier()
+        entered, release = threading.Event(), threading.Event()
+        with GuardedWorkerExecutor() as pool:
+            def blocking():
+                entered.set()
+                self.assertTrue(release.wait(3))
+            current = submit_maintenance_work(pool, barrier, blocking)
+            self.assertTrue(entered.wait(2))
+            queued = submit_maintenance_work(pool, barrier, lambda: 42)
+            self.assertTrue(queued.cancel())
+            self.assertEqual(barrier.in_flight, 1)
+            barrier.begin_draining()
+            with self.assertRaises(AdmissionRefused):
+                barrier.freeze(None)
+            release.set()
+            current.result(timeout=3)
+        self.assertEqual(barrier.state, BarrierState.DRAINING)
+        self.assertEqual(barrier.in_flight, 0)
+        self.assertFalse(barrier.report()["write_authorized"])
+
+    def test_shutdown_rejects_tracked_work_and_fence(self):
+        barrier = OfflineMaintenanceBarrier()
+        pool = GuardedWorkerExecutor()
+        pool.shutdown(wait=True)
+        with self.assertRaises(RuntimeError):
+            submit_maintenance_work(pool, barrier, lambda: None)
+        self.assertEqual(barrier.in_flight, 0)
+        with self.assertRaisesRegex(AdmissionRefused, "could not be submitted"):
+            freeze_after_worker_drain(barrier, pool, IdleController())
+        self.assertEqual(barrier.state, BarrierState.DRAINING)
+        self.assertFalse(barrier.report()["write_authorized"])
+
+    def test_close_during_work_keeps_guard_closed(self):
+        barrier = OfflineMaintenanceBarrier()
+        entered, release = threading.Event(), threading.Event()
+        with GuardedWorkerExecutor() as pool:
+            def blocking():
+                entered.set()
+                self.assertTrue(release.wait(3))
+                return 5
+            current = submit_maintenance_work(pool, barrier, blocking)
+            self.assertTrue(entered.wait(2))
+            barrier.close()
+            release.set()
+            self.assertEqual(current.result(timeout=3), 5)
+            with self.assertRaises(AdmissionRefused):
+                pool.submit(lambda: 7)
+            with self.assertRaises(AdmissionRefused):
+                submit_maintenance_work(pool, barrier, lambda: 8)
+            with self.assertRaises(AdmissionRefused):
+                freeze_after_worker_drain(barrier, pool, IdleController())
+        self.assertEqual(barrier.state, BarrierState.CLOSED)
+        self.assertFalse(barrier.report()["write_authorized"])
 
     def test_default_executor_submission_remains_unchanged(self):
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
