@@ -145,7 +145,7 @@ class ExecuteTests(unittest.TestCase):
                          target_executor=Safe(), dispatcher=Legacy())
             handle_event('skip', 'pressed', commands=True, execute=True,
                          target_executor=Safe(), dispatcher=Legacy())
-        self.assertEqual(safe, ['playpause', 'stop'])
+        self.assertEqual(safe, ['playpause', 'stop', 'next'])
         self.assertEqual(legacy, [])
 
     def test_stop_one_shot_with_no_uid(self):
@@ -244,7 +244,7 @@ class ExecuteTests(unittest.TestCase):
         worker = SelectedTargetExecutor('/fake',
                   reader=lambda *args: (_ for _ in ()).throw(AssertionError()),
                   sender=lambda *args: sends.append(args))
-        self.assertFalse(worker.submit('next'))
+        self.assertFalse(worker.submit('eject'))
         self.assertEqual(sends, [])
 
 
