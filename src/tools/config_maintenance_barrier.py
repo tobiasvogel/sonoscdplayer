@@ -172,6 +172,19 @@ class OfflineMaintenanceBarrier:
                 raise AdmissionRefused("player not proven idle")
             self._state = BarrierState.FROZEN
 
+    def reopen_before_change(self, executor) -> None:
+        """Resume offline admission only from FROZEN on its original worker.
+
+        Caller must guarantee no configuration change was attempted.
+        This is not recovery from CLOSED: timed-out/unverified work must
+        never be silently resumed or discarded.
+        """
+        with self._guard:
+            if (self._state != BarrierState.FROZEN or self._active
+                    or executor is not self._bound_executor):
+                raise AdmissionRefused("offline maintenance cannot resume")
+            self._state = BarrierState.OPEN
+
     def close(self) -> None:
         """Irreversibly fail closed. Never replay or resume queued requests."""
         with self._guard:
