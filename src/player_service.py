@@ -238,16 +238,15 @@ def submit_maintenance_work(executor, barrier, operation, *args):
     if barrier is None:
         return executor.submit(operation, *args)
     ticket = barrier.admit()
-    def wrapped():
-        try:
-            return operation(*args)
-        finally:
-            barrier.finish(ticket)
     try:
-        return executor.submit(wrapped)
+        future = executor.submit(operation, *args)
     except BaseException:
         barrier.finish(ticket)
         raise
+    # A done callback also runs when queued work is cancelled before start.
+    # This keeps the drain count accurate without a worker-level race.
+    future.add_done_callback(lambda completed: barrier.finish(ticket))
+    return future
 
 
 def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, maintenance_barrier=None):
