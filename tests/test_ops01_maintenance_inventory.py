@@ -46,8 +46,8 @@ def fake_runner(*, player="active", target="active", sentinel="active",
             "Restart=no\n"
         )
         if target_omits_service_properties and unit == UNITS[0]:
-            text = ("LoadState=loaded\\nActiveState=" + status +
-                    "\\nSubState=" + substate + "\\n")
+            text = ("LoadState=loaded\nActiveState=" + status +
+                    "\nSubState=" + substate + "\n")
         return subprocess.CompletedProcess(argv, 0, text, "")
     return run, calls
 
