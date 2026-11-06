@@ -65,6 +65,24 @@ class MaintenanceWorkerAdmissionTests(unittest.TestCase):
             running.result(timeout=5)
         self.assertEqual(barrier.in_flight, 0)
 
+    def test_terminal_close_during_running_work_is_harmless(self):
+        barrier = OfflineMaintenanceBarrier()
+        started = threading.Event()
+        release = threading.Event()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            def running():
+                started.set()
+                self.assertTrue(release.wait(timeout=5))
+                return 9
+            future = submit_maintenance_work(pool, barrier, running)
+            self.assertTrue(started.wait(timeout=5))
+            barrier.close()
+            self.assertEqual(barrier.state, BarrierState.CLOSED)
+            release.set()
+            self.assertEqual(future.result(timeout=5), 9)
+        self.assertFalse(barrier.report()["write_authorized"])
+        self.assertEqual(barrier.in_flight, 0)
+
     def test_worker_error_still_releases_ticket(self):
         barrier = OfflineMaintenanceBarrier()
         def broken():
