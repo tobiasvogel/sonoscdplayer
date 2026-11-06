@@ -1,0 +1,203 @@
+"""OPS-01 pure offline admission barrier; not connected to the player.
+
+The model describes a future serialized player-command gate. It has no
+socket, GPIO, drive, Sonos, systemd, filesystem or writer integration.
+A simulated FROZEN state is NOT production maintenance authorization.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+import threading
+
+
+class BarrierState(str, Enum):
+    OPEN = "OPEN"
+    DRAINING = "DRAINING"
+    FROZEN = "FROZEN"
+    CLOSED = "CLOSED"
+
+
+class AdmissionRefused(ValueError):
+    """The offline barrier refused a state change or evidence."""
+
+
+@dataclass(frozen=True)
+class IdleProof:
+    """Explicit controller-level booleans; none can be unknown."""
+
+    mode_stopped: bool
+    no_owned_url: bool
+    no_stream: bool
+    no_reader: bool
+    no_joined_group: bool
+    no_uncertain_group: bool
+    no_group_recovery: bool
+    no_pending_external_activity: bool
+
+
+class OfflineMaintenanceBarrier:
+    """Lock-protected *simulation* of admission and command-drain ordering.
+
+    A caller is responsible for issuing and releasing tickets around ALL
+    state-changing requests and periodic refreshes. Nothing here coordinates
+    with a real service; external requests or processes remain unexcluded.
+    """
+
+    def __init__(self):
+        self._guard = threading.Lock()
+        self._state = BarrierState.OPEN
+        self._next_ticket = 0
+        self._active: set[int] = set()
+        # A fence must sample the very same serialized worker that owns jobs.
+        self._bound_executor = None
+        self._drained = threading.Condition(self._guard)
+
+    @property
+    def state(self) -> BarrierState:
+        with self._guard:
+            return self._state
+
+    @property
+    def in_flight(self) -> int:
+        with self._guard:
+            return len(self._active)
+
+    def admit(self, *, read_only: bool = False) -> int | None:
+        """Issue a work ticket only while OPEN; diagnostic reads are unticketed.
+
+        Read-only here is a caller's classification, not independent
+        authorization. A real integration must not let callers mark
+        state-changing commands as read-only.
+        """
+        with self._guard:
+            if read_only:
+                if self._state == BarrierState.CLOSED:
+                    raise AdmissionRefused("barrier closed")
+                return None
+            if self._state != BarrierState.OPEN:
+                raise AdmissionRefused("maintenance admission closed")
+            self._next_ticket += 1
+            ticket = self._next_ticket
+            self._active.add(ticket)
+            return ticket
+
+    def bind_executor(self, executor) -> None:
+        """Pin all tracked submissions and a future fence to one worker pool.
+
+        Identity is checked under the same lock as admission and DRAINING.
+        This does not detect untracked direct executor submissions.
+        """
+        with self._guard:
+            if self._state != BarrierState.OPEN:
+                raise AdmissionRefused("cannot bind after admission closes")
+            if self._bound_executor is not None and self._bound_executor is not executor:
+                raise AdmissionRefused("maintenance worker executor mismatch")
+            self._bound_executor = executor
+
+    def submit(self, executor, operation, *args):
+        """Submit work and issue its ticket in ONE admission critical section.
+
+        This closes the gap in which DRAINING could begin after admission
+        but before the executor actually queues the operation. The executor
+        must be single-worker FIFO for the later offline fence protocol.
+        """
+        with self._guard:
+            if self._state != BarrierState.OPEN:
+                raise AdmissionRefused("maintenance admission closed")
+            if self._bound_executor is not None and self._bound_executor is not executor:
+                raise AdmissionRefused("maintenance worker executor mismatch")
+            self._bound_executor = executor
+            self._next_ticket += 1
+            ticket = self._next_ticket
+            self._active.add(ticket)
+            try:
+                # Guarded pools refuse ordinary submit(); only this locked
+                # admission path can enqueue tracked work.
+                from .config_guarded_worker import GuardedWorkerExecutor
+                if type(executor) is GuardedWorkerExecutor:
+                    future = executor._submit_accounted(operation, *args)
+                else:
+                    future = executor.submit(operation, *args)
+            except BaseException:
+                self._active.remove(ticket)
+                raise
+
+        # Done callbacks can run synchronously if work already completed.
+        # Register outside the lock; close() invalidates outstanding tickets.
+        def release(_future):
+            try:
+                self.finish(ticket)
+            except AdmissionRefused:
+                if self.state != BarrierState.CLOSED:
+                    raise
+        future.add_done_callback(release)
+        return future
+
+    def finish(self, ticket: int) -> None:
+        """Consume a genuine outstanding ticket exactly once."""
+        with self._guard:
+            if type(ticket) is not int or ticket not in self._active:
+                raise AdmissionRefused("unknown or completed ticket")
+            self._active.remove(ticket)
+            self._drained.notify_all()
+
+    def wait_drained(self, timeout: float) -> bool:
+        """Wait for ticket completion callbacks, never for untracked work."""
+        if not isinstance(timeout, (float, int)) or not 0 < timeout <= 60:
+            raise ValueError("bounded positive timeout required")
+        with self._drained:
+            return self._drained.wait_for(
+                lambda: not self._active or self._state == BarrierState.CLOSED,
+                timeout=timeout) and not self._active and self._state == BarrierState.DRAINING
+
+    def begin_draining(self) -> None:
+        """Atomically refuse new simulated mutation and refresh submissions."""
+        with self._guard:
+            if self._state != BarrierState.OPEN:
+                raise AdmissionRefused("drain already initiated")
+            self._state = BarrierState.DRAINING
+
+    def freeze(self, proof: IdleProof) -> None:
+        """Move to FROZEN only with no work and strictly true idle claims."""
+        with self._guard:
+            if self._state != BarrierState.DRAINING:
+                raise AdmissionRefused("draining required")
+            if self._active:
+                raise AdmissionRefused("unfinished command or refresh")
+            if not isinstance(proof, IdleProof):
+                raise AdmissionRefused("missing controller evidence")
+            if any(type(value) is not bool or value is not True
+                   for value in vars(proof).values()):
+                raise AdmissionRefused("player not proven idle")
+            self._state = BarrierState.FROZEN
+
+    def reopen_before_change(self, executor) -> None:
+        """Resume offline admission only from FROZEN on its original worker.
+
+        Caller must guarantee no configuration change was attempted.
+        This is not recovery from CLOSED: timed-out/unverified work must
+        never be silently resumed or discarded.
+        """
+        with self._guard:
+            if (self._state != BarrierState.FROZEN or self._active
+                    or executor is not self._bound_executor):
+                raise AdmissionRefused("offline maintenance cannot resume")
+            self._state = BarrierState.OPEN
+
+    def close(self) -> None:
+        """Irreversibly fail closed. Never replay or resume queued requests."""
+        with self._guard:
+            self._state = BarrierState.CLOSED
+            self._active.clear()
+            self._drained.notify_all()
+
+    def report(self) -> dict:
+        """Non-secret, non-authorizing diagnostic result."""
+        with self._guard:
+            return {
+                "state": self._state.value,
+                "in_flight": len(self._active),
+                "write_authorized": False,
+                "live_exclusion_verified": False,
+            }
