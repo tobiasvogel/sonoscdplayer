@@ -16,6 +16,7 @@ from functools import wraps
 
 from .config_candidate import build_candidate
 from .config_writer_lock import sandbox_writer_lock
+from .config_transaction_phase import persist_phase, read_phase
 
 
 class TransactionRejected(ValueError):
@@ -196,6 +197,11 @@ class OfflineSandbox:
     def read_current(self):
         return self._read("current.toml")[0]
 
+    def transaction_phase(self):
+        """Inspect the persisted synthetic phase; does not authorize writes."""
+        self._require_open()
+        return read_phase(self._dirfd)
+
     @_serialized_sandbox_write
     def apply(self, template: bytes, selected_keys: tuple[str, ...],
               *, expected_sha256: str, fail_at=None):
@@ -223,6 +229,7 @@ class OfflineSandbox:
 
         self._create_synced(backup, original)
         os.fsync(self._dirfd)
+        persist_phase(self._dirfd, "BACKED_UP")
         try:
             self._create_synced(staged, candidate)
             # Revalidate staged bytes, backup integrity and original pathname.
@@ -242,6 +249,7 @@ class OfflineSandbox:
                 json.dumps(journal, sort_keys=True, separators=(",", ":"))
             ).encode("ascii"))
             os.fsync(self._dirfd)
+            persist_phase(self._dirfd, "PREPARED")
             if fail_at == "before_replace":
                 raise TransactionRejected("injected failure before replace")
             if fail_at not in (None, "after_replace"):
@@ -249,6 +257,7 @@ class OfflineSandbox:
             os.replace(staged, "current.toml",
                        src_dir_fd=self._dirfd, dst_dir_fd=self._dirfd)
             os.fsync(self._dirfd)
+            persist_phase(self._dirfd, "REPLACED")
             if fail_at == "after_replace":
                 raise TransactionRejected("injected failure after replace")
         finally:
@@ -257,6 +266,10 @@ class OfflineSandbox:
                 os.unlink(staged, dir_fd=self._dirfd)
             except FileNotFoundError:
                 pass
+        verified, _ = self._read("current.toml")
+        if verified != candidate:
+            raise TransactionRejected("candidate verification failed")
+        persist_phase(self._dirfd, "VERIFIED")
         self._backup_name = backup
         self._backup_digest = digest(original)
         self._current_digest = digest(candidate)
@@ -320,9 +333,14 @@ class OfflineSandbox:
             if restored_data != original:
                 raise TransactionRejected("restore content mismatch")
             self._check_unchanged("current.toml", current, identity)
+            persist_phase(self._dirfd, "ROLLBACK_PREPARED")
             os.replace(restored_name, "current.toml",
                        src_dir_fd=self._dirfd, dst_dir_fd=self._dirfd)
             os.fsync(self._dirfd)
+            verified, _ = self._read("current.toml")
+            if verified != original:
+                raise TransactionRejected("rollback verification failed")
+            persist_phase(self._dirfd, "ROLLED_BACK")
         finally:
             try:
                 os.unlink(restored_name, dir_fd=self._dirfd)
