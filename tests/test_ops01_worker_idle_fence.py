@@ -222,6 +222,42 @@ class WorkerIdleFenceTests(unittest.TestCase):
             with self.assertRaises(AdmissionRefused):
                 freeze_after_worker_drain(gate, pool, idle_controller())
 
+
+    def test_fence_rejects_different_executor_before_draining(self):
+        gate = OfflineMaintenanceBarrier()
+        ctrl = idle_controller()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as first:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as other:
+                self.assertEqual(gate.submit(first, lambda: 7).result(), 7)
+                with self.assertRaisesRegex(AdmissionRefused, "executor mismatch"):
+                    freeze_after_worker_drain(gate, other, ctrl)
+                self.assertEqual(gate.state, BarrierState.OPEN)
+                self.assertEqual(gate.in_flight, 0)
+                self.assertEqual(
+                    freeze_after_worker_drain(gate, first, ctrl)["state"],
+                    "FROZEN")
+                self.assertFalse(gate.report()["write_authorized"])
+
+    def test_second_worker_pool_cannot_submit_under_one_barrier(self):
+        gate = OfflineMaintenanceBarrier()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as first:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as other:
+                self.assertEqual(gate.submit(first, lambda: 1).result(), 1)
+                with self.assertRaisesRegex(AdmissionRefused, "executor mismatch"):
+                    gate.submit(other, lambda: 2)
+                self.assertEqual(gate.state, BarrierState.OPEN)
+                self.assertEqual(gate.in_flight, 0)
+                self.assertEqual(gate.submit(first, lambda: 3).result(), 3)
+
+    def test_binding_rejected_after_drain(self):
+        gate = OfflineMaintenanceBarrier()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            gate.begin_draining()
+            with self.assertRaises(AdmissionRefused):
+                gate.bind_executor(pool)
+        self.assertEqual(gate.state, BarrierState.DRAINING)
+        self.assertFalse(gate.report()["write_authorized"])
+
     def test_invalid_timeout_does_not_change_admission(self):
         gate = OfflineMaintenanceBarrier()
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
