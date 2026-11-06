@@ -38,7 +38,7 @@ def _read_regular(dirfd: int, filename: str) -> bytes:
         try:
             info = os.fstat(fd)
             if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or
-                    info.st_size > _MAX_BYTES):
+                    info.st_size > _MAX_BYTES or (info.st_mode & 0o077)):
                 raise RecoveryInspectionError("unsafe transaction artifact")
             chunks = bytearray()
             while len(chunks) <= _MAX_BYTES:
