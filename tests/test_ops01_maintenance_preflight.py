@@ -51,7 +51,7 @@ class ConsolidatedPreflightTests(unittest.TestCase):
             run, calls = runner_for(current)
             report = inspect_maintenance_preflight(
                 template_path=template, runner=run)
-            self.assertEqual(len(calls), 7)
+            self.assertEqual(len(calls), 8)
             self.assertTrue(all(args[:2] == ["systemctl", "show"]
                                 for args in calls))
             self.assertTrue(report["config"]["effective_path_resolved"])
