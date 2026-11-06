@@ -36,7 +36,7 @@ class FakePlayer:
 
     def get_current_track_info(self):
         self.timing_reads += 1
-        if self.bad_timing:
+        if self.bad_timing and self.timing_reads > 1:
             raise TimeoutError('timing unavailable')
         return {'uri': self.uri, 'position': self.position, 'duration': self.duration}
 
