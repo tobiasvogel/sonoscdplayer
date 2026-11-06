@@ -2,6 +2,8 @@
 from concurrent.futures import Future
 from types import SimpleNamespace
 import threading
+import time
+from unittest.mock import patch
 import unittest
 
 from tools.config_guarded_worker import GuardedWorkerExecutor
@@ -102,6 +104,46 @@ class OfflineCoordinatorTests(unittest.TestCase):
                 self.assertEqual(barrier.state, BarrierState.CLOSED)
             finally:
                 release.set()
+
+    def test_drain_and_fence_share_one_deadline(self):
+        barrier = OfflineMaintenanceBarrier()
+        entered, release = threading.Event(), threading.Event()
+        with GuardedWorkerExecutor() as executor:
+            def slow_operation():
+                entered.set()
+                release.wait(timeout=2)
+            future = barrier.submit(executor, slow_operation)
+            self.assertTrue(entered.wait(2))
+            from tools import config_maintenance_coordinator as coordinator
+            original = coordinator.sample_controller_idle
+            def slow_sample(controller):
+                time.sleep(0.11)
+                return original(controller)
+            def release_later():
+                time.sleep(0.09)
+                release.set()
+            worker = threading.Thread(target=release_later)
+            worker.start()
+            try:
+                with patch.object(coordinator, "sample_controller_idle",
+                                  side_effect=slow_sample):
+                    with self.assertRaises(AdmissionRefused):
+                        drain_and_sample_offline(
+                            barrier, executor, FakeController(), timeout=0.15)
+                self.assertEqual(barrier.state, BarrierState.CLOSED)
+            finally:
+                release.set()
+                worker.join(timeout=2)
+                future.result(timeout=2)
+
+    def test_nonfinite_timeout_refused_before_drain(self):
+        for bad in (float("nan"), float("inf"), float("-inf"), True):
+            barrier = OfflineMaintenanceBarrier()
+            with GuardedWorkerExecutor() as executor:
+                with self.subTest(bad=bad), self.assertRaises(ValueError):
+                    drain_and_sample_offline(
+                        barrier, executor, FakeController(), timeout=bad)
+            self.assertEqual(barrier.state, BarrierState.OPEN)
 
     def test_untracked_direct_submission_is_refused(self):
         barrier = OfflineMaintenanceBarrier()
