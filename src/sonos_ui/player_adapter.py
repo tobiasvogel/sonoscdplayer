@@ -72,5 +72,5 @@ def project_status(state, previous=None):
         album=None, artist=None, title=None, cover=None,
         track=track, track_count=count, playback=playback,
         speaker=None, elapsed_seconds=elapsed, duration_seconds=duration,
-        disc_phase=mode if mode in ('STARTING','ERROR') else None,
+        disc_phase=mode,  # state label only, never authorizes transport actions
     )
