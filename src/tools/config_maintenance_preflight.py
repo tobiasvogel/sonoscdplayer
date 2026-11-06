@@ -15,6 +15,7 @@ import subprocess
 from .config_dry_run import InspectionError, effective_config_path, read_toml
 from .config_maintenance_inventory import inspect_maintenance_runtime
 from .config_migration_plan import plan_migration
+from .config_writer_observation import sample_config_identity
 
 _PLAYER = "sonoscdplayer-player.service"
 
@@ -32,6 +33,7 @@ def inspect_maintenance_preflight(*, template_path=None,
     blockers = set(inventory["blockers"])
     config = {
         "effective_path_resolved": False,
+        "two_observations_consistent": False,
         "current_toml_readable": False,
         "template_checked": False,
         "proposal_status": "not_checked",
@@ -45,6 +47,10 @@ def inspect_maintenance_preflight(*, template_path=None,
     try:
         path = effective_config_path(_PLAYER, runner=runner)
         config["effective_path_resolved"] = True
+        observation = sample_config_identity(path)
+        config["two_observations_consistent"] = observation["two_observations_consistent"]
+        if not config["two_observations_consistent"]:
+            blockers.add("config_identity_sample_inconclusive")
         current = config_reader(path)
         config["current_toml_readable"] = True
     except (InspectionError, OSError, ValueError, TypeError):
@@ -87,6 +93,13 @@ def inspect_maintenance_preflight(*, template_path=None,
         "controller_idle_verified": False,
         "worker_drain_verified": False,
         "other_writers_excluded": False,
+        "writer_coordination": {
+            "in_process_player_config": "read_at_startup",
+            "ops01_transaction": "offline_sandbox_only",
+            "external_editors_installers_deployments": "not_excluded",
+            "cooperative_lock": "sandbox_only",
+            "live_writer_exclusion_proven": False,
+        },
     }
 
 
