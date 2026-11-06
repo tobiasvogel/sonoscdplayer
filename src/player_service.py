@@ -356,7 +356,13 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 if busy is None or busy.done():
                     busy = None
                     if time.monotonic() >= next_refresh:
-                        busy = submit_maintenance_work(executor, maintenance_barrier, refresh)
+                        try:
+                            busy = submit_maintenance_work(
+                                executor, maintenance_barrier, refresh)
+                        except AdmissionRefused:
+                            # Drain is not a service-shutdown request. Stop
+                            # scheduling refresh without killing the loop.
+                            busy = None
                         next_refresh = time.monotonic() + poll_seconds
                 readable, _, _ = select.select([server], [], [], min(poll_seconds, 0.1))
                 if not readable:
