@@ -83,3 +83,43 @@ def plan_stop(status, target):
     if sonos.get('owned') is not True or stream.get('active') is not True:
         return None
     return 'stop'
+
+
+
+def plan_track_change(status, target, direction):
+    """Plan a single NEXT/PREVIOUS event; never authorize foreign Sonos writes.
+
+    In STOPPED this only changes the local track selection. While playing or
+    paused, the controller independently revalidates live ownership, URI,
+    transport and group topology before stopping/restarting its own stream.
+    Unknown or contradictory snapshots fail closed.
+    """
+    if direction not in ('next', 'previous'):
+        return None
+    if not isinstance(status, dict) or status.get('ok') is not True:
+        return None
+    if not isinstance(target, dict) or target.get('ok') is not True:
+        return None
+    state = status.get('state')
+    selection = target.get('target_selection')
+    if not isinstance(state, dict) or not isinstance(selection, dict):
+        return None
+    if state.get('schema_version') != 1 or selection.get('selected') is not True:
+        return None
+    player = state.get('player')
+    sonos = state.get('sonos')
+    stream = state.get('stream')
+    if not all(isinstance(x, dict) for x in (player, sonos, stream)):
+        return None
+    if sonos.get('group_cleanup_pending') is not False:
+        return None
+    owned = sonos.get('owned')
+    active = stream.get('active')
+    if type(owned) is not bool or type(active) is not bool:
+        return None
+    mode = player.get('mode')
+    if mode == 'STOPPED' and owned is False and active is False:
+        return direction
+    if mode in ('PLAYING', 'PAUSED') and owned is True and active is True:
+        return direction
+    return None
