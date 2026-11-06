@@ -90,6 +90,33 @@ class IndependentRecoveryInspectionTests(unittest.TestCase):
             self.assertEqual(code, 2)
             self.assertEqual(report['status'], 'rejected')
 
+    def test_new_process_refuses_exposed_journal_permissions(self):
+        with OfflineSandbox() as sandbox:
+            old = sandbox.seed(CURRENT)
+            sandbox.apply(TEMPLATE, KEYS, expected_sha256=old)
+            (sandbox.directory / 'transaction-intent.json').chmod(0o644)
+            sandbox.simulate_process_restart()
+            code, report = self._inspect_in_new_python(sandbox)
+            self.assertEqual((code, report['status']), (2, 'rejected'))
+
+    def test_new_process_refuses_exposed_backup_permissions(self):
+        with OfflineSandbox() as sandbox:
+            old = sandbox.seed(CURRENT)
+            sandbox.apply(TEMPLATE, KEYS, expected_sha256=old)
+            (sandbox.directory / 'backup-original.toml').chmod(0o640)
+            sandbox.simulate_process_restart()
+            code, report = self._inspect_in_new_python(sandbox)
+            self.assertEqual((code, report['status']), (2, 'rejected'))
+
+    def test_new_process_refuses_exposed_current_permissions(self):
+        with OfflineSandbox() as sandbox:
+            old = sandbox.seed(CURRENT)
+            sandbox.apply(TEMPLATE, KEYS, expected_sha256=old)
+            (sandbox.directory / 'current.toml').chmod(0o604)
+            sandbox.simulate_process_restart()
+            code, report = self._inspect_in_new_python(sandbox)
+            self.assertEqual((code, report['status']), (2, 'rejected'))
+
     def test_new_process_refuses_backup_symlink(self):
         with OfflineSandbox() as sandbox:
             old = sandbox.seed(CURRENT)
