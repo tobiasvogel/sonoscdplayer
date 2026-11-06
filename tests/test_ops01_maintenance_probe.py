@@ -57,6 +57,33 @@ class OneShotProbeTests(unittest.TestCase):
 
         LiveAdmissionTests.service(self, controller, barrier, control, exercise)
 
+    def test_timeout_consumes_probe_and_keeps_admission_closed(self):
+        barrier = OfflineMaintenanceBarrier()
+        control = InternalMaintenanceControl(barrier)
+        controller = FakeController()
+        probe = OneShotMaintenanceProbe(control)
+        entered, release = threading.Event(), threading.Event()
+
+        def slow_refresh():
+            entered.set()
+            release.wait(timeout=3)
+        controller.refresh = slow_refresh
+
+        def exercise(path):
+            self.assertTrue(entered.wait(timeout=2))
+            try:
+                with self.assertRaises(AdmissionRefused):
+                    probe.run_once(timeout=0.03)
+                self.assertEqual(barrier.state, BarrierState.CLOSED)
+                self.assertTrue(probe.report()["consumed"])
+                with self.assertRaises(AdmissionRefused):
+                    probe.run_once(timeout=2)
+                self.assertEqual(request(path, "help")["error"],
+                                 "maintenance admission closed")
+            finally:
+                release.set()
+        LiveAdmissionTests.service(self, controller, barrier, control, exercise)
+
     def test_two_simultaneous_invocations_only_one_succeeds(self):
         barrier = OfflineMaintenanceBarrier()
         control = InternalMaintenanceControl(barrier)
