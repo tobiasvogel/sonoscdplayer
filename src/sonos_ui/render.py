@@ -136,7 +136,7 @@ class Renderer:
         if m.elapsed_seconds is not None and m.duration_seconds and m.duration_seconds>0:
             progress=max(0,min(1,m.elapsed_seconds/m.duration_seconds))
             d.rectangle((6,84,6+int(116*progress),87),fill=t.playing)
-        self.bottom(canvas,status=m.speaker or self.tr('status.no_speaker'),footer=self.tr('footer.open_menu'))
+        self.bottom(canvas,status=m.speaker or self.tr('status.paused' if m.playback=='paused' else 'status.playing'),footer=self.tr('footer.open_menu'))
 
     def menu(self,canvas,m,elapsed):
         t=self.theme; d=ImageDraw.Draw(canvas)
