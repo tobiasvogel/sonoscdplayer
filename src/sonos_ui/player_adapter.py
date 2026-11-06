@@ -38,11 +38,19 @@ def project_status(state, previous=None):
     if not isinstance(player, dict):
         raise ValueError('player status missing')
     mode = player.get('mode')
-    if mode not in ('STOPPED', 'PLAYING', 'PAUSED', 'STARTING', 'ERROR'):
+    if mode not in ('NO_DISC', 'STOPPED', 'PLAYING', 'PAUSED', 'STARTING', 'ERROR'):
         raise ValueError('unknown player mode')
     count = player.get('track_count')
     track = player.get('track')
-    if type(count) is not int or count < 0 or type(track) is not int or track < 0:
+    # PlayerState.NO_DISC legitimately exposes selected_track=None and
+    # track_count=0. Preserve that state without inventing a disc.
+    if type(count) is not int or count < 0:
+        raise ValueError('invalid track information')
+    if mode == 'NO_DISC':
+        if count != 0 or track is not None:
+            raise ValueError('NO_DISC must not contain selected tracks')
+        track = 0  # DisplayModel requires an integer, but disc_present=False.
+    elif type(track) is not int or track < 0 or (count == 0 and track != 0):
         raise ValueError('invalid track information')
     playback = {'PLAYING':'playing', 'PAUSED':'paused'}.get(mode, 'stopped')
     return DisplayModel(
