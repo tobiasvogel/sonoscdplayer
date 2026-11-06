@@ -199,6 +199,77 @@ class WorkerIdleFenceTests(unittest.TestCase):
         ]
         self.assertEqual(untracked, [])
 
+    def test_player_service_has_no_direct_worker_submit_outside_gateway(self):
+        """Detect accidental bypasses added anywhere in the service module."""
+        import player_service
+        tree = ast.parse(inspect.getsource(player_service))
+        sites = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            for subnode in ast.walk(node):
+                if (isinstance(subnode, ast.Call)
+                        and isinstance(subnode.func, ast.Attribute)
+                        and subnode.func.attr == "submit"):
+                    sites.append((node.name, subnode.func.value))
+        self.assertEqual(len(sites), 2)
+        self.assertEqual(
+            {name for name, _ in sites}, {"submit_maintenance_work"})
+        self.assertEqual(
+            {value.id for _, value in sites if isinstance(value, ast.Name)},
+            {"executor", "barrier"})
+
+    def test_service_worker_reference_never_escapes_submission_gateway(self):
+        """All uses of the serve() worker must be controlled submissions."""
+        from player_service import serve
+        tree = ast.parse(inspect.getsource(serve))
+        refs = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and node.id == "executor"
+            and isinstance(node.ctx, ast.Load)
+        ]
+        submissions = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "submit_maintenance_work"
+        ]
+        self.assertEqual(len(submissions), 2)
+        for call in submissions:
+            self.assertGreaterEqual(len(call.args), 3)
+            self.assertIsInstance(call.args[0], ast.Name)
+            self.assertEqual(call.args[0].id, "executor")
+            self.assertIsInstance(call.args[1], ast.Name)
+            self.assertEqual(call.args[1].id, "maintenance_barrier")
+        self.assertEqual(len(refs), len(submissions))
+        # No other expression in serve can hand the pool to an untracked
+        # submitter, including nested refresh and socket command handlers.
+        self.assertEqual({id(node) for node in refs},
+                         {id(call.args[0]) for call in submissions})
+
+    def test_service_worker_gateway_has_only_explicit_enabled_disabled_paths(self):
+        """The disabled default remains explicit; enabled work is ticketed."""
+        from player_service import submit_maintenance_work
+        tree = ast.parse(inspect.getsource(submit_maintenance_work))
+        calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "submit"
+        ]
+        self.assertEqual(len(calls), 2)
+        targets = {
+            node.func.value.id for node in calls
+            if isinstance(node.func.value, ast.Name)
+        }
+        self.assertEqual(targets, {"executor", "barrier"})
+        self.assertTrue(any(
+            isinstance(node, ast.If)
+            and isinstance(node.test, ast.Compare)
+            and isinstance(node.test.left, ast.Name)
+            and node.test.left.id == "barrier"
+            for node in ast.walk(tree)))
+
     def test_player_worker_pool_is_single_threaded(self):
         from player_service import serve
         tree = ast.parse(inspect.getsource(serve))
