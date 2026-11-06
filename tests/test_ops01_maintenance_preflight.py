@@ -71,6 +71,32 @@ class ConsolidatedPreflightTests(unittest.TestCase):
             self.assertNotIn("local_extra", redacted)
             self.assertNotIn("private-secret-path", redacted)
 
+    def test_stable_snapshot_is_not_writer_authorization(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current = Path(directory) / "local.toml"
+            current.write_text(CURRENT)
+            run, _ = runner_for(current)
+            report = inspect_maintenance_preflight(runner=run)
+            self.assertTrue(report["config"]["two_observations_consistent"])
+            self.assertFalse(report["writer_coordination"]["live_writer_exclusion_proven"])
+            self.assertEqual(report["writer_coordination"]["ops01_transaction"],
+                             "offline_sandbox_only")
+            self.assertIn("other_config_writers_not_excluded", report["blockers"])
+            self.assertFalse(report["write_authorized"])
+
+    def test_inconclusive_identity_snapshot_is_explicit_blocker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current = Path(directory) / "local.toml"
+            current.write_text(CURRENT)
+            run, _ = runner_for(current)
+            from tools import config_maintenance_preflight as module
+            with patch.object(module, "sample_config_identity",
+                              return_value={"two_observations_consistent": False}):
+                report = inspect_maintenance_preflight(runner=run)
+            self.assertFalse(report["config"]["two_observations_consistent"])
+            self.assertIn("config_identity_sample_inconclusive", report["blockers"])
+            self.assertFalse(report["write_authorized"])
+
     def test_no_template_means_not_checked(self):
         with tempfile.TemporaryDirectory() as directory:
             current = Path(directory) / "local.toml"
