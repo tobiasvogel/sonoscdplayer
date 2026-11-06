@@ -60,5 +60,7 @@
   "legacy.stream_active": "active",
   "legacy.stream_idle": "idle",
   "legacy.transport_unknown": "unknown",
-  "label.unnamed_speaker": "Unnamed speaker"
+  "label.unnamed_speaker": "Unnamed speaker",
+  "status.playing": "Playing",
+  "status.paused": "Playback paused"
 }
