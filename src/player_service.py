@@ -256,7 +256,13 @@ def simulate_internal_maintenance_drain(barrier, executor, controller, *,
         barrier, executor, controller, timeout=timeout)
 
 
-def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, maintenance_barrier=None):
+def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, maintenance_barrier=None, internal_maintenance_control=None, test_shutdown_event=None):
+    if internal_maintenance_control is not None:
+        from tools.config_live_admission import InternalMaintenanceControl
+        if (type(internal_maintenance_control) is not InternalMaintenanceControl
+                or maintenance_barrier is None
+                or internal_maintenance_control._barrier is not maintenance_barrier):
+            raise ValueError('internal maintenance requires matching barrier')
     path = Path(socket_path).expanduser().absolute()
     if not path.parent.is_dir():
         raise ValueError('socket parent directory does not exist')
@@ -288,6 +294,8 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
             concurrent.futures.ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix='player-control'))
         with worker_pool as executor:
+            if internal_maintenance_control is not None:
+                internal_maintenance_control.bind(executor, controller)
             def operate(request):
                 # Check the *physical* TOC immediately before a new PLAY. The
                 # 3-second cached monitor status must not authorize stale media.
@@ -357,7 +365,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
 
             busy = None
             next_refresh = time.monotonic()
-            while True:
+            while test_shutdown_event is None or not test_shutdown_event.is_set():
                 for conn, future in pending[:]:
                     if future.done():
                         pending.remove((conn, future))
