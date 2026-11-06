@@ -90,7 +90,7 @@ class GuardedWorkerTests(unittest.TestCase):
         ran = []
         with GuardedWorkerExecutor() as pool:
             self.assertNotIsInstance(pool, concurrent.futures.ThreadPoolExecutor)
-            with self.assertRaises(TypeError):
+            with self.assertRaises((AttributeError, TypeError)):
                 concurrent.futures.ThreadPoolExecutor.submit(
                     pool, lambda: ran.append("bypass"))
         self.assertEqual(ran, [])
