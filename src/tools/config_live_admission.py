@@ -49,6 +49,8 @@ class InternalMaintenanceControl:
         It does not permit writes or shutdown.
         """
         with self._lock:
+            if self._retired:
+                raise AdmissionRefused("maintenance control retired")
             session = self._session
             controller = self._controller
         if session is None:
