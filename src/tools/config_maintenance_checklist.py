@@ -27,6 +27,8 @@ def build_maintenance_checklist(report):
     units = report.get("units", {})
     player = units.get("sonoscdplayer-player.service", {})
     sentinel = units.get("sonoscdplayer-oled-shutdown-sentinel.service", {})
+    activation = report.get("activation", {})
+    review = cfg.get("reference_review", {})
 
     def check(key, observed, next_action):
         return {
@@ -46,7 +48,8 @@ def build_maintenance_checklist(report):
                    "inspect_current_config_read_only"),
              check("reference_reviewed",
                    cfg.get("template_checked") is True
-                   and cfg.get("proposal_status") == "compatible",
+                   and (cfg.get("proposal_status") == "compatible"
+                        or review.get("status") == "accepted_known_omission"),
                    "review_reference_discrepancies_without_auto_apply"),
              check("two_identity_samples_consistent",
                    cfg.get("two_observations_consistent") is True,
@@ -70,6 +73,9 @@ def build_maintenance_checklist(report):
          "checks": [
              check("socket_commands_and_refreshes_drained", False,
                    "establish_live_serial_worker_fence"),
+             check("activation_metadata_inspected",
+                   activation.get("metadata_available") is True,
+                   "inspect_effective_player_activation_relationships_read_only"),
              check("service_reactivation_excluded", False,
                    "plan_activation_exclusion_without_stopping_composite_target"),
              check("external_writers_excluded", False,
@@ -99,6 +105,8 @@ def build_maintenance_checklist(report):
         "checklist": phases,
         "blockers": sorted(blockers),
         "preserve": report.get("preserve", []),
+        "reference_review": review,
+        "activation": activation,
         "note": "observed_is_not_exclusive_proof_or_approval",
     }
 
@@ -109,10 +117,16 @@ def main(argv=None):
     source.add_argument("--template", help="read-only comparison reference")
     source.add_argument("--repository-template", action="store_true",
                         help="compare with versioned src/config.toml")
+    parser.add_argument("--acknowledge-safe-screen-omission", action="store_true",
+                        help="mark only the known protected omission as reviewed; no apply permission")
     args = parser.parse_args(argv)
     template = (Path(__file__).resolve().parents[1] / "config.toml"
                 if args.repository_template else args.template)
-    report = inspect_maintenance_preflight(template_path=template)
+    if args.acknowledge_safe_screen_omission:
+        report = inspect_maintenance_preflight(
+            template_path=template, acknowledge_safe_screen_omission=True)
+    else:
+        report = inspect_maintenance_preflight(template_path=template)
     print(json.dumps(build_maintenance_checklist(report), sort_keys=True))
     return 0  # Inspection executed, NOT maintenance approval.
 
