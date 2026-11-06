@@ -74,7 +74,7 @@ def build_maintenance_checklist(report):
              check("socket_commands_and_refreshes_drained", False,
                    "establish_live_serial_worker_fence"),
              check("activation_metadata_inspected",
-                   activation.get("metadata_available") is True,
+                   activation.get("metadata_complete") is True,
                    "inspect_effective_player_activation_relationships_read_only"),
              check("service_reactivation_excluded", False,
                    "plan_activation_exclusion_without_stopping_composite_target"),
