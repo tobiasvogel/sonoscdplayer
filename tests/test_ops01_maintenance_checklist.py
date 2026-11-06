@@ -3,10 +3,13 @@ import contextlib
 import io
 import json
 from pathlib import Path
+import subprocess
+import tempfile
 from unittest.mock import patch
 import unittest
 
 from tools.config_maintenance_checklist import build_maintenance_checklist, main
+from tools.config_maintenance_preflight import inspect_maintenance_preflight
 
 
 def sample_report(*, stable=True, reference="review_required",
@@ -120,6 +123,66 @@ class OperationalChecklistTests(unittest.TestCase):
         payload = json.loads(out.getvalue())
         self.assertFalse(payload["write_authorized"])
         self.assertNotIn("PRIVATE_SECRET", out.getvalue())
+
+    def test_synthetic_toml_comparison_with_protected_missing(self):
+        with tempfile.TemporaryDirectory() as root:
+            current = Path(root) / "synthetic-current.toml"
+            template = Path(root) / "synthetic-reference.toml"
+            current.write_text('[service]\\nshutdown_policy="none"\\n')
+            template.write_text('[service]\\nshutdown_policy="none"\\n'
+                                'experimental_safe_screen=false\\n')
+            def runner(argv, **_kwargs):
+                if argv[:3] != ["systemctl", "show",
+                                "sonoscdplayer-player.service"] and argv[:2] != ["systemctl", "show"]:
+                    raise AssertionError("systemd mutation forbidden")
+                if argv[3:5] == ["-p", "ExecStart"]:
+                    output = ("ExecStart={ path=/usr/bin/python3 ; argv[]="
+                              "/usr/bin/python3 player_service.py --config "
+                              + str(current) +
+                              " --socket /run/synthetic.sock ; ignore_errors=no ; }\\n")
+                else:
+                    output = ("LoadState=loaded\\nActiveState=active\\n"
+                              "SubState=running\\nPartOf=sonoscdplayer.target\\n"
+                              "ExecStart=PRIVATE_SYSTEMD_VALUE\\nExecStop=\\n")
+                return subprocess.CompletedProcess(argv, 0, output, "")
+            preflight = inspect_maintenance_preflight(
+                runner=runner, template_path=template)
+            report = build_maintenance_checklist(preflight)
+            self.assertEqual(preflight["config"]["protected_missing_count"], 1)
+            self.assertEqual(checks(report)["reference_reviewed"]["status"],
+                             "pending")
+            self.assertEqual(checks(report)["two_identity_samples_consistent"]["status"],
+                             "observed")
+            self.assertFalse(report["write_authorized"])
+            self.assertNotIn(str(current), json.dumps(report))
+            self.assertNotIn("PRIVATE_SYSTEMD_VALUE", json.dumps(report))
+
+    def test_synthetic_invalid_reference_remains_blocked(self):
+        with tempfile.TemporaryDirectory() as root:
+            current = Path(root) / "synthetic-current.toml"
+            template = Path(root) / "synthetic-reference.toml"
+            current.write_text('x=1\\n')
+            template.write_text('[invalid\\nPRIVATE_TOML_VALUE')
+            def runner(argv, **_kwargs):
+                if argv[:2] != ["systemctl", "show"]:
+                    raise AssertionError("systemd mutation forbidden")
+                if argv[3:5] == ["-p", "ExecStart"]:
+                    output = ("ExecStart={ path=/usr/bin/python3 ; argv[]="
+                              "/usr/bin/python3 player_service.py --config "
+                              + str(current) +
+                              " --socket /run/synthetic.sock ; ignore_errors=no ; }\\n")
+                else:
+                    output = ("LoadState=loaded\\nActiveState=inactive\\n"
+                              "SubState=dead\\nPartOf=sonoscdplayer.target\\n"
+                              "ExecStart=PRIVATE_SYSTEMD_VALUE\\nExecStop=\\n")
+                return subprocess.CompletedProcess(argv, 0, output, "")
+            preflight = inspect_maintenance_preflight(
+                runner=runner, template_path=template)
+            report = build_maintenance_checklist(preflight)
+            self.assertEqual(checks(report)["reference_reviewed"]["status"],
+                             "pending")
+            self.assertFalse(report["ready_for_live_maintenance"])
+            self.assertNotIn("PRIVATE_TOML_VALUE", json.dumps(report))
 
     def test_cli_rejects_two_templates(self):
         with contextlib.redirect_stderr(io.StringIO()):
