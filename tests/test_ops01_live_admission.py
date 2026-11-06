@@ -209,6 +209,67 @@ class LiveAdmissionTests(unittest.TestCase):
             self.assertTrue(request(path, "help")["ok"])
         self.service(controller, barrier, control, exercise)
 
+    def test_previously_admitted_socket_work_finishes_before_fence(self):
+        barrier = OfflineMaintenanceBarrier()
+        control = InternalMaintenanceControl(barrier)
+        controller = FakeController()
+        entered, release = threading.Event(), threading.Event()
+
+        def blocked_refresh():
+            entered.set()
+            if not release.wait(3):
+                raise AssertionError("refresh never released")
+            controller.refresh_count += 1
+
+        controller.refresh = blocked_refresh
+
+        def exercise(path):
+            self.assertTrue(entered.wait(2))
+            response_done = threading.Event()
+            results = []
+
+            def old_command():
+                try:
+                    results.append(request(path, "help"))
+                finally:
+                    response_done.set()
+
+            old = threading.Thread(target=old_command)
+            old.start()
+            # Wait until serve has ticketed the queued request, not merely
+            # until the client has connected to the socket.
+            try:
+                deadline = time.monotonic() + 2
+                while barrier.in_flight < 2 and time.monotonic() < deadline:
+                    time.sleep(0.002)
+                self.assertEqual(barrier.in_flight, 2)
+                completed = []
+                def prepare():
+                    completed.append(control.prepare(timeout=2))
+                draining = threading.Thread(target=prepare)
+                draining.start()
+                try:
+                    deadline = time.monotonic() + 2
+                    while barrier.state == BarrierState.OPEN and time.monotonic() < deadline:
+                        time.sleep(0.002)
+                    self.assertEqual(barrier.state, BarrierState.DRAINING)
+                    self.assertFalse(response_done.is_set())
+                    self.assertEqual(request(path, "help")["error"],
+                                     "maintenance admission closed")
+                finally:
+                    release.set()
+                    draining.join(timeout=3)
+                self.assertFalse(draining.is_alive())
+                self.assertEqual(completed[0]["barrier_state"], "FROZEN")
+                self.assertTrue(response_done.wait(2))
+                self.assertTrue(results[0]["ok"])
+                control.cancel_before_change()
+            finally:
+                release.set()
+                old.join(timeout=3)
+            self.assertFalse(old.is_alive())
+        self.service(controller, barrier, control, exercise)
+
     def test_cancel_during_prepare_is_refused_without_early_reopen(self):
         barrier = OfflineMaintenanceBarrier()
         control = InternalMaintenanceControl(barrier)
