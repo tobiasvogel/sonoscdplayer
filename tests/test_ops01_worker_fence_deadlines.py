@@ -7,7 +7,7 @@ import unittest
 
 from tools import config_worker_idle_fence as fence
 from tools.config_worker_idle_fence import freeze_after_worker_drain
-from tools.config_maintenance_barrier import OfflineMaintenanceBarrier, BarrierState, AdmissionRefused
+from tools.config_maintenance_barrier import OfflineMaintenanceBarrier, BarrierState, AdmissionRefused, IdleProof
 
 
 class FenceDeadlineTests(unittest.TestCase):
@@ -35,6 +35,21 @@ class FenceDeadlineTests(unittest.TestCase):
                     with self.assertRaisesRegex(AdmissionRefused, "deadline expired"):
                         freeze_after_worker_drain(
                             gate, pool, controller, timeout=0.1)
+        self.assertEqual(gate.state, BarrierState.DRAINING)
+        self.assertFalse(gate.report()["write_authorized"])
+
+
+    def test_expired_deadline_after_drain_callbacks_fails_closed(self):
+        gate = OfflineMaintenanceBarrier()
+        sample = IdleProof(True, True, True, True, True, True, True, False)
+        ticks = iter((0.0, 0.0, 0.05, 0.1))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            with patch.object(fence, "sample_controller_idle", return_value=sample):
+                with patch.object(fence, "time",
+                                  types.SimpleNamespace(monotonic=lambda: next(ticks))):
+                    with self.assertRaisesRegex(AdmissionRefused, "deadline expired"):
+                        freeze_after_worker_drain(
+                            gate, pool, object(), timeout=0.1)
         self.assertEqual(gate.state, BarrierState.DRAINING)
         self.assertFalse(gate.report()["write_authorized"])
 
