@@ -1,5 +1,7 @@
 """OPS-01 offline FIFO fence tests; synthetic controller only."""
+import ast
 import concurrent.futures
+import inspect
 import threading
 import time
 import types
@@ -151,7 +153,7 @@ class WorkerIdleFenceTests(unittest.TestCase):
         gate = OfflineMaintenanceBarrier()
         class UnverifiedExecutor:
             def submit(self, *args):
-                self.fail("must not submit")
+                raise AssertionError("must not submit")
         with self.assertRaises(AdmissionRefused):
             freeze_after_worker_drain(gate, UnverifiedExecutor(), idle_controller())
         self.assertEqual(gate.state, BarrierState.OPEN)
@@ -180,6 +182,38 @@ class WorkerIdleFenceTests(unittest.TestCase):
                 freeze_after_worker_drain(gate, pool, ctrl)
         self.assertEqual(gate.state, BarrierState.DRAINING)
         self.assertFalse(gate.report()["write_authorized"])
+
+    def test_player_loop_uses_only_accounted_worker_submissions(self):
+        from player_service import serve
+        tree = ast.parse(inspect.getsource(serve))
+        submissions = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == "submit_maintenance_work"
+        ]
+        self.assertEqual(len(submissions), 2)
+        untracked = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "submit"
+        ]
+        self.assertEqual(untracked, [])
+
+    def test_player_worker_pool_is_single_threaded(self):
+        from player_service import serve
+        tree = ast.parse(inspect.getsource(serve))
+        pools = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "ThreadPoolExecutor"
+        ]
+        self.assertEqual(len(pools), 1)
+        workers = [
+            item.value for item in pools[0].keywords if item.arg == "max_workers"
+        ]
+        self.assertEqual(len(workers), 1)
+        self.assertIsInstance(workers[0], ast.Constant)
+        self.assertEqual(workers[0].value, 1)
 
     def test_double_fence_is_denied(self):
         gate = OfflineMaintenanceBarrier()
