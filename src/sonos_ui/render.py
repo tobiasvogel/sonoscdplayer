@@ -96,10 +96,14 @@ class Renderer:
 
     def idle(self,canvas,m,elapsed):
         t=self.theme;d=ImageDraw.Draw(canvas)
-        self.shell(canvas,self.tr('header.disc') if m.disc_present else self.tr('header.no_disc'))
+        phase_key = {'STARTING':'header.starting', 'STOPPED':'header.stopped',
+                     'ERROR':'header.error'}.get(m.disc_phase)
+        self.shell(canvas,self.tr(phase_key) if phase_key else
+                   self.tr('header.disc') if m.disc_present else self.tr('header.no_disc'))
         if not m.disc_present:
             self.text(canvas,(10,53),self.tr('status.no_disc'),fill=t.secondary,size=10,width=110,height=14)
-            self.bottom(canvas,status=self.tr('status.ready'),footer=self.tr('footer.open_menu'))
+            status = self.tr('status.error') if m.disc_phase == 'ERROR' else self.tr('status.ready')
+            self.bottom(canvas,status=status,footer=self.tr('footer.open_menu'))
             return
         if self.cover_enabled:
             self.cover(canvas,m.cover)
@@ -113,7 +117,16 @@ class Renderer:
         d.line((5,59,123,59),fill=t.muted)
         self.text(canvas,(6,65),'01',fill=t.accent,size=11,bold=True,width=19,height=15)
         self.text(canvas,(28,65),m.title or self.tr('label.track',number=1),fill=t.primary,size=11,bold=True,width=96,height=15,scroll=False)
-        self.bottom(canvas,status=self.tr('status.ready') if m.speaker else self.tr('status.choose_target'),footer=self.tr('footer.open_menu'),status_fill=t.playing if m.speaker else t.warning)
+        if m.disc_phase == 'STARTING':
+            status = self.tr('status.starting')
+        elif m.disc_phase == 'ERROR':
+            status = self.tr('status.error')
+        elif m.disc_phase == 'STOPPED':
+            status = self.tr('status.stopped')
+        else:
+            status = self.tr('status.ready') if m.speaker else self.tr('status.choose_target')
+        self.bottom(canvas,status=status,footer=self.tr('footer.open_menu'),
+                    status_fill=t.playing if m.speaker else t.warning)
 
     def playback(self,canvas,m,elapsed):
         t=self.theme;d=ImageDraw.Draw(canvas)
