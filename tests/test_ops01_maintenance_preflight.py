@@ -131,6 +131,22 @@ class ConsolidatedPreflightTests(unittest.TestCase):
                           report["blockers"])
             self.assertNotIn("PRIVATE_TEMPLATE_VALUE", json.dumps(report))
 
+    def test_repository_template_flag_uses_versioned_src_config(self):
+        from tools import config_maintenance_preflight as module
+        expected = Path(module.__file__).resolve().parents[1] / "config.toml"
+        with patch.object(module, "inspect_maintenance_preflight",
+                          return_value={"assessment": "blocked",
+                                        "write_authorized": False}) as inspection:
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["--repository-template"]), 0)
+        inspection.assert_called_once_with(template_path=expected)
+
+    def test_repository_template_and_explicit_path_are_mutually_exclusive(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                main(["--repository-template", "--template", "other.toml"])
+        self.assertEqual(raised.exception.code, 2)
+
     def test_cli_outputs_one_redacted_json_report(self):
         with tempfile.TemporaryDirectory() as directory:
             current = Path(directory) / "local.toml"
