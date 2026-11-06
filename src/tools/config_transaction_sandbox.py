@@ -12,8 +12,10 @@ import os
 from pathlib import Path
 import stat
 import tempfile
+from functools import wraps
 
 from .config_candidate import build_candidate
+from .config_writer_lock import sandbox_writer_lock
 
 
 class TransactionRejected(ValueError):
@@ -22,6 +24,16 @@ class TransactionRejected(ValueError):
 
 def digest(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _serialized_sandbox_write(method):
+    """Cooperative lock for synthetic sandbox transactions only."""
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        self._require_open()
+        with sandbox_writer_lock(self._dirfd):
+            return method(self, *args, **kwargs)
+    return guarded
 
 
 class OfflineSandbox:
@@ -167,6 +179,7 @@ class OfflineSandbox:
         self._current_digest = intent["candidate_sha256"]
         return self._current_digest
 
+    @_serialized_sandbox_write
     def seed(self, raw: bytes):
         """Create a synthetic original exactly once."""
         self._require_open()
@@ -183,6 +196,7 @@ class OfflineSandbox:
     def read_current(self):
         return self._read("current.toml")[0]
 
+    @_serialized_sandbox_write
     def apply(self, template: bytes, selected_keys: tuple[str, ...],
               *, expected_sha256: str, fail_at=None):
         """Rehearse safe apply; no real files are accessible.
@@ -284,6 +298,7 @@ class OfflineSandbox:
         self._current_digest = digest(candidate)
         return "replacement_verified"
 
+    @_serialized_sandbox_write
     def rollback(self, *, expected_sha256: str):
         """Rehearse an explicit checksum-gated restoration, once."""
         self._require_open()
