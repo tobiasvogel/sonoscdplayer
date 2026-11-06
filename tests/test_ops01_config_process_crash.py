@@ -33,8 +33,11 @@ class KilledProcessRecoveryTests(unittest.TestCase):
                 real_replace = os.replace
 
                 def intercepted_replace(src, dst, **kwargs):
+                    # The durable phase journal also uses atomic replaces.
+                    # Allow those to complete normally; kill ONLY at the
+                    # actual configuration exchange boundary.
                     if src != 'candidate-staged.toml' or dst != 'current.toml':
-                        os._exit(74)
+                        return real_replace(src, dst, **kwargs)
                     if after:
                         real_replace(src, dst, **kwargs)
                         os.fsync(sandbox._dirfd)
