@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 import threading
+import time
 
 
 class BarrierState(str, Enum):
@@ -49,6 +50,7 @@ class OfflineMaintenanceBarrier:
         self._state = BarrierState.OPEN
         self._next_ticket = 0
         self._active: set[int] = set()
+        self._drained = threading.Condition(self._guard)
 
     @property
     def state(self) -> BarrierState:
@@ -115,6 +117,16 @@ class OfflineMaintenanceBarrier:
             if type(ticket) is not int or ticket not in self._active:
                 raise AdmissionRefused("unknown or completed ticket")
             self._active.remove(ticket)
+            self._drained.notify_all()
+
+    def wait_drained(self, timeout: float) -> bool:
+        """Wait for ticket completion callbacks, never for untracked work."""
+        if not isinstance(timeout, (float, int)) or not 0 < timeout <= 60:
+            raise ValueError("bounded positive timeout required")
+        with self._drained:
+            return self._drained.wait_for(
+                lambda: not self._active or self._state == BarrierState.CLOSED,
+                timeout=timeout) and not self._active and self._state == BarrierState.DRAINING
 
     def begin_draining(self) -> None:
         """Atomically refuse new simulated mutation and refresh submissions."""
@@ -142,6 +154,7 @@ class OfflineMaintenanceBarrier:
         with self._guard:
             self._state = BarrierState.CLOSED
             self._active.clear()
+            self._drained.notify_all()
 
     def report(self) -> dict:
         """Non-secret, non-authorizing diagnostic result."""
