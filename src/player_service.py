@@ -301,120 +301,126 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
             concurrent.futures.ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix='player-control'))
         with worker_pool as executor:
-            def operate(request):
-                # Check the *physical* TOC immediately before a new PLAY. The
-                # 3-second cached monitor status must not authorize stale media.
-                if not disc_allows_new_play(controller, request, disc_monitor):
-                    reply = response(controller, ok=False,
-                                     error='disc unavailable, unreadable or unverified; inspect status before PLAY')
-                    publisher.publish(controller, power)
-                    return reply
-                if (disc_monitor is None and drive_toc is not None
-                        and isinstance(request, dict)
-                        and request.get('command') in ('play', 'play-selected', 'playpause', 'reset')):
-                    try:
-                        restore_drive_for_explicit_action(controller, power, drive_id, drive_toc)
-                    except Exception as exc:
-                        reply = response(controller, ok=False, error=f'drive unavailable: {type(exc).__name__}: {exc}')
+            try:
+                def operate(request):
+                    # Check the *physical* TOC immediately before a new PLAY. The
+                    # 3-second cached monitor status must not authorize stale media.
+                    if not disc_allows_new_play(controller, request, disc_monitor):
+                        reply = response(controller, ok=False,
+                                         error='disc unavailable, unreadable or unverified; inspect status before PLAY')
                         publisher.publish(controller, power)
                         return reply
-                reply = handle_command(controller, request, selection)
-                publisher.publish(controller, power)
-                return reply
-
-            # Retry only when the old optical path disappears/changes. Avoid
-            # probing healthy drives and preserve the normal keepalive cadence.
-            next_drive_recovery = 0.0
-
-            next_disc_check = 0.0
-
-            def refresh():
-                nonlocal next_drive_recovery, next_disc_check, drive_toc
-                from player_state import Mode
-                if (disc_monitor is None and drive_toc is not None and power is not None
-                        and controller.state.mode in (Mode.STOPPED, Mode.ERROR)
-                        and not controller.owned_url and not controller.server.alive()
-                        and not controller._joined and not controller._group_uncertain
-                        and not controller.server.reader_active()):
-                    old = controller.server.device
-                    missing = not Path(old).exists()
-                    changed = (not missing and drive_id is not None
-                               and usb_identity(old) != drive_id)
-                    now = time.monotonic()
-                    if (missing or changed) and now >= next_drive_recovery:
-                        next_drive_recovery = now + max(10.0, power.config['interval'])
+                    if (disc_monitor is None and drive_toc is not None
+                            and isinstance(request, dict)
+                            and request.get('command') in ('play', 'play-selected', 'playpause', 'reset')):
                         try:
-                            if restore_drive_for_explicit_action(
-                                    controller, power, drive_id, drive_toc) and disc_monitor is not None:
-                                disc_monitor.rebind_verified(controller.server.device)
-                        except (OSError, RuntimeError, ValueError) as exc:
-                            print(f'[drive] idle USB recovery deferred: {type(exc).__name__}: {exc}',
-                                  flush=True)
-                controller.refresh()
-                now = time.monotonic()
-                # Safe status inspection only. NEVER touch optical media while
-                # reader/stream/group ownership is attached.
-                if disc_monitor is not None and now >= next_disc_check:
-                    next_disc_check = now + 3.0
-                    try:
-                        changed = disc_monitor.poll(controller)
-                        if changed:
-                            drive_toc = disc_monitor.loaded_toc
-                            print(f'[disc] {controller.disc_status.mode.value}', flush=True)
-                    except (OSError, RuntimeError, ValueError) as exc:
-                        print(f'[disc] monitor deferred: {type(exc).__name__}: {exc}', flush=True)
-                if power is not None and (controller.disc_status is None or
-                                          controller.disc_status.mode.value == 'READY'):
-                    power.tick(reader_active=controller.server.reader_active())
-                publisher.publish(controller, power)
-
-            busy = None
-            maintenance_control_bound = False
-            next_refresh = time.monotonic()
-            while test_shutdown_event is None or not test_shutdown_event.is_set():
-                for conn, future in pending[:]:
-                    if future.done():
-                        pending.remove((conn, future))
-                        try:
-                            reply = future.result()
+                            restore_drive_for_explicit_action(controller, power, drive_id, drive_toc)
                         except Exception as exc:
-                            reply = {'ok': False, 'error': f'worker failure: {type(exc).__name__}'}
-                        send_reply(conn, reply)
-                if busy is None or busy.done():
-                    busy = None
-                    if time.monotonic() >= next_refresh:
+                            reply = response(controller, ok=False, error=f'drive unavailable: {type(exc).__name__}: {exc}')
+                            publisher.publish(controller, power)
+                            return reply
+                    reply = handle_command(controller, request, selection)
+                    publisher.publish(controller, power)
+                    return reply
+
+                # Retry only when the old optical path disappears/changes. Avoid
+                # probing healthy drives and preserve the normal keepalive cadence.
+                next_drive_recovery = 0.0
+
+                next_disc_check = 0.0
+
+                def refresh():
+                    nonlocal next_drive_recovery, next_disc_check, drive_toc
+                    from player_state import Mode
+                    if (disc_monitor is None and drive_toc is not None and power is not None
+                            and controller.state.mode in (Mode.STOPPED, Mode.ERROR)
+                            and not controller.owned_url and not controller.server.alive()
+                            and not controller._joined and not controller._group_uncertain
+                            and not controller.server.reader_active()):
+                        old = controller.server.device
+                        missing = not Path(old).exists()
+                        changed = (not missing and drive_id is not None
+                                   and usb_identity(old) != drive_id)
+                        now = time.monotonic()
+                        if (missing or changed) and now >= next_drive_recovery:
+                            next_drive_recovery = now + max(10.0, power.config['interval'])
+                            try:
+                                if restore_drive_for_explicit_action(
+                                        controller, power, drive_id, drive_toc) and disc_monitor is not None:
+                                    disc_monitor.rebind_verified(controller.server.device)
+                            except (OSError, RuntimeError, ValueError) as exc:
+                                print(f'[drive] idle USB recovery deferred: {type(exc).__name__}: {exc}',
+                                      flush=True)
+                    controller.refresh()
+                    now = time.monotonic()
+                    # Safe status inspection only. NEVER touch optical media while
+                    # reader/stream/group ownership is attached.
+                    if disc_monitor is not None and now >= next_disc_check:
+                        next_disc_check = now + 3.0
                         try:
-                            busy = submit_maintenance_work(
-                                executor, maintenance_barrier, refresh,
-                                internal_control=(internal_maintenance_control
-                                                  if not maintenance_control_bound else None),
-                                controller=controller)
-                            maintenance_control_bound = True
-                        except AdmissionRefused:
-                            # Drain is not a service-shutdown request. Stop
-                            # scheduling refresh without killing the loop.
-                            busy = None
-                        next_refresh = time.monotonic() + poll_seconds
-                readable, _, _ = select.select([server], [], [], min(poll_seconds, 0.1))
-                if not readable:
-                    continue
-                conn, _ = server.accept()
-                try:
-                    request = read_request(conn)
-                    # Cached status is served while PLAY waits for the CD spindle.
-                    # No synchronous controller read and no new Sonos checks.
-                    if isinstance(request, dict) and request == {'command': 'status'}:
-                        admit_maintenance_work(maintenance_barrier, request)
-                        send_reply(conn, publisher.read())
-                    else:
-                        future = submit_maintenance_work(
-                            executor, maintenance_barrier, operate, request)
-                        pending.append((conn, future))
-                except AdmissionRefused:
-                    send_reply(conn, {'ok': False, 'error': 'maintenance admission closed'})
-                except (ValueError, UnicodeError, socket.timeout, OSError) as exc:
-                    send_reply(conn, {'ok': False, 'error': f'bad request: {type(exc).__name__}'})
+                            changed = disc_monitor.poll(controller)
+                            if changed:
+                                drive_toc = disc_monitor.loaded_toc
+                                print(f'[disc] {controller.disc_status.mode.value}', flush=True)
+                        except (OSError, RuntimeError, ValueError) as exc:
+                            print(f'[disc] monitor deferred: {type(exc).__name__}: {exc}', flush=True)
+                    if power is not None and (controller.disc_status is None or
+                                              controller.disc_status.mode.value == 'READY'):
+                        power.tick(reader_active=controller.server.reader_active())
+                    publisher.publish(controller, power)
+
+                busy = None
+                maintenance_control_bound = False
+                next_refresh = time.monotonic()
+                while test_shutdown_event is None or not test_shutdown_event.is_set():
+                    for conn, future in pending[:]:
+                        if future.done():
+                            pending.remove((conn, future))
+                            try:
+                                reply = future.result()
+                            except Exception as exc:
+                                reply = {'ok': False, 'error': f'worker failure: {type(exc).__name__}'}
+                            send_reply(conn, reply)
+                    if busy is None or busy.done():
+                        busy = None
+                        if time.monotonic() >= next_refresh:
+                            try:
+                                busy = submit_maintenance_work(
+                                    executor, maintenance_barrier, refresh,
+                                    internal_control=(internal_maintenance_control
+                                                      if not maintenance_control_bound else None),
+                                    controller=controller)
+                                maintenance_control_bound = True
+                            except AdmissionRefused:
+                                # Drain is not a service-shutdown request. Stop
+                                # scheduling refresh without killing the loop.
+                                busy = None
+                            next_refresh = time.monotonic() + poll_seconds
+                    readable, _, _ = select.select([server], [], [], min(poll_seconds, 0.1))
+                    if not readable:
+                        continue
+                    conn, _ = server.accept()
+                    try:
+                        request = read_request(conn)
+                        # Cached status is served while PLAY waits for the CD spindle.
+                        # No synchronous controller read and no new Sonos checks.
+                        if isinstance(request, dict) and request == {'command': 'status'}:
+                            admit_maintenance_work(maintenance_barrier, request)
+                            send_reply(conn, publisher.read())
+                        else:
+                            future = submit_maintenance_work(
+                                executor, maintenance_barrier, operate, request)
+                            pending.append((conn, future))
+                    except AdmissionRefused:
+                        send_reply(conn, {'ok': False, 'error': 'maintenance admission closed'})
+                    except (ValueError, UnicodeError, socket.timeout, OSError) as exc:
+                        send_reply(conn, {'ok': False, 'error': f'bad request: {type(exc).__name__}'})
+            finally:
+                if internal_maintenance_control is not None:
+                    internal_maintenance_control.retire()
     finally:
+        if internal_maintenance_control is not None:
+            internal_maintenance_control.retire()
         if hasattr(controller, 'status_hook'):
             controller.status_hook = None
         for conn, _ in pending:
