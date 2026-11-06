@@ -580,3 +580,21 @@ the unit's `ExecStop` and shutdown-hook dependencies, then report only
 whether it (a) writes a display/framebuffer, (b) invokes a player/Sonos
 command, (c) modifies GPIO or drive power, or (d) triggers a system shutdown.
 A safe maintenance sequence remains undesigned and unauthorized.
+
+### Sentinel ExecStop executable identified (2026-11-06)
+
+A further operator read-only `systemctl show ... -p ExecStop` check
+confirmed that the OLED shutdown sentinel has exactly **one ExecStop
+command**, and its executable basename is `touch`. The command was **not
+executed** during inspection.
+
+This narrows the likely direct effect to creating a file or updating its
+timestamp, but the target pathname and any observers are still unknown.
+A watcher might interpret the touched file as a shutdown signal and trigger
+other actions. The absence of an immediate player/Sonos executable does
+not prove stopping the sentinel is harmless.
+
+Next inspect only the **classification** of the touch operand and the
+existence of watcher references. Do not run `touch`, invoke `ExecStop`,
+stop the sentinel, or copy raw command lines containing local identifiers
+into logs/chats. OPS-01 production writes remain blocked.
