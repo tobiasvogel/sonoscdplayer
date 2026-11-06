@@ -7,6 +7,7 @@ A systemd snapshot cannot establish controller idle or writer exclusion.
 """
 from __future__ import annotations
 
+import json
 import subprocess
 
 _PLAYER = "sonoscdplayer-player.service"
@@ -126,3 +127,12 @@ def inspect_maintenance_runtime(*, runner=subprocess.run):
             "foreign_sonos_playback",
         ],
     }
+
+def main():
+    """Print a redacted read-only report; exit 0 means inspection ran only."""
+    print(json.dumps(inspect_maintenance_runtime(), sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
