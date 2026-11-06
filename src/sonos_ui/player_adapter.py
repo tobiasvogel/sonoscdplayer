@@ -50,6 +50,9 @@ def project_status(state, previous=None):
         if count != 0 or track is not None:
             raise ValueError('NO_DISC must not contain selected tracks')
         track = 0  # DisplayModel requires an integer, but disc_present=False.
+    elif mode == 'ERROR' and count == 0 and track is None:
+        # ERROR is also legal before a disc has been loaded.
+        track = 0
     elif type(track) is not int or track < 0 or (count == 0 and track != 0):
         raise ValueError('invalid track information')
     playback = {'PLAYING':'playing', 'PAUSED':'paused'}.get(mode, 'stopped')
