@@ -106,6 +106,53 @@ class FilesystemFaultTests(unittest.TestCase):
             self.assertEqual(inspect_persisted_phase(sandbox._dirfd, REFERENCE),
                              ('REPLACED', 'replacement_verified'))
 
+    def test_eio_before_rollback_replace_keeps_candidate(self):
+        with OfflineSandbox() as sandbox:
+            original = sandbox.seed(ORIGINAL)
+            candidate = sandbox.apply(REFERENCE, KEYS, expected_sha256=original)
+            actual = sandbox.read_current()
+            real_fsync = os.fsync
+            calls = 0
+
+            def inject(fd):
+                nonlocal calls
+                calls += 1
+                # Rollback stage is synced first; phase stage sync is second.
+                if calls == 2:
+                    raise OSError(errno.EIO, 'synthetic rollback phase fsync')
+                return real_fsync(fd)
+
+            with patch.object(transaction.os, 'fsync', side_effect=inject):
+                with self.assertRaises(OSError):
+                    sandbox.rollback(expected_sha256=candidate)
+            self.assertEqual(sandbox.read_current(), actual)
+            self.assertEqual(sandbox.transaction_phase(), 'VERIFIED')
+            self.assertEqual(inspect_persisted_phase(sandbox._dirfd, REFERENCE),
+                             ('VERIFIED', 'replacement_verified'))
+
+    def test_enospc_after_rollback_replace_is_indeterminate_not_success(self):
+        with OfflineSandbox() as sandbox:
+            original = sandbox.seed(ORIGINAL)
+            candidate = sandbox.apply(REFERENCE, KEYS, expected_sha256=original)
+            real_fsync = os.fsync
+            calls = 0
+
+            def inject(fd):
+                nonlocal calls
+                calls += 1
+                # Rollback staged file, phase file, phase directory, target dir.
+                if calls == 4:
+                    raise OSError(errno.ENOSPC, 'synthetic rollback dir fsync')
+                return real_fsync(fd)
+
+            with patch.object(transaction.os, 'fsync', side_effect=inject):
+                with self.assertRaises(OSError):
+                    sandbox.rollback(expected_sha256=candidate)
+            self.assertEqual(sandbox.read_current(), ORIGINAL)
+            self.assertEqual(sandbox.transaction_phase(), 'ROLLBACK_PREPARED')
+            self.assertEqual(inspect_persisted_phase(sandbox._dirfd, REFERENCE),
+                             ('ROLLBACK_PREPARED', 'not_replaced'))
+
     def test_eio_at_target_replace_preserves_original_and_backup(self):
         with OfflineSandbox() as sandbox:
             original = sandbox.seed(ORIGINAL)
