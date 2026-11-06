@@ -15,6 +15,8 @@ import subprocess
 from .config_dry_run import InspectionError, effective_config_path, read_toml
 from .config_maintenance_inventory import inspect_maintenance_runtime
 from .config_migration_plan import plan_migration
+from .config_reference_review import assess_known_safe_screen_omission
+from .config_activation_inventory import inspect_player_activation
 from .config_writer_observation import sample_config_identity
 
 _PLAYER = "sonoscdplayer-player.service"
@@ -22,7 +24,8 @@ _PLAYER = "sonoscdplayer-player.service"
 
 def inspect_maintenance_preflight(*, template_path=None,
                                   runner=subprocess.run,
-                                  config_reader=read_toml):
+                                  config_reader=read_toml,
+                                  acknowledge_safe_screen_omission=False):
     """Return redacted diagnostic snapshot; no lease or authorization.
 
     Resolving an effective pathname does NOT verify stable file identity.
@@ -30,6 +33,7 @@ def inspect_maintenance_preflight(*, template_path=None,
     commands, writer exclusion and controller idle require separate proofs.
     """
     inventory = inspect_maintenance_runtime(runner=runner)
+    activation = inspect_player_activation(runner=runner)
     blockers = set(inventory["blockers"])
     config = {
         "effective_path_resolved": False,
@@ -37,6 +41,9 @@ def inspect_maintenance_preflight(*, template_path=None,
         "current_toml_readable": False,
         "template_checked": False,
         "proposal_status": "not_checked",
+        "reference_review": {"status": "not_checked", "key": None,
+                             "write_authorized": False,
+                             "existing_values_compared": False},
         "candidate_keys": [],
         "protected_missing_count": None,
         "unapproved_missing_count": None,
@@ -66,6 +73,8 @@ def inspect_maintenance_preflight(*, template_path=None,
             proposal = plan_migration(current, template)
             config["template_checked"] = True
             config["proposal_status"] = proposal["status"]
+            config["reference_review"] = assess_known_safe_screen_omission(
+                current, template, acknowledged=acknowledge_safe_screen_omission)
             config["candidate_keys"] = proposal["candidates_for_explicit_review"]
             config["protected_missing_count"] = proposal["protected_missing_count"]
             config["unapproved_missing_count"] = proposal["unapproved_missing_count"]
@@ -86,6 +95,7 @@ def inspect_maintenance_preflight(*, template_path=None,
         "restart_authorized": False,
         "config": config,
         "units": inventory["units"],
+        "activation": activation,
         "blockers": sorted(blockers),
         "recommended_sequence": inventory["recommended_sequence"],
         "preserve": inventory["preserve"],
@@ -110,10 +120,17 @@ def main(argv=None):
                         help="optional reference TOML path for read-only proposal")
     source.add_argument("--repository-template", action="store_true",
                         help="compare with the versioned src/config.toml from this checkout")
+    parser.add_argument("--acknowledge-safe-screen-omission",
+                        action="store_true",
+                        help="mark only the known missing service.experimental_safe_screen=false as reviewed; never approve a write")
     args = parser.parse_args(argv)
     reference = (Path(__file__).resolve().parents[1] / "config.toml"
                  if args.repository_template else args.template)
-    report = inspect_maintenance_preflight(template_path=reference)
+    if args.acknowledge_safe_screen_omission:
+        report = inspect_maintenance_preflight(
+            template_path=reference, acknowledge_safe_screen_omission=True)
+    else:
+        report = inspect_maintenance_preflight(template_path=reference)
     print(json.dumps(report, sort_keys=True))
     return 0  # Diagnostic execution succeeded; never implies readiness.
 
