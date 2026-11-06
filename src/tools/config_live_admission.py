@@ -26,12 +26,15 @@ class InternalMaintenanceControl:
         self._lock = threading.Lock()
         self._session = None
         self._controller = None
+        self._retired = False
 
     def bind(self, executor, controller):
         """Called by serve once before its normal command/refresh loop."""
         if type(executor) is not GuardedWorkerExecutor:
             raise TypeError("guarded single-worker executor required")
         with self._lock:
+            if self._retired:
+                raise AdmissionRefused("maintenance control retired")
             if self._session is not None:
                 raise AdmissionRefused("maintenance control already bound")
             self._barrier.bind_executor(executor)
@@ -50,20 +53,40 @@ class InternalMaintenanceControl:
             controller = self._controller
         if session is None:
             raise AdmissionRefused("maintenance control not bound")
-        return session.prepare(controller, timeout=timeout)
+        prepared = session.prepare(controller, timeout=timeout)
+        with self._lock:
+            if self._retired:
+                raise AdmissionRefused("maintenance control retired during preparation")
+        return prepared
 
     def cancel_before_change(self):
         """Restore normal admission after a completed no-write idle fence."""
         with self._lock:
+            if self._retired:
+                raise AdmissionRefused("maintenance control retired")
             session = self._session
-        if session is None:
-            raise AdmissionRefused("maintenance control not bound")
-        return session.cancel_before_change()
+            if session is None:
+                raise AdmissionRefused("maintenance control not bound")
+            # Hold the retirement lock across reopen: a late abort cannot
+            # reopen the barrier once retire() has returned.
+            return session.cancel_before_change()
+
+    def retire(self):
+        """Irreversibly invalidate the service's control and admission.
+
+        Safe even before bind, on an incomplete drain, or after a clean abort.
+        Never wait for worker completion under this lock.
+        """
+        with self._lock:
+            self._retired = True
+            self._barrier.close()
 
     def report(self):
         with self._lock:
             session = self._session
+            retired = self._retired
         if session is None:
-            return {"attached": False, "write_authorized": False,
+            return {"attached": False, "retired": retired,
+                    "write_authorized": False,
                     "production_maintenance_authorized": False}
-        return {"attached": True, **session.report()}
+        return {"attached": True, "retired": retired, **session.report()}
