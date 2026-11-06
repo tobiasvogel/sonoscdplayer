@@ -143,6 +143,7 @@ class Controller:
         self.seen_playing = False
         self.start_monotonic = None
         self._display_progress = None  # read-only Sonos timing; never used to control PLAY
+        self._display_progress_poll_at = None
         self.display_toc = None  # validated startup/idle TOC; never read disc for display
         self.stopped_since = None
         self.status_hook = None  # optional read-only snapshot publisher
@@ -323,20 +324,27 @@ class Controller:
                 self._fail(f'unexpected Sonos transport state: {transport}')
             # Timing is advisory display data, not an ownership or control
             # condition. Isolate Sonos time-query errors from playback health.
-            self._display_progress = None
             if (self.state.mode in (Mode.PLAYING, Mode.PAUSED)
                     and transport in ('PLAYING', 'PAUSED_PLAYBACK')
                     and self.owned_url):
-                try:
-                    duration = None
-                    if self.display_toc is not None and self.state.selected_track is not None:
-                        track = self.display_toc.get_track(self.state.selected_track)
-                        duration = int(track.duration_seconds + 0.5)
-                    self._display_progress = verified_progress(
-                        player.get_current_track_info(), self.owned_url,
-                        duration_fallback=duration)
-                except Exception:
-                    pass
+                now = time.monotonic()
+                if (self._display_progress_poll_at is None
+                        or now - self._display_progress_poll_at >= 2.0):
+                    self._display_progress_poll_at = now
+                    self._display_progress = None
+                    try:
+                        duration = None
+                        if self.display_toc is not None and self.state.selected_track is not None:
+                            track = self.display_toc.get_track(self.state.selected_track)
+                            duration = int(track.duration_seconds + 0.5)
+                        self._display_progress = verified_progress(
+                            player.get_current_track_info(), self.owned_url,
+                            duration_fallback=duration)
+                    except Exception:
+                        pass
+            else:
+                self._display_progress = None
+                self._display_progress_poll_at = None
         except Exception as exc:
             self._fail(f'ownership/status check failed: {type(exc).__name__}: {exc}')
 
@@ -385,6 +393,7 @@ class Controller:
         # No Sonos command has been sent and ownership is not claimed here.
         self.state = self.state.start_requested()
         self._display_progress = None
+        self._display_progress_poll_at = None
         if self.status_hook is not None:
             self.status_hook()
         try:
