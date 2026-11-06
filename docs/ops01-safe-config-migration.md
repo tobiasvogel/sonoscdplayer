@@ -352,3 +352,115 @@ secure stable directory, fail-closed operator approval, and no Sonos mutations.
 Then add fault-injection and post-restart recovery tests. Only after an
 independent review and separate permission may a production-specific
 apply/rollback interface be considered. Keep the private tracker outside Git.
+
+## P0 maintenance protocol — design, NOT a runnable cutover (2026-11-06)
+
+**Scope:** A separately approved maintenance window for the exact effective
+`--config` target of `sonoscdplayer-player.service`. This section is a
+*design and review gate only*. It authorizes **no** stop/start, config write,
+Sonos action, optical-drive command, socket cleanup or systemd unit edit.
+
+### Why a normal STOPPED status is insufficient
+
+The current service returns a cached status snapshot, not an atomic
+maintenance lease. The status omits direct reader activity and full joined
+group membership, and commands may be queued or accepted after inspection.
+`Controller.shutdown_owned('stop_owned')` may issue an actual Sonos STOP
+when it sees verified owned playback; `leave_playing` may intentionally
+leave playback active. Starting the player also performs disc/USB inspection
+and may start the drive-power manager. Therefore **do not simply run
+`systemctl stop` or `restart` as part of an OPS-01 preflight**.
+
+### Proposed operator-controlled phases
+
+| Phase | Evidence required | Allowed action | Fail-closed response |
+| --- | --- | --- | --- |
+| P0-A Inspect | Effective systemd `ExecStart`, units and drop-ins, configured shutdown policy; independent observation of player and media state | Read-only inspection, no state changes | No maintenance permission |
+| P0-B Agree maintenance | Explicit operator approval of scope, planned target, expected original and candidate hashes, service-impact and Sonos-shutdown consequences | Record approved scope, **no automatic service action** | Return to P0-A |
+| P0-C Quiesce | Independently confirmed no active owned playback, reader, stream, queued command or unresolved Sonos group cleanup; assess buttons/OLED and service restart triggers | Only a *separately authorized* method to prevent new activity | Abort on unknown/active state; do not force-stop Sonos |
+| P0-D Exclusive maintenance | Player fully inactive; no player child/reader/control listener; all relevant service activation mechanisms disabled for the window; all cooperating config writers locked; a trusted administrator assures noncooperating writers are excluded | Inspect evidence and hold an exclusive maintenance lease until completion | Abort on missing/contradictory evidence |
+| P0-E Filesystem preflight | Trusted config path discovered from effective systemd args, safe parent and components, owner/mode/links, exact original hash, exclusive writer and transaction directory, validated candidate | **Only in a separately reviewed future implementation**: backup, staged write, atomic replace | Preserve original/backup; no unverified replacement |
+| P0-F Verify/rollback | Completed journal and checksum match, backup integrity, no drift; no service restart during file verification | Read-only verification or an individually approved rollback | Preserve evidence, require manual review |
+| P0-G Release | Signed-off result, service and audio-impact review, explicit authorization for activation, separate service-start safety review | Restore normal operation **only when expressly permitted** | Leave system in the approved maintenance state |
+
+### Noncooperating writer threat model
+
+A private advisory `flock` does **not** exclude another administrative
+process (editor, deployment, installer, cron job or remote management).
+A second copy of `player.toml` written between `fstat` and `os.replace`
+would otherwise be lost. In the production design, an exclusive maintenance
+lease must cover the entire inspection, backup, swap and verification, and
+all writers must either honor it or be verifiably unavailable for the window.
+The on-disk parent directory must be owned and controlled by a trusted
+principal. **When any writer or activation path cannot be excluded, stop
+before E; do not rely on a last-moment checksum alone.**
+
+Because no OS primitive atomically compares a pathname's contents and then
+replaces that name for arbitrary noncooperating writers, this is primarily
+a *trusted environment and lifecycle* requirement, not solved by adding
+more checksum checks. If trustworthy exclusion is impossible, production
+apply stays blocked.
+
+### System-specific hazards to verify before automation
+
+- Current effective player config is
+  `/home/pi/sonoscdplayer/player.toml`; verify it again from
+  `systemctl show`, not from a repository example.
+- Inventory the actual `Restart=`, `PartOf=`, `BindsTo=`,
+  `Requires=`, `Wants=`, timers, sockets, triggers and all
+  relevant units; a stopped player may be restarted by another service.
+  Record and restore any existing unit state only through a later
+  authorized procedure.
+- Check the button service and any UI integration for control attempts
+  during the window. Do not infer inactivity merely from an absent
+  `/tmp/sonoscdplayer-control.sock`; the service intentionally refuses
+  to delete pre-existing sockets.
+- Existing systemd drop-ins `m016b-config.conf` and
+  `m019-venv.conf` must remain unchanged.
+- Preserve shutdown-hook artifacts and local untracked files. No
+  `git clean`, `git reset --hard`, forced socket unlink or service
+  activation as a shortcut.
+
+### Read-only evidence collection (operator may run separately)
+
+These commands only report systemd metadata and process information. **Do
+not publish raw unit environment values or full command lines**, which can
+contain private IDs. Review locally and share only the requested sanitized
+fields. This is an *inventory*, not a migration approval:
+
+```sh
+systemctl show sonoscdplayer-player.service \
+  -p LoadState -p ActiveState -p SubState -p UnitFileState \
+  -p Restart -p MainPID -p ControlPID \
+  -p TriggeredBy -p Triggers -p PartOf -p BindsTo -p Requires -p Wants \
+  --no-pager
+systemctl show sonoscdplayer-buttons.service \
+  -p LoadState -p ActiveState -p SubState -p UnitFileState \
+  -p Restart -p MainPID -p ControlPID \
+  -p TriggeredBy -p Triggers -p PartOf -p BindsTo -p Requires -p Wants \
+  --no-pager
+```
+
+Inspect service names and dependencies before adding any additional units
+to the scope. The exact active `ExecStart`, unit environment and config
+path must be checked *locally* but never pasted unredacted.
+
+### Acceptance gates before a production writer may exist
+
+1. An operator-reviewed topology of real systemd units, activation paths,
+   controller/socket/reader lifetime and shutdown policy.
+2. A separately approved, demonstrably side-effect-safe quiescence method.
+   Active or uncertain Sonos ownership, reader or group recovery means **no
+   stop, no migration** unless a separately approved recovery resolves it.
+3. Verified exclusion of *all* other writers and automatic restarts for the
+   full transaction; negative tests for concurrent cooperative and
+   noncooperating writers.
+4. Authenticated, durable transaction-state machine with explicit partial
+   failure outcomes (including `fsync`, `EIO` and `ENOSPC`), mode/owner
+   preservation and independently reviewed recovery/rollback.
+5. Reboot/reopen and end-to-end rehearsal on **synthetic files only**.
+6. An independent code review and a distinct live maintenance approval
+   identifying the exact target, scope and potential Sonos/service effects.
+
+**Status:** design initiated; no production implementation or cutover
+authorization. As of `539be09`, the Pi regression was 527/527 green.
