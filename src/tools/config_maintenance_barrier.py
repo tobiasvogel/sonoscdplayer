@@ -112,7 +112,13 @@ class OfflineMaintenanceBarrier:
             ticket = self._next_ticket
             self._active.add(ticket)
             try:
-                future = executor.submit(operation, *args)
+                # Guarded pools refuse ordinary submit(); only this locked
+                # admission path can enqueue tracked work.
+                from .config_guarded_worker import GuardedWorkerExecutor
+                if type(executor) is GuardedWorkerExecutor:
+                    future = executor._submit_accounted(operation, *args)
+                else:
+                    future = executor.submit(operation, *args)
             except BaseException:
                 self._active.remove(ticket)
                 raise
