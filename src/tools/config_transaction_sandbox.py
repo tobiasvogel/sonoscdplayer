@@ -225,7 +225,7 @@ class OfflineSandbox:
                 "selected_keys": list(selected_keys),
             }
             self._create_synced("transaction-intent.json", (
-                json.dumps(journal, sort_keys=True, separators=(",", ":")) + "\\n"
+                json.dumps(journal, sort_keys=True, separators=(",", ":"))
             ).encode("ascii"))
             os.fsync(self._dirfd)
             if fail_at == "before_replace":
