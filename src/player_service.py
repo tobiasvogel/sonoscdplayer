@@ -34,6 +34,7 @@ from sonos_group import normalize_members
 from player_play import make_url, prepare_selection
 from sonos_parallel_test import detect_drive
 from tools.config_maintenance_barrier import AdmissionRefused
+from tools.config_guarded_worker import GuardedWorkerExecutor
 
 MAX_REQUEST = 1024
 COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery')
@@ -264,7 +265,14 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
         server.setblocking(False)
         print(f'[M0.15a-r2] local socket ready: {path} (0600); responsive cached status', flush=True)
         # Only this one worker ever touches controller, Sonos, reader and drive power.
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='player-control') as executor:
+        # Normal service operation stays unchanged. The optional offline
+        # barrier uses a guarded worker: direct submit() is rejected.
+        worker_pool = (
+            GuardedWorkerExecutor(thread_name_prefix='player-control')
+            if maintenance_barrier is not None else
+            concurrent.futures.ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix='player-control'))
+        with worker_pool as executor:
             def operate(request):
                 # Check the *physical* TOC immediately before a new PLAY. The
                 # 3-second cached monitor status must not authorize stale media.
