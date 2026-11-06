@@ -191,7 +191,8 @@ class Stream:
             while self.written < self.expected:
                 if self._cancel.is_set():
                     raise IOError('reader cancelled after client disconnect')
-                block = proc.stdout.read(min(CHUNK, self.expected - self.written))
+                block = read_exact(proc.stdout, min(CHUNK, self.expected - self.written),
+                                   cancelled=self._cancel.is_set)
                 if not block:
                     if self._cancel.is_set():
                         raise IOError('reader cancelled after client disconnect')
@@ -226,6 +227,28 @@ class Stream:
             self.error = err
             self.ring.finish(error=err)
             self.log(f'READER end written={self.written}/{self.expected} error={err}')
+
+def read_exact(stream, size: int, *, cancelled=None) -> bytes:
+    """Read exactly ``size`` bytes, or fewer only when the pipe reaches EOF.
+
+    An unbuffered pipe read (``bufsize=0``) may legally return fewer bytes than
+    requested, including a count that is not a multiple of the 4-byte PCM frame.
+    Keep reading until the block is complete so callers never see a split frame.
+    """
+    parts = []
+    remaining = size
+    while remaining > 0:
+        part = stream.read(remaining)
+        if part is None:
+            raise BlockingIOError('PCM pipe unexpectedly reported no data')
+        if not part:
+            break
+        parts.append(part)
+        remaining -= len(part)
+        if cancelled is not None and cancelled():
+            break
+    return b''.join(parts)
+
 
 def sector_replay_command(command: list[str], start_offset: int) -> list[str]:
     """Seek to a sector relative to the selected track; never write PCM to disk.

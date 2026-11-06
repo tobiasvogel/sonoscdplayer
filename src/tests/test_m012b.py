@@ -53,7 +53,8 @@ class StatusAPITests(unittest.TestCase):
         self.assertEqual(reply['state'], {
             'schema_version':1,
             'player':{'mode':'STOPPED','track':1,'track_count':3,'error':None},
-            'sonos':{'target_uid':None,'transport':'UNKNOWN','owned':False},
+            'sonos':{'target_uid':None,'transport':'UNKNOWN','owned':False,
+                     'group_cleanup_pending':False},
             'stream':{'active':False},
         })
         self.assertEqual(self.verify_calls, 0)

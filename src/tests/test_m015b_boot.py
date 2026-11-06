@@ -25,7 +25,9 @@ class BootSplashTests(unittest.TestCase):
         source=builder.build(frame)
         self.assertEqual(source.count('oled 0x5c\n'),1)
         self.assertEqual(source.count('oled [DATA_ONLY]'),64)
-        self.assertIn('oled 0xa0 0x51',source)
+        # Every initialization byte is its own command line (D/C low), so a
+        # command and its argument are consecutive lines, not one line.
+        self.assertIn('oled 0xa0\noled 0x51\n',source)
     def test_led_duty(self):
         led=load('early_led',Path('tools/early_power_led.py'))
         self.assertEqual(led.PIN,12)
@@ -39,7 +41,7 @@ class BootSplashTests(unittest.TestCase):
         self.assertNotIn('--adopt-boot-splash',cmds['oled'])
         args=frontends.parser().parse_args(['--adopt-boot-splash'])
         self.assertIn('--adopt-boot-splash',dict(frontends.commands(args))['oled'])
-    def test_adopt_does_not_reset_or_send_commands(self):
+    def test_adopt_only_wakes_display_without_reset_or_init(self):
         class GPIO:
             BCM=11; OUT=1; HIGH=1; LOW=0
             def __init__(self): self.events=[]
@@ -55,8 +57,14 @@ class BootSplashTests(unittest.TestCase):
         driver=SSD1327(DisplayConfig(),gpio=gpio,spi=spi)
         driver.open(adopt_existing=True)
         self.assertTrue(driver.opened)
-        self.assertFalse(spi.messages)
-        self.assertFalse(any(x[0]=='output' for x in gpio.events))
+        # A previous process may have sent AE (display off) in close(); adoption
+        # therefore sends exactly one AF (display on) and nothing else: no
+        # re-initialization, no RAM write, and no RESET pulse.
+        self.assertEqual(spi.messages,[[0xaf]])
+        config=DisplayConfig()
+        outputs=[x[1] for x in gpio.events if x[0]=='output']
+        self.assertEqual(outputs,[(config.dc_pin,gpio.LOW)])
+        self.assertFalse(any(pin==config.rst_pin for pin,_ in outputs))
         # Avoid close() turning display off in this test.
 
     def test_firmware_frame_payload_is_exact(self):
