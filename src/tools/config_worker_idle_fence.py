@@ -1,12 +1,12 @@
 """Synthetic serialized-worker idle fence for OPS-01.
 
-Caller-side coordination ONLY, not called by the live socket service. No
-systemd, Sonos, optical drive, writer or configuration access. A FROZEN
-result never authorizes a write or a production service stop.
+Caller-side coordination ONLY; not called by the live socket service.
+No systemd, Sonos, optical drive, writer or configuration access.
+FROZEN never authorizes a write or a production service stop.
 """
 from __future__ import annotations
 
-from concurrent.futures import TimeoutError as FutureTimeout
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from dataclasses import replace
 import time
 
@@ -17,37 +17,50 @@ from .config_maintenance_barrier import (
 
 
 def freeze_after_worker_drain(barrier, executor, controller, *, timeout=5.0):
-    """Run the idle sample AFTER all previously admitted FIFO worker jobs.
+    """Take an offline idle sample after all admitted FIFO worker jobs.
 
-    Must be called from outside a single-worker FIFO executor. All writer
-    and controller submitters must use the same barrier.submit path.
-    The fence is private local orchestration, never a socket request.
-    An exception leaves the barrier DRAINING (or already CLOSED).
+    Caller MUST be outside this executor. The executor MUST be the same
+    single-worker pool used for all barrier.submit operations. This guard
+    checks its shape, not that no one bypassed the barrier or that systemd
+    and outside processes are quiescent. No production authorization.
     """
     if type(barrier) is not OfflineMaintenanceBarrier:
         raise TypeError("offline barrier required")
     if type(timeout) not in (int, float) or not 0 < timeout <= 60:
         raise ValueError("bounded timeout required")
+    # ThreadPoolExecutor's implementation is FIFO with a single worker.
+    # Reject multi-worker and arbitrary custom executors, which cannot
+    # guarantee that this sample runs after previous controller mutations.
+    if (type(executor) is not ThreadPoolExecutor
+            or executor._max_workers != 1):
+        raise AdmissionRefused("single-worker FIFO executor required")
+
     deadline = time.monotonic() + timeout
     barrier.begin_draining()
-
-    # No admitted task can be placed behind this probe: ticket issuance
-    # and FIFO submission are atomic with begin_draining().
-    future = executor.submit(sample_controller_idle, controller)
+    # Admission and executor submission are synchronized by barrier.submit.
+    # Nothing admitted through that path can be queued behind this sample.
+    try:
+        future = executor.submit(sample_controller_idle, controller)
+    except RuntimeError as exc:
+        raise AdmissionRefused("idle sample could not be submitted") from exc
     try:
         sample = future.result(timeout=max(0, deadline - time.monotonic()))
     except FutureTimeout as exc:
+        future.cancel()  # best effort: does not interrupt a running sample
         raise AdmissionRefused("worker idle sample timed out") from exc
+    except Exception as exc:
+        raise AdmissionRefused("worker idle sample failed") from exc
 
-    # result() may race the release callbacks of earlier Futures. Wait
-    # for ALL accounted submissions to finish, without changing the state.
+    # Futures can finish before their registered admission callbacks have
+    # released the tickets; wait for those callbacks, with a fixed deadline.
     if not barrier.wait_drained(max(0.000001, deadline - time.monotonic())):
         raise AdmissionRefused("worker tasks remain pending")
     if barrier.state != BarrierState.DRAINING:
         raise AdmissionRefused("barrier no longer draining")
 
-    # Only the barrier proves that its OWN tracked queue has drained.
-    # Systemd, external writers and untracked tasks remain unverified.
+    # The direct controller sample cannot independently prove the queue is
+    # clear. We attest ONLY to this barrier's tracked submissions; external
+    # activity, direct executor.submit and writer races remain unverified.
     proof = replace(sample, no_pending_external_activity=True)
     barrier.freeze(proof)
     return barrier.report()
