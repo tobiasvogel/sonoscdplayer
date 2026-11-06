@@ -140,6 +140,47 @@ class WorkerIdleFenceTests(unittest.TestCase):
         self.assertEqual(gate.state, BarrierState.DRAINING)
         self.assertEqual(gate.in_flight, 0)
 
+    def test_multiworker_executor_rejected_before_draining(self):
+        gate = OfflineMaintenanceBarrier()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            with self.assertRaisesRegex(AdmissionRefused, "single-worker"):
+                freeze_after_worker_drain(gate, pool, idle_controller())
+        self.assertEqual(gate.state, BarrierState.OPEN)
+
+    def test_unknown_executor_rejected_before_draining(self):
+        gate = OfflineMaintenanceBarrier()
+        class UnverifiedExecutor:
+            def submit(self, *args):
+                self.fail("must not submit")
+        with self.assertRaises(AdmissionRefused):
+            freeze_after_worker_drain(gate, UnverifiedExecutor(), idle_controller())
+        self.assertEqual(gate.state, BarrierState.OPEN)
+
+    def test_executor_shutdown_fails_closed(self):
+        gate = OfflineMaintenanceBarrier()
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        pool.shutdown(wait=True)
+        with self.assertRaisesRegex(AdmissionRefused, "could not be submitted"):
+            freeze_after_worker_drain(gate, pool, idle_controller())
+        self.assertEqual(gate.state, BarrierState.DRAINING)
+        self.assertFalse(gate.report()["write_authorized"])
+
+    def test_idle_sample_error_fails_closed(self):
+        gate = OfflineMaintenanceBarrier()
+        ctrl = idle_controller()
+        # Errors derived from BaseException are deliberately not swallowed
+        # by the controller sampler's ordinary Exception fault handling.
+        class BrokenState:
+            @property
+            def mode(self):
+                raise AssertionError("synthetic probe failure")
+        ctrl.state = BrokenState()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            with self.assertRaisesRegex(AdmissionRefused, "sample failed"):
+                freeze_after_worker_drain(gate, pool, ctrl)
+        self.assertEqual(gate.state, BarrierState.DRAINING)
+        self.assertFalse(gate.report()["write_authorized"])
+
     def test_double_fence_is_denied(self):
         gate = OfflineMaintenanceBarrier()
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
