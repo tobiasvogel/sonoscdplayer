@@ -41,21 +41,25 @@ class OfflineExclusiveWindow:
         self._lock = None
         self._baseline = None
         self._started = False
+        self._identity_last_checked = False
 
     def _current(self):
         self._sandbox._require_open()
         return self._sandbox.directory / "current.toml"
 
     def _check(self):
+        self._identity_last_checked = False
         path = self._current()
         first = _observe(path)
         second = _observe(path)
         if first != second or first != self._baseline:
             raise WindowRefused("sandbox configuration changed")
+        self._identity_last_checked = True
         return True
 
     def _unlock(self):
         lock, self._lock = self._lock, None
+        self._identity_last_checked = False
         if lock is not None:
             lock.__exit__(None, None, None)
 
@@ -68,17 +72,22 @@ class OfflineExclusiveWindow:
         if self._started or self._lifecycle.state != LifecycleState.NORMAL:
             raise WindowRefused("window already started")
         self._started = True
+        identity_recheck_started = False
         try:
             self._baseline = _observe(self._current())
             self._lifecycle.prepare(controller, timeout=timeout)
             lock = sandbox_writer_lock(self._sandbox._dirfd)
             lock.__enter__()
             self._lock = lock
+            identity_recheck_started = True
             self._check()
         except BaseException:
             self._unlock()
             if self._lifecycle.state == LifecycleState.QUIESCED:
-                self._lifecycle.cancel_before_change()
+                if identity_recheck_started:
+                    self._lifecycle.halt_for_uncertain_evidence()
+                else:
+                    self._lifecycle.cancel_before_change()
             raise
         return self.report()
 
@@ -90,10 +99,10 @@ class OfflineExclusiveWindow:
         try:
             self._check()
         except BaseException:
-            # No change was requested through this interface. Invalidate the
-            # window and release cooperative lock on uncertain evidence.
+            # External edits bypassing the cooperative lock cannot be
+            # classified as a clean no-write abort. Keep admission closed.
+            self._lifecycle.halt_for_uncertain_evidence()
             self._unlock()
-            self._lifecycle.cancel_before_change()
             raise
         self._lifecycle.record_change_possible()
         return self.report()
@@ -105,6 +114,11 @@ class OfflineExclusiveWindow:
         try:
             state = self._lifecycle.state
             if state == LifecycleState.QUIESCED:
+                try:
+                    self._check()
+                except BaseException:
+                    self._lifecycle.halt_for_uncertain_evidence()
+                    raise
                 self._lifecycle.cancel_before_change()
             elif state == LifecycleState.CHANGE_POSSIBLE:
                 self._lifecycle.finish_after_external_review()
@@ -119,7 +133,8 @@ class OfflineExclusiveWindow:
         return {
             **lifecycle,
             "sandbox_lock_held": self._lock is not None,
-            "sandbox_identity_rechecked": self._lock is not None,
+            "sandbox_identity_rechecked": self._identity_last_checked,
+            "sandbox_identity_is_exclusive_proof": False,
             "external_writers_excluded": False,
             "write_authorized": False,
             "production_maintenance_authorized": False,
