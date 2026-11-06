@@ -95,8 +95,11 @@ class ReviewAndActivationTests(unittest.TestCase):
     def test_systemd_missing_metadata_fails_closed(self):
         runner, _ = activation_runner(omit="PartOf")
         report = inspect_player_activation(runner=runner)
-        self.assertFalse(report["metadata_available"])
+        self.assertTrue(report["metadata_available"])
+        self.assertFalse(report["metadata_complete"])
+        self.assertIn("PartOf", report["missing_properties"])
         self.assertEqual(report["activation_relationships"]["PartOf"], "unknown")
+        self.assertEqual(report["activation_relationships"]["WantedBy"], "present")
         self.assertFalse(report["write_authorized"])
 
     def test_systemd_execution_failure_fails_closed(self):
@@ -105,6 +108,37 @@ class ReviewAndActivationTests(unittest.TestCase):
         report = inspect_player_activation(runner=run)
         self.assertFalse(report["metadata_available"])
         self.assertFalse(report["activation_exclusion_verified"])
+
+    def test_partial_activation_data_is_visible_but_not_authorizing(self):
+        def run(argv, **kwargs):
+            output = ("LoadState=loaded\nActiveState=active\n"
+                      "UnitFileState=enabled\nRestart=on-failure\n"
+                      "PartOf=sonoscdplayer.target\nWantedBy=sonoscdplayer.target\n")
+            return subprocess.CompletedProcess(argv, 0, output, "")
+        report = inspect_player_activation(runner=run)
+        self.assertTrue(report["metadata_available"])
+        self.assertFalse(report["metadata_complete"])
+        self.assertTrue(report["unit_loaded"])
+        self.assertTrue(report["service_active"])
+        self.assertEqual(report["restart_policy"], "on-failure")
+        self.assertEqual(report["activation_relationships"]["PartOf"], "present")
+        self.assertEqual(report["activation_relationships"]["TriggeredBy"], "unknown")
+        self.assertIn("TriggeredBy", report["missing_properties"])
+        self.assertFalse(report["activation_exclusion_verified"])
+        self.assertFalse(report["write_authorized"])
+
+    def test_partial_metadata_does_not_complete_checklist(self):
+        report = {
+            "config": {"template_checked": True, "proposal_status": "compatible"},
+            "units": {},
+            "activation": {"metadata_available": True, "metadata_complete": False},
+            "blockers": [],
+        }
+        result = build_maintenance_checklist(report)
+        checks = {c["id"]: c for p in result["checklist"] for c in p["checks"]}
+        self.assertEqual(checks["activation_metadata_inspected"]["status"],
+                         "pending")
+        self.assertFalse(result["ready_for_live_maintenance"])
 
     def test_inactive_player_does_not_prove_no_activation(self):
         runner, _ = activation_runner(state="inactive")
@@ -122,6 +156,7 @@ class ReviewAndActivationTests(unittest.TestCase):
                                             "key": "service.experimental_safe_screen"}},
             "units": {},
             "activation": {"metadata_available": True,
+                           "metadata_complete": True,
                            "activation_exclusion_verified": False},
             "blockers": ["migration_proposal_requires_review",
                          "other_config_writers_not_excluded"],
