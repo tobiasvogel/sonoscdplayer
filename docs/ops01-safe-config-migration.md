@@ -280,3 +280,29 @@ descriptor only and does not enable production apply.
 
 The five new lock tests require confirmation on the Raspberry Pi. The last
 confirmed full regression before this change was **515/515** at `46b8136`.
+
+### Maintenance-window evidence policy (2026-11-06)
+
+At commit `94e7139`, the Raspberry Pi passed **520/520** regression tests,
+including cooperative sandbox advisory-lock tests.
+
+The new pure function `assess_maintenance_evidence` models claims that an
+operator has approved a particular maintenance window, the player service,
+listener, reader and player process are inactive, group recovery is clear,
+private paths and a cooperative writer lock are verified, and both the
+original and candidate SHA-256 values match the planned transaction.
+Missing, inconsistent or ambiguous claims fail closed.
+
+**It does not perform a live preflight.** All evidence is supplied by the
+caller and is not independently attested, cannot prove other writers are
+excluded, and cannot establish freshness or guard the file-swap boundary.
+Accordingly `write_authorized` is **always false**, including when every
+claim is consistent. The function is not wired to the sandbox writer or any
+real config path. Tests for this addition must pass before it can be counted
+as an accepted OPS-01 substep.
+
+Before allowing production apply we still need a separately approved
+maintenance protocol, an exclusive cross-service coordination mechanism,
+robust path/permission rules and a transactionally safe race strategy,
+plus explicitly scoped failure tests. A successful offline gate is not
+authorization to stop the player or migrate `player.toml`.
