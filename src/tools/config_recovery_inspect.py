@@ -13,6 +13,7 @@ import os
 import stat
 
 from .config_candidate import build_candidate
+from .config_transaction_phase import PhaseRejected, read_phase
 
 
 _MAX_BYTES = 1024 * 1024
@@ -106,3 +107,37 @@ def inspect_persisted_transaction(dirfd: int, template: bytes) -> str:
         raise RecoveryInspectionError("unrecognized current configuration")
     except (ValueError, TypeError, UnicodeError, KeyError) as exc:
         raise RecoveryInspectionError("invalid transaction evidence") from exc
+
+def inspect_persisted_phase(dirfd: int, template: bytes) -> tuple[str, str]:
+    """Cross-check a durable sandbox phase against independent byte evidence.
+
+    A phase record is only a progress hint, never proof that the file exchange
+    succeeded. Interrupted updates can legitimately lag the actual bytes.
+    Missing, unsafe, contradictory or staged records fail closed.
+    """
+    try:
+        os.stat("transaction-phase-staged.json", dir_fd=dirfd,
+                follow_symlinks=False)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise RecoveryInspectionError("phase staging state unknown") from exc
+    else:
+        raise RecoveryInspectionError("unresolved phase staging artifact")
+    try:
+        phase = read_phase(dirfd)
+    except (PhaseRejected, OSError, ValueError, TypeError) as exc:
+        raise RecoveryInspectionError("invalid persisted phase") from exc
+    if phase is None or phase == "BACKED_UP":
+        raise RecoveryInspectionError("transaction intent not fully prepared")
+    classification = inspect_persisted_transaction(dirfd, template)
+    permitted = {
+        "PREPARED": {"not_replaced", "replacement_verified"},
+        "REPLACED": {"replacement_verified"},
+        "VERIFIED": {"replacement_verified"},
+        "ROLLBACK_PREPARED": {"not_replaced", "replacement_verified"},
+        "ROLLED_BACK": {"not_replaced"},
+    }
+    if classification not in permitted[phase]:
+        raise RecoveryInspectionError("phase contradicts configuration bytes")
+    return phase, classification
