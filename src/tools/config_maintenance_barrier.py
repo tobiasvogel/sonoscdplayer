@@ -79,6 +79,36 @@ class OfflineMaintenanceBarrier:
             self._active.add(ticket)
             return ticket
 
+    def submit(self, executor, operation, *args):
+        """Submit work and issue its ticket in ONE admission critical section.
+
+        This closes the gap in which DRAINING could begin after admission
+        but before the executor actually queues the operation. The executor
+        must be single-worker FIFO for the later offline fence protocol.
+        """
+        with self._guard:
+            if self._state != BarrierState.OPEN:
+                raise AdmissionRefused("maintenance admission closed")
+            self._next_ticket += 1
+            ticket = self._next_ticket
+            self._active.add(ticket)
+            try:
+                future = executor.submit(operation, *args)
+            except BaseException:
+                self._active.remove(ticket)
+                raise
+
+        # Done callbacks can run synchronously if work already completed.
+        # Register outside the lock; close() invalidates outstanding tickets.
+        def release(_future):
+            try:
+                self.finish(ticket)
+            except AdmissionRefused:
+                if self.state != BarrierState.CLOSED:
+                    raise
+        future.add_done_callback(release)
+        return future
+
     def finish(self, ticket: int) -> None:
         """Consume a genuine outstanding ticket exactly once."""
         with self._guard:
