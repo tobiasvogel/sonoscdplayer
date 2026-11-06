@@ -27,7 +27,7 @@ class FenceDeadlineTests(unittest.TestCase):
         controller = types.SimpleNamespace()
         # The sample result is synthetic: only the deadline path is tested.
         sample = types.SimpleNamespace(no_pending_external_activity=False)
-        ticks = iter((0.0, 0.2))
+        ticks = iter((0.0, 0.0, 0.2))
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             with patch.object(fence, "sample_controller_idle", return_value=sample):
                 with patch.object(fence, "time",
