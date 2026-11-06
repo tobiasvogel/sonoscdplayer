@@ -83,34 +83,23 @@ class MaintenanceLifecycleTests(unittest.TestCase):
         barrier = OfflineMaintenanceBarrier()
         started, release = threading.Event(), threading.Event()
         with GuardedWorkerExecutor() as executor:
+            session = OfflineMaintenanceLifecycle(barrier, executor)
+
             def busy():
                 started.set()
                 release.wait(timeout=2)
+
             future = barrier.submit(executor, busy)
             self.assertTrue(started.wait(timeout=2))
-            session = OfflineMaintenanceLifecycle(barrier, executor) if False else None
-            # A new session must be constructed before any admitted work.
-            # Construct another clean barrier to test actual drain timeout.
-            release.set()
-            future.result(timeout=2)
-        barrier2 = OfflineMaintenanceBarrier()
-        with GuardedWorkerExecutor() as executor2:
-            session = OfflineMaintenanceLifecycle(barrier2, executor2)
-            started2, release2 = threading.Event(), threading.Event()
-            def busy2():
-                started2.set()
-                release2.wait(timeout=2)
-            future2 = barrier2.submit(executor2, busy2)
-            self.assertTrue(started2.wait(timeout=2))
             try:
                 with self.assertRaises(AdmissionRefused):
                     session.prepare(FakeController(), timeout=0.01)
-                self.assertEqual(barrier2.state, BarrierState.CLOSED)
+                self.assertEqual(barrier.state, BarrierState.CLOSED)
                 with self.assertRaises(AdmissionRefused):
                     session.cancel_before_change()
             finally:
-                release2.set()
-            future2.result(timeout=2)
+                release.set()
+            future.result(timeout=2)
 
     def test_possible_change_prevents_resume_even_without_actual_write(self):
         barrier = OfflineMaintenanceBarrier()
