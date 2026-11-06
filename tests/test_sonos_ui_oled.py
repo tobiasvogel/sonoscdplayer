@@ -24,7 +24,7 @@ class ModernOLEDTests(unittest.TestCase):
     def test_modern_offline_reuses_existing_error_screen(self):
         with patch.object(oled_status, 'status_frame', return_value=Framebuffer()) as existing:
             oled_status.modern_status_frame(error='socket refused')
-        existing.assert_called_once_with(error='socket refused')
+        existing.assert_called_once_with(error='socket refused', language='de')
 
     def test_bad_schema_is_rejected_without_invented_metadata(self):
         with self.assertRaises(ValueError):
