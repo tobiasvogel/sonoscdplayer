@@ -7,14 +7,14 @@ implicit fallback to the legacy 'playpause' RPC.
 import threading
 
 try:
-    from .safe_button_policy import plan_playpause, plan_stop
+    from .safe_button_policy import plan_playpause, plan_stop, plan_track_change
     from .safe_button_preview import read_snapshot
 except ImportError:
-    from safe_button_policy import plan_playpause, plan_stop
+    from safe_button_policy import plan_playpause, plan_stop, plan_track_change
     from safe_button_preview import read_snapshot
 
 
-SAFE_COMMANDS = frozenset(('play-selected', 'pause', 'resume', 'stop'))
+SAFE_COMMANDS = frozenset(('play-selected', 'pause', 'resume', 'stop', 'next', 'previous'))
 
 
 class SelectedTargetExecutor:
@@ -32,7 +32,7 @@ class SelectedTargetExecutor:
         self._busy = False
 
     def submit(self, action='playpause'):
-        if action not in ('playpause', 'stop'):
+        if action not in ('playpause', 'stop', 'next', 'previous'):
             return False
         with self._lock:
             if self._busy:
@@ -44,6 +44,8 @@ class SelectedTargetExecutor:
                 status = self.reader(self.socket_path, 'status')
                 target = self.reader(self.socket_path, 'get-target')
                 command = (plan_stop(status, target) if action == 'stop'
+                           else plan_track_change(status, target, action)
+                           if action in ('next', 'previous')
                            else plan_playpause(status, target))
                 if command not in SAFE_COMMANDS:
                     self.report('selected-target execute: blocked')
