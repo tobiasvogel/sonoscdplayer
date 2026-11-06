@@ -21,6 +21,7 @@ from cd_toc import read_toc
 from player_play import make_url, prepare_selection, verify_target
 from player_state import Mode
 from player_switch import ownership_snapshot
+from sonos_ui.playback_progress import verified_progress
 import sonos_group
 from sonos_parallel_test import detect_drive, stream_lines, wait_reader
 
@@ -141,6 +142,7 @@ class Controller:
         self.last_transport = 'UNKNOWN'
         self.seen_playing = False
         self.start_monotonic = None
+        self._display_progress = None  # read-only Sonos timing; never used to control PLAY
         self.stopped_since = None
         self.status_hook = None  # optional read-only snapshot publisher
         self.disc_status = None  # optional M0.19 independent disc observation
@@ -185,6 +187,9 @@ class Controller:
                 'active': active,
             },
         }
+        if (self._display_progress is not None and owned and active
+                and self.state.mode in (Mode.PLAYING, Mode.PAUSED)):
+            snapshot['progress'] = dict(self._display_progress)
         if self.disc_status is not None:
             snapshot['disc'] = self.disc_status.snapshot()
         return snapshot
@@ -315,6 +320,17 @@ class Controller:
                 self.stopped_since = None
             elif transport not in ('STOPPED', 'TRANSITIONING', 'PLAYING'):
                 self._fail(f'unexpected Sonos transport state: {transport}')
+            # Timing is advisory display data, not an ownership or control
+            # condition. Isolate Sonos time-query errors from playback health.
+            self._display_progress = None
+            if (self.state.mode in (Mode.PLAYING, Mode.PAUSED)
+                    and transport in ('PLAYING', 'PAUSED_PLAYBACK')
+                    and self.owned_url):
+                try:
+                    self._display_progress = verified_progress(
+                        player.get_current_track_info(), self.owned_url)
+                except Exception:
+                    pass
         except Exception as exc:
             self._fail(f'ownership/status check failed: {type(exc).__name__}: {exc}')
 
@@ -362,6 +378,7 @@ class Controller:
         # Publish STARTING before the potentially long, synchronous PCM prebuffer.
         # No Sonos command has been sent and ownership is not claimed here.
         self.state = self.state.start_requested()
+        self._display_progress = None
         if self.status_hook is not None:
             self.status_hook()
         try:
