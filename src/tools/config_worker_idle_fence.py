@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from dataclasses import replace
+import math
 import time
 
 from .config_controller_idle import sample_controller_idle
@@ -26,7 +27,7 @@ def freeze_after_worker_drain(barrier, executor, controller, *, timeout=5.0):
     """
     if type(barrier) is not OfflineMaintenanceBarrier:
         raise TypeError("offline barrier required")
-    if type(timeout) not in (int, float) or not 0 < timeout <= 60:
+    if type(timeout) not in (int, float) or not math.isfinite(timeout) or not 0 < timeout <= 60:
         raise ValueError("bounded timeout required")
     # ThreadPoolExecutor's implementation is FIFO with a single worker.
     # Reject multi-worker and arbitrary custom executors, which cannot
@@ -52,9 +53,15 @@ def freeze_after_worker_drain(barrier, executor, controller, *, timeout=5.0):
         raise AdmissionRefused("worker idle sample failed") from exc
 
     # Futures can finish before their registered admission callbacks have
-    # released the tickets; wait for those callbacks, with a fixed deadline.
-    if not barrier.wait_drained(max(0.000001, deadline - time.monotonic())):
+    # released the tickets. Never turn an expired deadline into a tiny new
+    # waiting window: even a fully idle sample cannot authorize a late freeze.
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise AdmissionRefused("worker idle deadline expired")
+    if not barrier.wait_drained(remaining):
         raise AdmissionRefused("worker tasks remain pending")
+    if time.monotonic() >= deadline:
+        raise AdmissionRefused("worker idle deadline expired")
     if barrier.state != BarrierState.DRAINING:
         raise AdmissionRefused("barrier no longer draining")
 
