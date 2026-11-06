@@ -654,3 +654,115 @@ assets and drop-ins. Stopping `sonoscdplayer.target` is not approved.
 Next work should focus on a targeted, separately authorized way to exclude
 player commands and concurrent configuration writers **without touching the
 shutdown sentinel**. No live migration is authorized.
+
+## P0 architecture decision: command drain and exclusive config maintenance (2026-11-06)
+
+**Decision status: proposal for code review; no runtime changes authorized.**
+The verified Pi systemd topology and the actual player source were reviewed.
+The socket server (`src/player_service.py::serve`) accepts and parses requests
+in its main loop and submits non-status commands via
+`executor.submit(operate, request)` to a single worker. A cached
+`{'command':'status'}` bypasses the worker. The worker also periodically
+runs `refresh()`, which can inspect drives and call the drive-power
+manager. `Controller.status_snapshot()` does not contain all lease-safety
+facts. Therefore a status check performed outside this worker **cannot**
+freeze command submission or prove quiescence.
+
+### P0-1 — Future player-side maintenance barrier
+
+Implement only after a separate code review, with an explicitly disabled
+default and no change to the current control protocol until authorized:
+
+1. A privileged, local maintenance request must use the existing serialized
+   control path with strong local caller authentication. The current socket's
+   `0600` mode is an access restriction, **not** proof of a maintenance
+   operator or authorization to mutate config. No ordinary button command
+   should be able to claim maintenance authority.
+2. The control loop must atomically switch to `DRAINING` **before** it
+   accepts or submits more mutating requests. From then on, reject
+   `PLAY`, `PLAYPAUSE`, `SELECT`, transport changes, target selection,
+   group-recovery commands, and any other state-changing request; never
+   silently queue commands for replay. Allow only a documented minimal
+   read-only diagnostic subset. Cached `status` must not be interpreted as
+   the maintenance acknowledgement.
+3. Complete and account for every previously queued/running command and
+   refresh; suspend periodic controller, disc and power operations before
+   asserting `DRAINED`. Account for any stream/reader child process and
+   already-connected socket clients. If the worker does not settle within
+   a bounded deadline, fail closed; **do not force-stop Sonos or kill
+   the reader** as an implicit recovery action.
+4. Produce an in-worker, fresh, minimal, non-secret attestation covering
+   `mode == STOPPED`, `owned_url is None`, `server.alive() is False`,
+   `server.reader_active() is False`, `_joined` empty,
+   `_group_uncertain is False`, no pending group recovery, and no
+   queued/running request or refresh. Any missing/unknown field blocks.
+5. Transition to `FROZEN` only after the above checks. Keep rejecting
+   commands until the maintenance owner exits. Any crash, expired lease,
+   disconnect or other ambiguous transition must invalidate the claim:
+   **never auto-resume a queued PLAY** or infer success from a cached
+   snapshot.
+6. This in-process barrier is still *not enough*: player shutdown can call
+   `shutdown_owned`, and commands could be issued after it exits unless
+   systemd activation paths are also excluded. No existing stop/restart or
+   systemd target action is implicitly permitted.
+
+**Acceptance tests to require when implemented:** A PLAY races the barrier;
+a command is already queued; PLAY is blocked after DRAINING; cached status
+does not acknowledge the lease; a refresh is in flight; a reader/stream
+remains active; a group is joined but `group_cleanup_pending` is false;
+a long-running worker times out; a broken client drops the lease; process
+exit does not fire an unapproved Sonos STOP. No physical media, Sonos
+devices or live service restarts in initial tests.
+
+### P0-2 — Exclusive maintenance writer
+
+The production architecture must NOT reuse `OfflineSandbox` against a
+user-supplied path. A distinct reviewed writer is required and must remain
+disabled until the separately approved cutover. Its lease must cover
+preflight, backup, staged write, swap, verification and any rollback.
+The existing `flock` protects only cooperating processes:
+
+1. Bind to the **effective** player `--config` pathname from systemd and
+   attest parent directory ownership/mode and every relevant path component
+   without following symlinks. Never infer that a repository template is
+   the live config.
+2. Before taking a write lease, verify that the player cannot restart or
+   accept commands and that buttons/deployment/editors/cron/administrative
+   tasks cannot modify the configuration. Inventory all actual activation
+   sources and writers. `Restart=no` and `UnitFileState=disabled` do not
+   prove this; `sonoscdplayer.target` is enabled and wants the player.
+3. Use an owner-controlled stable private maintenance lock held throughout
+   the operation. It serializes cooperating writers, but any noncooperating
+   writer remains an **unresolved P0 blocker**, regardless of a matching
+   checksum immediately before `os.replace`.
+4. Snapshot path identity, link count, original owner/group/mode and exact
+   bytes/hash, then revalidate under the exclusive environment. Explicitly
+   reject drift, symlinks, untrusted parent, hardlinks and stale proposals.
+   Preserve original metadata and backup contents in durable, protected
+   artifacts; implement a documented transaction state machine, not merely
+   a best-effort in-memory rollback.
+5. The maintenance operator must separately authorize the exact change and
+   any stop/start effects. **Never** stop `sonoscdplayer.target`: its
+   `PartOf` propagation also stops player/buttons/OLED/LED. The OLED
+   shutdown sentinel must remain untouched; it preserves the display for
+   late-shutdown and exitrd graphics during genuine system shutdown.
+
+### Recommended implementation sequence (not a shell runbook)
+
+A. **No-write inventory:** confirm actual player/button `ExecStart`
+   capabilities, socket and shutdown policy in sanitized form, plus any
+   additional config writers and activation sources. Preserve private
+   UID, service drop-ins and shutdown hooks.
+B. Build an *in-memory* admission/barrier state machine with concurrency
+   tests, then integrate the barrier into the serialized player loop only
+   after separate review. Do not introduce an operator CLI that can stop
+   the real player at this stage.
+C. Model a separate maintenance supervisor and private writer in synthetic
+   files; test lock lifetime, hostile writers, simulated systemd
+   reactivation, transaction state failures, and restart/reopen behavior.
+D. Review the concrete service lifecycle and safety effects, including
+   Sonos ownership, drive state and visible OLED behavior. Require distinct
+   permission to begin the first real maintenance rehearsal.
+
+**No live apply, no service stops, no unit modifications, no sentinel or
+shutdown-hook changes are authorized by this architecture note.**
