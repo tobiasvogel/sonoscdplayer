@@ -15,7 +15,7 @@ from player_service import serve
 from tools.config_guarded_worker import GuardedWorkerExecutor
 from tools.config_live_admission import InternalMaintenanceControl
 from tools.config_maintenance_barrier import (
-    AdmissionRefused, OfflineMaintenanceBarrier,
+    AdmissionRefused, BarrierState, OfflineMaintenanceBarrier,
 )
 
 
@@ -150,6 +150,205 @@ class LiveAdmissionTests(unittest.TestCase):
             self.assertFalse(request(path, "status")["ok"])
             self.assertEqual(request(path, "help")["error"],
                              "maintenance admission closed")
+        self.service(controller, barrier, control, exercise)
+
+    def test_concurrent_socket_requests_during_drain_are_rejected(self):
+        barrier = OfflineMaintenanceBarrier()
+        control = InternalMaintenanceControl(barrier)
+        controller = FakeController()
+        entered, release = threading.Event(), threading.Event()
+
+        def blocked_refresh():
+            entered.set()
+            if not release.wait(3):
+                raise AssertionError("synthetic refresh not released")
+            controller.refresh_count += 1
+
+        controller.refresh = blocked_refresh
+
+        def exercise(path):
+            self.assertTrue(entered.wait(2))
+            finished, errors = [], []
+
+            def prepare():
+                try:
+                    finished.append(control.prepare(timeout=2))
+                except BaseException as exc:
+                    errors.append(exc)
+
+            thread = threading.Thread(target=prepare)
+            thread.start()
+            try:
+                end = time.monotonic() + 2
+                while barrier.state == BarrierState.OPEN and time.monotonic() < end:
+                    time.sleep(0.002)
+                self.assertEqual(barrier.state, BarrierState.DRAINING)
+                results = []
+                threads = [
+                    threading.Thread(target=lambda: results.append(request(path, "help")))
+                    for _ in range(6)
+                ]
+                for worker in threads:
+                    worker.start()
+                for worker in threads:
+                    worker.join(timeout=2)
+                    self.assertFalse(worker.is_alive())
+                self.assertEqual(len(results), 6)
+                self.assertTrue(all(
+                    item.get("error") == "maintenance admission closed"
+                    for item in results))
+                self.assertTrue(request(path, "status")["ok"])
+                self.assertFalse(finished)
+            finally:
+                release.set()
+                thread.join(timeout=3)
+            self.assertFalse(thread.is_alive())
+            self.assertFalse(errors, errors)
+            self.assertEqual(finished[0]["barrier_state"], "FROZEN")
+            self.assertEqual(control.cancel_before_change()["barrier_state"], "OPEN")
+            self.assertTrue(request(path, "help")["ok"])
+        self.service(controller, barrier, control, exercise)
+
+    def test_cancel_during_prepare_is_refused_without_early_reopen(self):
+        barrier = OfflineMaintenanceBarrier()
+        control = InternalMaintenanceControl(barrier)
+        controller = FakeController()
+        entered, release = threading.Event(), threading.Event()
+
+        def blocked_refresh():
+            entered.set()
+            release.wait(3)
+
+        controller.refresh = blocked_refresh
+
+        def exercise(path):
+            self.assertTrue(entered.wait(2))
+            outcomes = []
+
+            def prepare():
+                try:
+                    outcomes.append(control.prepare(timeout=2))
+                except BaseException as exc:
+                    outcomes.append(exc)
+
+            thread = threading.Thread(target=prepare)
+            thread.start()
+            try:
+                end = time.monotonic() + 2
+                while barrier.state == BarrierState.OPEN and time.monotonic() < end:
+                    time.sleep(0.002)
+                self.assertEqual(barrier.state, BarrierState.DRAINING)
+                with self.assertRaises(AdmissionRefused):
+                    control.cancel_before_change()
+                self.assertEqual(barrier.state, BarrierState.DRAINING)
+                self.assertEqual(request(path, "help")["error"],
+                                 "maintenance admission closed")
+            finally:
+                release.set()
+                thread.join(timeout=3)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(len(outcomes), 1)
+            self.assertIsInstance(outcomes[0], dict)
+            self.assertEqual(outcomes[0]["barrier_state"], "FROZEN")
+            control.cancel_before_change()
+        self.service(controller, barrier, control, exercise)
+
+    def test_concurrent_duplicate_prepare_refused(self):
+        barrier = OfflineMaintenanceBarrier()
+        control = InternalMaintenanceControl(barrier)
+        controller = FakeController()
+        entered, release = threading.Event(), threading.Event()
+
+        def blocked_refresh():
+            entered.set()
+            release.wait(3)
+
+        controller.refresh = blocked_refresh
+
+        def exercise(path):
+            self.assertTrue(entered.wait(2))
+            errors = []
+
+            def prepare():
+                try:
+                    control.prepare(timeout=2)
+                except BaseException as exc:
+                    errors.append(exc)
+
+            thread = threading.Thread(target=prepare)
+            thread.start()
+            try:
+                end = time.monotonic() + 2
+                while barrier.state == BarrierState.OPEN and time.monotonic() < end:
+                    time.sleep(0.002)
+                self.assertEqual(barrier.state, BarrierState.DRAINING)
+                with self.assertRaises(AdmissionRefused):
+                    control.prepare(timeout=0.1)
+                self.assertEqual(request(path, "help")["error"],
+                                 "maintenance admission closed")
+            finally:
+                release.set()
+                thread.join(timeout=3)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(errors, [])
+            control.cancel_before_change()
+        self.service(controller, barrier, control, exercise)
+
+    def test_refresh_timeout_closes_admission_and_prevents_resume(self):
+        barrier = OfflineMaintenanceBarrier()
+        control = InternalMaintenanceControl(barrier)
+        controller = FakeController()
+        entered, release = threading.Event(), threading.Event()
+
+        def blocked_refresh():
+            entered.set()
+            release.wait(3)
+
+        controller.refresh = blocked_refresh
+
+        def exercise(path):
+            self.assertTrue(entered.wait(2))
+            try:
+                with self.assertRaises(AdmissionRefused):
+                    control.prepare(timeout=0.03)
+                self.assertEqual(barrier.state, BarrierState.CLOSED)
+                with self.assertRaises(AdmissionRefused):
+                    control.cancel_before_change()
+                self.assertEqual(request(path, "help")["error"],
+                                 "maintenance admission closed")
+                self.assertFalse(request(path, "status")["ok"])
+                self.assertFalse(control.report()["write_authorized"])
+            finally:
+                release.set()
+        self.service(controller, barrier, control, exercise)
+
+    def test_simultaneous_abort_only_one_can_reopen(self):
+        barrier = OfflineMaintenanceBarrier()
+        control = InternalMaintenanceControl(barrier)
+        controller = FakeController()
+
+        def exercise(path):
+            control.prepare(timeout=2)
+            start = threading.Barrier(3)
+            outcomes = []
+
+            def abort():
+                start.wait(timeout=2)
+                try:
+                    outcomes.append(control.cancel_before_change()["barrier_state"])
+                except AdmissionRefused:
+                    outcomes.append("refused")
+
+            threads = [threading.Thread(target=abort) for _ in range(2)]
+            for thread in threads:
+                thread.start()
+            start.wait(timeout=2)
+            for thread in threads:
+                thread.join(timeout=2)
+                self.assertFalse(thread.is_alive())
+            self.assertEqual(sorted(outcomes), ["OPEN", "refused"])
+            self.assertEqual(barrier.state, BarrierState.OPEN)
+            self.assertTrue(request(path, "help")["ok"])
         self.service(controller, barrier, control, exercise)
 
     def test_control_requires_matching_injected_barrier(self):
