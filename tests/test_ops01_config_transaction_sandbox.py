@@ -69,6 +69,66 @@ class SandboxTransactionTests(unittest.TestCase):
             self.assertEqual((sandbox.directory / 'backup-original.toml').read_bytes(), CURRENT)
             self.assertFalse((sandbox.directory / 'candidate-staged.toml').exists())
 
+    def test_interrupted_after_replace_can_be_verified_and_rolled_back(self):
+        with OfflineSandbox() as sandbox:
+            old = sandbox.seed(CURRENT)
+            with self.assertRaises(TransactionRejected):
+                sandbox.apply(TEMPLATE, KEYS, expected_sha256=old,
+                              fail_at='after_replace')
+            changed = sandbox.read_current()
+            self.assertIn(b'pcm_timeout_seconds = 45', changed)
+            self.assertEqual(sandbox.recover_interrupted(
+                TEMPLATE, KEYS, expected_original_sha256=old),
+                'replacement_verified')
+            self.assertEqual(sandbox.rollback(expected_sha256=digest(changed)), old)
+            self.assertEqual(sandbox.read_current(), CURRENT)
+
+    def test_before_replace_recovery_is_read_only(self):
+        with OfflineSandbox() as sandbox:
+            old = sandbox.seed(CURRENT)
+            with self.assertRaises(TransactionRejected):
+                sandbox.apply(TEMPLATE, KEYS, expected_sha256=old,
+                              fail_at='before_replace')
+            self.assertEqual(sandbox.recover_interrupted(
+                TEMPLATE, KEYS, expected_original_sha256=old), 'not_replaced')
+            self.assertEqual(sandbox.read_current(), CURRENT)
+
+    def test_interrupted_recovery_refuses_drifted_target(self):
+        with OfflineSandbox() as sandbox:
+            old = sandbox.seed(CURRENT)
+            with self.assertRaises(TransactionRejected):
+                sandbox.apply(TEMPLATE, KEYS, expected_sha256=old,
+                              fail_at='after_replace')
+            target = sandbox.directory / 'current.toml'
+            target.write_bytes(b'[external]\\nsecret = "MUST_PRESERVE"\\n')
+            with self.assertRaises(TransactionRejected):
+                sandbox.recover_interrupted(
+                    TEMPLATE, KEYS, expected_original_sha256=old)
+            self.assertEqual(target.read_bytes(),
+                             b'[external]\\nsecret = "MUST_PRESERVE"\\n')
+
+    def test_interrupted_recovery_refuses_wrong_orig_checksum(self):
+        with OfflineSandbox() as sandbox:
+            old = sandbox.seed(CURRENT)
+            with self.assertRaises(TransactionRejected):
+                sandbox.apply(TEMPLATE, KEYS, expected_sha256=old,
+                              fail_at='after_replace')
+            with self.assertRaises(TransactionRejected):
+                sandbox.recover_interrupted(
+                    TEMPLATE, KEYS, expected_original_sha256='0' * 64)
+
+    def test_interrupted_recovery_refuses_wrong_template(self):
+        with OfflineSandbox() as sandbox:
+            old = sandbox.seed(CURRENT)
+            with self.assertRaises(TransactionRejected):
+                sandbox.apply(TEMPLATE, KEYS, expected_sha256=old,
+                              fail_at='after_replace')
+            wrong = TEMPLATE.replace(b'pcm_timeout_seconds = 45',
+                                     b'pcm_timeout_seconds = 90')
+            with self.assertRaises(ValueError):
+                sandbox.recover_interrupted(
+                    wrong, KEYS, expected_original_sha256=old)
+
     def test_symlink_target_rejected(self):
         with OfflineSandbox() as sandbox:
             old = sandbox.seed(CURRENT)
