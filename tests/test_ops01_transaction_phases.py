@@ -1,6 +1,8 @@
 """OPS-01 durable phase journal tests on disposable synthetic sandboxes."""
 import json
 import os
+import subprocess
+import sys
 import unittest
 
 from tools.config_recovery_inspect import (
@@ -54,6 +56,28 @@ class DurableTransactionPhaseTests(unittest.TestCase):
             sandbox.simulate_process_restart()
             self.assertEqual(inspect_persisted_phase(sandbox._dirfd, REFERENCE),
                              ('REPLACED', 'replacement_verified'))
+
+    @unittest.skipUnless(os.name == 'posix', 'requires inherited descriptor')
+    def test_independent_python_process_reads_durable_phase(self):
+        with OfflineSandbox() as sandbox:
+            old = sandbox.seed(ORIGINAL)
+            sandbox.apply(REFERENCE, KEYS, expected_sha256=old)
+            sandbox.simulate_process_restart()
+            child = (
+                'import sys; from tools.config_recovery_inspect import '
+                'inspect_persisted_phase; '
+                'print(inspect_persisted_phase(int(sys.argv[1]), '
+                'bytes.fromhex(sys.argv[2])))'
+            )
+            process = subprocess.run(
+                [sys.executable, '-c', child, str(sandbox._dirfd),
+                 REFERENCE.hex()],
+                pass_fds=(sandbox._dirfd,), stdin=subprocess.DEVNULL,
+                text=True, capture_output=True, timeout=10, check=False)
+            self.assertEqual(process.returncode, 0, process.stderr)
+            self.assertIn("('VERIFIED', 'replacement_verified')",
+                          process.stdout)
+            self.assertEqual(sandbox.transaction_phase(), 'VERIFIED')
 
     def test_invalid_or_repeated_transitions_refused(self):
         with OfflineSandbox() as sandbox:
