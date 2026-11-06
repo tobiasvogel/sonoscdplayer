@@ -15,7 +15,8 @@ UNITS = (
 
 
 def fake_runner(*, player="active", target="active", sentinel="active",
-                unavailable=(), malformed=()):
+                oled="active", unavailable=(), malformed=(),
+                target_omits_service_properties=False):
     calls = []
 
     def run(argv, **kwargs):
@@ -30,7 +31,10 @@ def fake_runner(*, player="active", target="active", sentinel="active",
                    "sonoscdplayer-oled-shutdown-sentinel.service")
                   else {UNITS[1]: player, UNITS[0]: target,
                         UNITS[5]: sentinel}[unit])
-        substate = "running" if status == "active" else "dead"
+        if unit == UNITS[3]:
+            status = oled
+        substate = ("running" if status == "active" else
+                    "failed" if status == "failed" else "dead")
         text = (
             "LoadState=loaded\n"
             "ActiveState=" + status + "\n"
@@ -41,6 +45,9 @@ def fake_runner(*, player="active", target="active", sentinel="active",
             "ExecStop=\n"
             "Restart=no\n"
         )
+        if target_omits_service_properties and unit == UNITS[0]:
+            text = ("LoadState=loaded\\nActiveState=" + status +
+                    "\\nSubState=" + substate + "\\n")
         return subprocess.CompletedProcess(argv, 0, text, "")
     return run, calls
 
@@ -76,6 +83,25 @@ class MaintenanceInventoryTests(unittest.TestCase):
         self.assertIn("controller_idle_not_verified", report["blockers"])
         self.assertIn("other_config_writers_not_excluded", report["blockers"])
         self.assertFalse(report["write_authorized"])
+
+    def test_target_without_service_only_fields_is_still_available(self):
+        runner, calls = fake_runner(target_omits_service_properties=True)
+        report = inspect_maintenance_runtime(runner=runner)
+        self.assert_only_reads(calls)
+        self.assertTrue(report["units"][UNITS[0]]["available"])
+        self.assertTrue(report["units"][UNITS[0]]["loaded"])
+        self.assertEqual(report["units"][UNITS[0]]["active_state"], "active")
+        self.assertIn("do_not_stop_composite_target", report["blockers"])
+        self.assertNotIn("unavailable_sonoscdplayer", report["blockers"])
+
+    def test_failed_oled_is_reported_as_explicit_blocker(self):
+        runner, calls = fake_runner(oled="failed")
+        report = inspect_maintenance_runtime(runner=runner)
+        self.assert_only_reads(calls)
+        self.assertEqual(report["units"][UNITS[3]]["active_state"], "failed")
+        self.assertIn("unit_failed_sonoscdplayer-oled", report["blockers"])
+        self.assertFalse(report["stop_authorized"])
+        self.assertFalse(report["restart_authorized"])
 
     def test_unavailable_service_fails_conservatively(self):
         runner, _ = fake_runner(unavailable={UNITS[1]})
