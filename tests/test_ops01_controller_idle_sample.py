@@ -7,8 +7,9 @@ from tools.config_maintenance_barrier import OfflineMaintenanceBarrier, Admissio
 
 
 class FakeServer:
-    proc = None
-    _reader_active = False
+    def __init__(self):
+        self.proc = None
+        self._reader_active = False
 
     def alive(self):
         return False
