@@ -598,3 +598,24 @@ Next inspect only the **classification** of the touch operand and the
 existence of watcher references. Do not run `touch`, invoke `ExecStop`,
 stop the sentinel, or copy raw command lines containing local identifiers
 into logs/chats. OPS-01 production writes remain blocked.
+
+### OLED sentinel touch target — fourth read-only inspection (2026-11-06)
+
+The operator read the effective `ExecStop` command without running it.
+One `touch` target was identified:
+`/run/sonoscdplayer-oled-shutdown-preserve`. At inspection time the
+target **did not exist**. The executable is `touch`; no service or command
+was stopped or executed by these inspections.
+
+The basename suggests an OLED shutdown-preservation marker, but **its
+consumer and precise behavior are not yet verified**. A stop of the sentinel
+could create the marker and trigger indirect shutdown-hook behavior.
+Do not run `touch`, stop the sentinel or stop the target for this
+investigation. The associated shutdown-hook files on the Pi may be locally
+managed/untracked, and must not be overwritten, removed or committed.
+
+Next read-only action: search the installed code and unit definitions for
+literal references to `sonoscdplayer-oled-shutdown-preserve`, report only
+filenames and line numbers (not source-line contents, command arguments
+or secrets). Review findings before deciding whether the sentinel must stay
+active throughout an OPS-01 maintenance window.
