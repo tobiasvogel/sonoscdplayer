@@ -7,6 +7,9 @@ FROZEN is a simulation result, never permission for real config writes.
 from __future__ import annotations
 
 from dataclasses import replace
+import math
+import time
+from concurrent.futures import TimeoutError as FutureTimeout
 
 from .config_controller_idle import sample_controller_idle
 from .config_guarded_worker import GuardedWorkerExecutor
@@ -28,12 +31,15 @@ def drain_and_sample_offline(barrier: OfflineMaintenanceBarrier,
     if (type(barrier) is not OfflineMaintenanceBarrier or
             type(executor) is not GuardedWorkerExecutor):
         raise TypeError("offline barrier and guarded worker required")
-    if not isinstance(timeout, (float, int)) or type(timeout) is bool or not 0 < timeout <= 60:
-        raise ValueError("bounded positive timeout required")
+    if (type(timeout) not in (int, float) or not math.isfinite(timeout)
+            or not 0 < timeout <= 60):
+        raise ValueError("finite bounded positive timeout required")
     barrier.bind_executor(executor)
+    deadline = time.monotonic() + timeout
     barrier.begin_draining()
     try:
-        if not barrier.wait_drained(timeout):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not barrier.wait_drained(remaining):
             raise AdmissionRefused("tracked work did not drain")
         def sample():
             # A successful tracked drain permits the worker to assert there
@@ -41,7 +47,17 @@ def drain_and_sample_offline(barrier: OfflineMaintenanceBarrier,
             # integration and untracked external work remain unverified.
             proof = sample_controller_idle(controller)
             return replace(proof, no_pending_external_activity=True)
-        proof = executor._submit_idle_fence(sample).result(timeout=timeout)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AdmissionRefused("idle fence deadline expired")
+        future = executor._submit_idle_fence(sample)
+        try:
+            proof = future.result(timeout=max(0, deadline - time.monotonic()))
+        except FutureTimeout as exc:
+            future.cancel()
+            raise AdmissionRefused("idle fence timed out") from exc
+        if time.monotonic() >= deadline:
+            raise AdmissionRefused("idle fence deadline expired")
         barrier.freeze(proof)
     except BaseException:
         barrier.close()
