@@ -129,6 +129,66 @@ class SandboxTransactionTests(unittest.TestCase):
                 sandbox.recover_interrupted(
                     wrong, KEYS, expected_original_sha256=old)
 
+    def test_persisted_intent_survives_volatile_state_loss(self):
+        with OfflineSandbox() as sandbox:
+            old = sandbox.seed(CURRENT)
+            applied = sandbox.apply(TEMPLATE, KEYS, expected_sha256=old)
+            journal = sandbox.directory / 'transaction-intent.json'
+            self.assertTrue(journal.is_file())
+            self.assertEqual(journal.stat().st_mode & 0o777, 0o600)
+            self.assertNotIn(b'PRIVATE_TEST_VALUE', journal.read_bytes())
+            self.assertNotIn(b'experimental_safe_screen', journal.read_bytes())
+            sandbox.simulate_process_restart()
+            self.assertEqual(sandbox.inspect_after_restart(TEMPLATE),
+                             'replacement_verified')
+            self.assertEqual(sandbox.arm_rollback_after_restart(TEMPLATE),
+                             applied)
+            self.assertEqual(sandbox.rollback(expected_sha256=applied), old)
+            self.assertEqual(sandbox.read_current(), CURRENT)
+
+    def test_persisted_intent_classifies_pre_replace_interruption(self):
+        with OfflineSandbox() as sandbox:
+            old = sandbox.seed(CURRENT)
+            with self.assertRaises(TransactionRejected):
+                sandbox.apply(TEMPLATE, KEYS, expected_sha256=old,
+                              fail_at='before_replace')
+            sandbox.simulate_process_restart()
+            self.assertEqual(sandbox.inspect_after_restart(TEMPLATE),
+                             'not_replaced')
+            with self.assertRaises(TransactionRejected):
+                sandbox.arm_rollback_after_restart(TEMPLATE)
+            self.assertEqual(sandbox.read_current(), CURRENT)
+
+    def test_restart_refuses_changed_template(self):
+        with OfflineSandbox() as sandbox:
+            old = sandbox.seed(CURRENT)
+            sandbox.apply(TEMPLATE, KEYS, expected_sha256=old)
+            sandbox.simulate_process_restart()
+            with self.assertRaises(TransactionRejected):
+                sandbox.inspect_after_restart(TEMPLATE + b'\\n# changed\\n')
+
+    def test_restart_refuses_tampered_journal(self):
+        with OfflineSandbox() as sandbox:
+            old = sandbox.seed(CURRENT)
+            sandbox.apply(TEMPLATE, KEYS, expected_sha256=old)
+            sandbox.simulate_process_restart()
+            (sandbox.directory / 'transaction-intent.json').write_bytes(
+                b'{"version":1,"original_sha256":"fake"}')
+            with self.assertRaises(TransactionRejected):
+                sandbox.inspect_after_restart(TEMPLATE)
+            self.assertIn(b'pcm_timeout_seconds = 45', sandbox.read_current())
+
+    def test_restart_refuses_modified_current_content(self):
+        with OfflineSandbox() as sandbox:
+            old = sandbox.seed(CURRENT)
+            sandbox.apply(TEMPLATE, KEYS, expected_sha256=old)
+            sandbox.simulate_process_restart()
+            (sandbox.directory / 'current.toml').write_bytes(
+                b'[external]\\nvalue = "preserve"\\n')
+            with self.assertRaises(TransactionRejected):
+                sandbox.arm_rollback_after_restart(TEMPLATE)
+            self.assertIn(b'preserve', sandbox.read_current())
+
     def test_symlink_target_rejected(self):
         with OfflineSandbox() as sandbox:
             old = sandbox.seed(CURRENT)
