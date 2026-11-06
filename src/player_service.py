@@ -230,12 +230,19 @@ def admit_maintenance_work(barrier, request):
                                    request == {'command': 'status'}))
 
 
-def submit_maintenance_work(executor, barrier, operation, *args):
+def submit_maintenance_work(executor, barrier, operation, *args,
+                            internal_control=None, controller=None):
     """Account for queued and running work through completion.
 
     If submit fails, release its ticket; the worker owns an accepted ticket
     even when the caller disconnects before reading the result.
+    Optional first-use binding is performed through this same gateway,
+    never by handing the worker to another submitter in serve().
     """
+    if internal_control is not None:
+        if barrier is None or controller is None:
+            raise ValueError("internal binding requires barrier and controller")
+        internal_control.bind(executor, controller)
     if barrier is None:
         return executor.submit(operation, *args)
     return barrier.submit(executor, operation, *args)
@@ -294,8 +301,6 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
             concurrent.futures.ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix='player-control'))
         with worker_pool as executor:
-            if internal_maintenance_control is not None:
-                internal_maintenance_control.bind(executor, controller)
             def operate(request):
                 # Check the *physical* TOC immediately before a new PLAY. The
                 # 3-second cached monitor status must not authorize stale media.
@@ -364,6 +369,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 publisher.publish(controller, power)
 
             busy = None
+            maintenance_control_bound = False
             next_refresh = time.monotonic()
             while test_shutdown_event is None or not test_shutdown_event.is_set():
                 for conn, future in pending[:]:
@@ -379,7 +385,11 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     if time.monotonic() >= next_refresh:
                         try:
                             busy = submit_maintenance_work(
-                                executor, maintenance_barrier, refresh)
+                                executor, maintenance_barrier, refresh,
+                                internal_control=(internal_maintenance_control
+                                                  if not maintenance_control_bound else None),
+                                controller=controller)
+                            maintenance_control_bound = True
                         except AdmissionRefused:
                             # Drain is not a service-shutdown request. Stop
                             # scheduling refresh without killing the loop.
