@@ -356,14 +356,22 @@ def main(argv=None):
                     # congestion, but not on missing/refused/unauthorized service.
                     busy = isinstance(exc, (BlockingIOError, TimeoutError, socket.timeout))
                     state=hold.failure(time.monotonic(), 50.0 if busy else None)
-                    if state is not None:
-                        frame=(menu.frame(image_to_frame) if menu is not None and menu.active else
-                               modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state,language=(menu.language if menu is not None else language)))
-                        label={'screen':'status_cached','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
+                    # A rendering/validation exception must never be fed
+                    # back through the same renderer via StatusHold: the
+                    # previously cached state may itself be invalid.
+                    if busy and state is not None:
+                        try:
+                            frame=(menu.frame(image_to_frame) if menu is not None and menu.active else
+                                   modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state,language=(menu.language if menu is not None else language)))
+                            label={'screen':'status_cached','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
+                        except (ValueError, TypeError, KeyError):
+                            frame=status_frame(error='invalid cached status',
+                                               language=(menu.language if menu is not None else language))
+                            label={'screen':'status_invalid','hardware':args.execute}
                     else:
-                        frame=(menu.frame(image_to_frame) if menu is not None and menu.active
-                               else status_frame(error=str(exc),language=(menu.language if menu is not None else language)))
-                        label={'screen':'service_offline','error':type(exc).__name__,'hardware':args.execute}
+                        frame=status_frame(error='unavailable or invalid status',
+                                           language=(menu.language if menu is not None else language))
+                        label={'screen':'status_unavailable','error':type(exc).__name__,'hardware':args.execute}
                 current=bytes(frame.data)
                 if current!=previous:
                     write_frame(frame)
