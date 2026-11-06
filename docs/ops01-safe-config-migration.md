@@ -787,3 +787,31 @@ It must fail closed on queued/in-flight commands, refresh work, active
 stream/reader or group membership and missing evidence. Even a simulated
 `FROZEN` state does not authorize configuration writes, service stops,
 Sonos operations or display actions. Integration requires another review.
+
+### Offline maintenance barrier prototype (2026-11-06)
+
+`src/tools/config_maintenance_barrier.py` now contains an **isolated
+simulation only**: `OPEN -> DRAINING -> FROZEN` with an irreversible
+`CLOSED` fail-closed state. A synchronized admission ticket models one
+submitted command or periodic refresh. `begin_draining()` atomically
+rejects later new work; `freeze()` refuses outstanding work, missing
+controller-level proof, non-boolean claims and any active reader, stream,
+joined group, uncertain recovery or external activity.
+
+The prototype cannot distinguish actual read-only requests: its
+`read_only=True` flag is caller-supplied. That is **not a safe real
+socket API**. A later production integration must classify commands
+internally, and must never allow remote callers to bypass admission by
+asserting `read_only`. It must also attach tickets to *every* command
+and refresh and account for all outstanding work at the barrier point.
+
+The object does not touch the live service or authorize file writes:
+`write_authorized=false` and `live_exclusion_verified=false` for
+all states, including `FROZEN`. It cannot prove systemd stop safety or
+exclude noncooperating writers.
+
+The first batch has 10 tests, including thread contention, missing proof,
+queued commands and reader/group checks. These are **not yet verified
+on the Pi**. Before implementation proceeds, run the feature regression,
+review the state transitions and design a separately reviewed socket-loop
+integration that preserves current Sonos and GPIO behavior.
