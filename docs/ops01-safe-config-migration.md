@@ -619,3 +619,38 @@ literal references to `sonoscdplayer-oled-shutdown-preserve`, report only
 filenames and line numbers (not source-line contents, command arguments
 or secrets). Review findings before deciding whether the sentinel must stay
 active throughout an OPS-01 maintenance window.
+
+### OLED shutdown-preserve behavior verified (operator and source review, 2026-11-06)
+
+The operator confirmed that the OLED shutdown sentinel is **intentional**:
+it prevents the normal `DISPLAY OFF` command at system shutdown so a
+late-shutdown and/or exitrd graphic can be shown on the headless Pi.
+This supersedes earlier descriptions treating the marker's purpose as unknown.
+
+The source confirms the mechanism:
+- `systemd/sonoscdplayer-oled-shutdown-sentinel.service` removes
+  `/run/sonoscdplayer-oled-shutdown-preserve` in `ExecStart` and
+  creates it with `touch` in `ExecStop`.
+- The sentinel has `After=sonoscdplayer-oled.service`, so during a
+  normal shutdown the ordering is reversed and the sentinel stops **before**
+  the OLED service.
+- `src/integrations/outputs/oled_status.py` checks for this file in
+  `preserve_display_for_shutdown()`; when it exists, the normal
+  display-off behavior is bypassed. The unit's `RemainAfterExit=yes`
+  ensures its stop action can take place during shutdown.
+- `tests/test_oled_shutdown_sentinel.py` covers marker recognition,
+  explicit opt-in, and unit ordering. Read-only Pi inventory found matching
+  references in the development checkout and the installed unit under
+  `/etc/systemd/system`. Two additional matches were generated
+  `__pycache__` files, not distinct implementations.
+
+**OPS-01 constraint:** An ordinary configuration-maintenance window is
+**not** a shutdown. Never stop or restart the sentinel, create/remove its
+marker, or invoke the associated shutdown hook merely to quiesce player
+and buttons. Keep the sentinel and OLED handover design intact so real
+power-off remains visibly indicated. Preserve locally managed shutdown
+assets and drop-ins. Stopping `sonoscdplayer.target` is not approved.
+
+Next work should focus on a targeted, separately authorized way to exclude
+player commands and concurrent configuration writers **without touching the
+shutdown sentinel**. No live migration is authorized.
