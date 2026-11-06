@@ -13,8 +13,14 @@ URI = 'http://127.0.0.1:8765/track/1.wav'
 
 
 class FakeServer:
+    def __init__(self):
+        self.running = True
+
     def alive(self):
-        return True
+        return self.running
+
+    def close(self):
+        self.running = False
 
 
 class FakePlayer:
