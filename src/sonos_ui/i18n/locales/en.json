@@ -62,5 +62,11 @@
   "legacy.transport_unknown": "unknown",
   "label.unnamed_speaker": "Unnamed speaker",
   "status.playing": "Playing",
-  "status.paused": "Playback paused"
+  "status.paused": "Playback paused",
+  "header.stopped": "STOPPED",
+  "header.starting": "STARTING",
+  "header.error": "ERROR",
+  "status.starting": "Starting playback",
+  "status.error": "Player error",
+  "status.stopped": "Playback stopped"
 }
