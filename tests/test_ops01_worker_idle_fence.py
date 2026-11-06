@@ -97,6 +97,43 @@ class WorkerIdleFenceTests(unittest.TestCase):
                 release.set()
             running.result(timeout=3)
 
+    def test_drain_cannot_overtake_executor_submission(self):
+        gate = OfflineMaintenanceBarrier()
+        entered, release = threading.Event(), threading.Event()
+        outcome = []
+
+        class SlowSubmission:
+            def submit(self, operation, *args):
+                entered.set()
+                self_was_released = release.wait(3)
+                if not self_was_released:
+                    raise TimeoutError("synthetic submit stalled")
+                future = concurrent.futures.Future()
+                future.set_result(operation(*args))
+                return future
+
+        def submit_task():
+            outcome.append(gate.submit(SlowSubmission(), lambda: 12).result())
+
+        submitting = threading.Thread(target=submit_task)
+        submitting.start()
+        self.assertTrue(entered.wait(2))
+        draining = threading.Thread(target=gate.begin_draining)
+        draining.start()
+        try:
+            # begin_draining cannot acquire the admission lock until
+            # executor.submit has actually accepted the earlier task.
+            self.assertEqual(gate.state, BarrierState.OPEN)
+        finally:
+            release.set()
+            submitting.join(timeout=4)
+            draining.join(timeout=4)
+        self.assertFalse(submitting.is_alive())
+        self.assertFalse(draining.is_alive())
+        self.assertEqual(outcome, [12])
+        self.assertEqual(gate.state, BarrierState.DRAINING)
+        self.assertEqual(gate.in_flight, 0)
+
     def test_double_fence_is_denied(self):
         gate = OfflineMaintenanceBarrier()
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
