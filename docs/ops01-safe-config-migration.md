@@ -464,3 +464,44 @@ path must be checked *locally* but never pasted unredacted.
 
 **Status:** design initiated; no production implementation or cutover
 authorization. As of `539be09`, the Pi regression was 527/527 green.
+
+### Raspberry Pi systemd inventory — first read-only evidence (2026-11-06)
+
+The operator inspected the actual Pi. These are **observed service properties**,
+not a verified dependency/activation graph and not maintenance permission:
+
+| Property | Player | Buttons |
+| --- | --- | --- |
+| `LoadState` | `loaded` | `loaded` |
+| `ActiveState/SubState` | `active/running` | `active/running` |
+| `MainPID` at inspection | `666` | `660` |
+| `Restart` | `no` | `on-failure` |
+| `UnitFileState` | `disabled` | `static` |
+| `PartOf` | `sonoscdplayer.target` | `sonoscdplayer.target` |
+| `Triggers/TriggeredBy/BindsTo/Wants` | empty | empty |
+
+Both reported `Requires` on base system units
+(`system.slice`, `sysinit.target`, `-.mount`). The installation also
+contains these unit names: `sonoscdplayer.target`,
+`sonoscdplayer-early-power-led.service`,
+`sonoscdplayer-exitrd.service`, `sonoscdplayer-led.service`,
+`sonoscdplayer-oled-shutdown-sentinel.service`,
+`sonoscdplayer-oled.service`,
+`sonoscdplayer-player.service`, and
+`sonoscdplayer-buttons.service`.
+
+The target itself is reported `enabled`; the set of units it pulls in,
+whether it can restart them through dependency/activation, and the
+OLED/LED/shutdown interactions have **not yet been inspected**. No inference
+about safe stopping follows from `Restart=no` or `UnitFileState=disabled`.
+Buttons are `Restart=on-failure` and must be included in activity-exclusion
+review. **Do not stop the target, player or button service** as an
+inventory step. The current player shutdown path may stop verified owned
+Sonos playback; any future state-changing maintenance step requires
+independent consent and a safe idle/ownership proof.
+
+Next: collect sanitized `systemctl show` unit dependencies and state for
+the target and adjacent UI/shutdown units, and `systemctl list-dependencies`
+names only. No `systemctl stop/start/restart`, no unit edits, and no
+configuration writes. The Pi's development checkout at the time was still
+`539be09`, while this later documentation was committed only to GitHub.
