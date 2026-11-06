@@ -244,3 +244,23 @@ full reboot/reopen test. No production `--apply` or `--rollback` is exposed.
 The safety-review test count must be updated from actual Pi results before
 claiming this checkpoint complete. No status change to OPS-01 until the
 production acceptance criteria and separately approved rehearsal pass.
+
+### Fail-closed idle evidence (2026-11-06)
+
+The player service's public `status` reply is **cached**, and its documented
+snapshot reports `player.mode`, `sonos.owned`,
+`sonos.group_cleanup_pending`, and `stream.active`. It does **not**
+independently confirm reader activity, server/process state, ongoing commands,
+or every remaining group membership. A `STOPPED` status is therefore
+**insufficient** to authorize configuration replacement.
+
+`src/tools/config_idle_evidence.py` is a pure offline diagnostic assessment
+with additional hypothetical controller-level evidence. It returns
+`write_authorized=false` unconditionally, even when all supplied values are
+consistent with idle. Live freshness, exclusive coordination, safe filesystem
+path handling and actual maintenance authorization remain separately required.
+Do not wire this diagnostic result directly to a writer.
+
+The OPS-01 implementation remains sandbox-only and the pull request remains
+Draft. The most recent Pi-wide verified test result before this addition was
+**507/507**, at commit `259e99e`; newer tests require their own Pi run.
