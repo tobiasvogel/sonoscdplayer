@@ -47,6 +47,24 @@ class MaintenanceWorkerAdmissionTests(unittest.TestCase):
             self.assertEqual(queued.result(timeout=5), 7)
             self.assertEqual(barrier.in_flight, 0)
 
+    def test_cancelled_queued_work_releases_ticket(self):
+        barrier = OfflineMaintenanceBarrier()
+        started = threading.Event()
+        release = threading.Event()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            def blocking():
+                started.set()
+                release.wait(timeout=5)
+            running = submit_maintenance_work(pool, barrier, blocking)
+            self.assertTrue(started.wait(timeout=5))
+            queued = submit_maintenance_work(pool, barrier, lambda: 7)
+            barrier.begin_draining()
+            self.assertTrue(queued.cancel())
+            self.assertEqual(barrier.in_flight, 1)
+            release.set()
+            running.result(timeout=5)
+        self.assertEqual(barrier.in_flight, 0)
+
     def test_worker_error_still_releases_ticket(self):
         barrier = OfflineMaintenanceBarrier()
         def broken():
