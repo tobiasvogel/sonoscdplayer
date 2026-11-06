@@ -361,6 +361,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                             changed = disc_monitor.poll(controller)
                             if changed:
                                 drive_toc = disc_monitor.loaded_toc
+                                controller.display_toc = drive_toc
                                 print(f'[disc] {controller.disc_status.mode.value}', flush=True)
                         except (OSError, RuntimeError, ValueError) as exc:
                             print(f'[disc] monitor deferred: {type(exc).__name__}: {exc}', flush=True)
@@ -482,6 +483,7 @@ def run(argv=None):
                                         startup_prebuffer=startup_enabled,
                                         startup_timeout=float(startup_timeout)), route=routed_source_ip)
         ctrl.disc_status = disc_status
+        ctrl.display_toc = toc  # existing verified TOC, read-only display metadata
         # Never issue start/keepalive motor commands when no readable disc was
         # selected. M0.19b will implement safe idle discovery and reloading.
         if toc is not None:

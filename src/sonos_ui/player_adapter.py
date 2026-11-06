@@ -56,10 +56,21 @@ def project_status(state, previous=None):
     elif type(track) is not int or track < 0 or (count == 0 and track != 0):
         raise ValueError('invalid track information')
     playback = {'PLAYING':'playing', 'PAUSED':'paused'}.get(mode, 'stopped')
+    elapsed = duration = None
+    # Optional data from the player's last verified Sonos timing read.
+    # Never accept progress from inactive states or from unowned playback.
+    if playback in ('playing', 'paused') and (state.get('sonos') or {}).get('owned') is True:
+        progress = state.get('progress')
+        if isinstance(progress, dict):
+            e, d = progress.get('elapsed_seconds'), progress.get('duration_seconds')
+            if type(e) is int and 0 <= e <= 359999:
+                if d is None or (type(d) is int and 0 < d <= 359999 and e <= d):
+                    elapsed, duration = e, d
     return DisplayModel(
+        view='playback' if playback in ('playing', 'paused') else 'idle',
         disc_present=count > 0,
         album=None, artist=None, title=None, cover=None,
         track=track, track_count=count, playback=playback,
-        speaker=None, elapsed_seconds=None, duration_seconds=None,
-        disc_phase=mode if mode in ('STARTING','ERROR') else None,
+        speaker=None, elapsed_seconds=elapsed, duration_seconds=duration,
+        disc_phase=mode,  # state label only, never authorizes transport actions
     )
