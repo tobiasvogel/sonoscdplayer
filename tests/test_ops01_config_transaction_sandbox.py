@@ -31,6 +31,18 @@ class SandboxTransactionTests(unittest.TestCase):
             self.assertEqual(sandbox.rollback(expected_sha256=applied_sha), original_sha)
             self.assertEqual(sandbox.read_current(), CURRENT)
 
+    def test_rollback_keeps_audit_journal_and_blocks_reuse(self):
+        with OfflineSandbox() as sandbox:
+            original = sandbox.seed(CURRENT)
+            applied = sandbox.apply(TEMPLATE, KEYS, expected_sha256=original)
+            self.assertEqual(sandbox.rollback(expected_sha256=applied),
+                             original)
+            self.assertEqual(sandbox.read_current(), CURRENT)
+            self.assertTrue((sandbox.directory / 'transaction-intent.json').exists())
+            with self.assertRaises(TransactionRejected):
+                sandbox.apply(TEMPLATE, KEYS, expected_sha256=original)
+            self.assertEqual(sandbox.read_current(), CURRENT)
+
     def test_stale_apply_checksum_rejected_without_backup(self):
         with OfflineSandbox() as sandbox:
             sandbox.seed(CURRENT)
