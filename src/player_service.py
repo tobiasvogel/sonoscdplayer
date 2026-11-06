@@ -33,7 +33,7 @@ from player_target_selection import SelectedTarget
 from sonos_group import normalize_members
 from player_play import make_url, prepare_selection
 from sonos_parallel_test import detect_drive
-from tools.config_maintenance_barrier import AdmissionRefused, BarrierState
+from tools.config_maintenance_barrier import AdmissionRefused
 
 MAX_REQUEST = 1024
 COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery')
@@ -237,23 +237,7 @@ def submit_maintenance_work(executor, barrier, operation, *args):
     """
     if barrier is None:
         return executor.submit(operation, *args)
-    ticket = barrier.admit()
-    try:
-        future = executor.submit(operation, *args)
-    except BaseException:
-        barrier.finish(ticket)
-        raise
-    # A done callback also runs when queued work is cancelled before start.
-    # CLOSED intentionally invalidates all tickets; a late completion must
-    # not raise from a Future callback after that terminal transition.
-    def release_ticket(_completed):
-        try:
-            barrier.finish(ticket)
-        except AdmissionRefused:
-            if barrier.state != BarrierState.CLOSED:
-                raise
-    future.add_done_callback(release_ticket)
-    return future
+    return barrier.submit(executor, operation, *args)
 
 
 def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, maintenance_barrier=None):
