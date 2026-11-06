@@ -115,7 +115,7 @@ class OfflineSandbox:
               *, expected_sha256: str, fail_at=None):
         """Rehearse safe apply; no real files are accessible.
 
-        fail_at='before_replace' is a deterministic fault-injection seam.
+        fail_at='before_replace' or 'after_replace' injects a failure.
         """
         self._require_open()
         if self._backup_name is not None:
@@ -147,11 +147,13 @@ class OfflineSandbox:
             self._check_unchanged("current.toml", original, identity)
             if fail_at == "before_replace":
                 raise TransactionRejected("injected failure before replace")
-            if fail_at is not None:
+            if fail_at not in (None, "after_replace"):
                 raise TransactionRejected("unknown fault injection")
             os.replace(staged, "current.toml",
                        src_dir_fd=self._dirfd, dst_dir_fd=self._dirfd)
             os.fsync(self._dirfd)
+            if fail_at == "after_replace":
+                raise TransactionRejected("injected failure after replace")
         finally:
             # Only our own staged name is eligible for cleanup.
             try:
@@ -162,6 +164,36 @@ class OfflineSandbox:
         self._backup_digest = digest(original)
         self._current_digest = digest(candidate)
         return self._current_digest
+
+    def recover_interrupted(self, template: bytes,
+                            selected_keys: tuple[str, ...],
+                            *, expected_original_sha256: str):
+        """Recognize an interrupted *sandbox* apply, without changing files.
+
+        Requires the original checksum from the explicit plan and recomputes
+        the only acceptable candidate from the backed-up original. Unknown or
+        tampered files fail closed. For a verified post-replace interruption,
+        re-arm the existing explicit rollback operation. A pre-replace
+        interruption needs no restoration and is left unchanged for inspection.
+        """
+        self._require_open()
+        if self._backup_name is not None:
+            raise TransactionRejected("transaction already tracked")
+        original, _ = self._read("backup-original.toml")
+        if digest(original) != expected_original_sha256:
+            raise TransactionRejected("backup does not match original checksum")
+        candidate, computed_sha = build_candidate(original, template, selected_keys)
+        if computed_sha != expected_original_sha256:
+            raise TransactionRejected("candidate provenance mismatch")
+        current, _ = self._read("current.toml")
+        if current == original:
+            return "not_replaced"
+        if current != candidate:
+            raise TransactionRejected("interrupted target differs from known candidate")
+        self._backup_name = "backup-original.toml"
+        self._backup_digest = digest(original)
+        self._current_digest = digest(candidate)
+        return "replacement_verified"
 
     def rollback(self, *, expected_sha256: str):
         """Rehearse an explicit checksum-gated restoration, once."""
