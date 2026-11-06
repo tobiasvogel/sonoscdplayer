@@ -12,6 +12,7 @@ import math
 import time
 
 from .config_controller_idle import sample_controller_idle
+from .config_guarded_worker import GuardedWorkerExecutor
 from .config_maintenance_barrier import (
     AdmissionRefused, BarrierState, OfflineMaintenanceBarrier,
 )
@@ -32,7 +33,7 @@ def freeze_after_worker_drain(barrier, executor, controller, *, timeout=5.0):
     # ThreadPoolExecutor's implementation is FIFO with a single worker.
     # Reject multi-worker and arbitrary custom executors, which cannot
     # guarantee that this sample runs after previous controller mutations.
-    if (type(executor) is not ThreadPoolExecutor
+    if (type(executor) not in (ThreadPoolExecutor, GuardedWorkerExecutor)
             or executor._max_workers != 1):
         raise AdmissionRefused("single-worker FIFO executor required")
 
@@ -44,7 +45,10 @@ def freeze_after_worker_drain(barrier, executor, controller, *, timeout=5.0):
     # Admission and executor submission are synchronized by barrier.submit.
     # Nothing admitted through that path can be queued behind this sample.
     try:
-        future = executor.submit(sample_controller_idle, controller)
+        if type(executor) is GuardedWorkerExecutor:
+            future = executor._submit_idle_fence(sample_controller_idle, controller)
+        else:
+            future = executor.submit(sample_controller_idle, controller)
     except RuntimeError as exc:
         raise AdmissionRefused("idle sample could not be submitted") from exc
     try:
