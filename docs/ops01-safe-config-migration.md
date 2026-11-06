@@ -216,3 +216,31 @@ The read-only inspector and planner from PR #8 are an accepted first slice,
 The existing production `m016b-config.conf` and `m019-venv.conf` overrides
 are not managed by OPS-01. No button `--execute`, OLED RPC, drive-power
 change, or shutdown-hook setting is implied by completion of these phases.
+
+### Security-review checkpoint (2026-11-06)
+
+The first sandbox-only implementation has been exercised on the Raspberry Pi:
+**503/503 offline tests passed** at commit `3eff89c`, including actual child
+`SIGKILL` at the atomic-replace boundary and inspection from a newly started
+Python process that inherits an already-open disposable directory descriptor.
+
+Additional hardening in the same feature branch is under test:
+- Independent recovery inspection rejects artifacts with group/other file
+  permissions, including the backup, intent journal and replacement.
+- A completed sandbox rollback retains its journal and rejects another apply;
+  the transaction is deliberately **one-shot**.
+- No production path is accepted by the sandbox apply/rollback interface.
+
+**Unresolved production blockers:** Existing checksum checks do not eliminate
+the time-of-check/time-of-use gap between the final pathname inspection and
+`os.replace`. A production implementation needs exclusive, independently
+verified coordination with all potential writers, safe target-directory
+ownership and reopening, durable lifecycle/provenance rules, failure-injection
+around `fsync`, and a fail-closed live player/reader/ownership preflight.
+The current offline journal is not authenticated against an attacker who can
+write its private directory. A subprocess inheriting a directory FD is not a
+full reboot/reopen test. No production `--apply` or `--rollback` is exposed.
+
+The safety-review test count must be updated from actual Pi results before
+claiming this checkpoint complete. No status change to OPS-01 until the
+production acceptance criteria and separately approved rehearsal pass.
