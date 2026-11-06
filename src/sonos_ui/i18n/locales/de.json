@@ -62,5 +62,11 @@
   "legacy.transport_unknown": "unbekannt",
   "label.unnamed_speaker": "Unbenannter Lautsprecher",
   "status.playing": "Wiedergabe läuft",
-  "status.paused": "Wiedergabe pausiert"
+  "status.paused": "Wiedergabe pausiert",
+  "header.stopped": "GESTOPPT",
+  "header.starting": "STARTET",
+  "header.error": "FEHLER",
+  "status.starting": "Wiedergabe startet",
+  "status.error": "Player-Fehler",
+  "status.stopped": "Wiedergabe gestoppt"
 }
