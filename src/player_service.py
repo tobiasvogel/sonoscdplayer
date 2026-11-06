@@ -33,6 +33,7 @@ from player_target_selection import SelectedTarget
 from sonos_group import normalize_members
 from player_play import make_url, prepare_selection
 from sonos_parallel_test import detect_drive
+from tools.config_maintenance_barrier import AdmissionRefused
 
 MAX_REQUEST = 1024
 COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery')
@@ -215,7 +216,41 @@ def restore_drive_for_explicit_action(controller, power, original_id, original_t
     return True
 
 
-def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None):
+def admit_maintenance_work(barrier, request):
+    """Server-side work admission; never trust a client read-only claim.
+
+    The sole fast diagnostic is exactly {'command': 'status'}. All other
+    requests, including unknown keys, require a work ticket. No socket
+    command can start or release the offline maintenance barrier.
+    """
+    if barrier is None:
+        return None
+    return barrier.admit(read_only=(type(request) is dict and
+                                   request == {'command': 'status'}))
+
+
+def submit_maintenance_work(executor, barrier, operation, *args):
+    """Account for queued and running work through completion.
+
+    If submit fails, release its ticket; the worker owns an accepted ticket
+    even when the caller disconnects before reading the result.
+    """
+    if barrier is None:
+        return executor.submit(operation, *args)
+    ticket = barrier.admit()
+    def wrapped():
+        try:
+            return operation(*args)
+        finally:
+            barrier.finish(ticket)
+    try:
+        return executor.submit(wrapped)
+    except BaseException:
+        barrier.finish(ticket)
+        raise
+
+
+def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, maintenance_barrier=None):
     path = Path(socket_path).expanduser().absolute()
     if not path.parent.is_dir():
         raise ValueError('socket parent directory does not exist')
@@ -321,7 +356,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 if busy is None or busy.done():
                     busy = None
                     if time.monotonic() >= next_refresh:
-                        busy = executor.submit(refresh)
+                        busy = submit_maintenance_work(executor, maintenance_barrier, refresh)
                         next_refresh = time.monotonic() + poll_seconds
                 readable, _, _ = select.select([server], [], [], min(poll_seconds, 0.1))
                 if not readable:
@@ -332,10 +367,14 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     # Cached status is served while PLAY waits for the CD spindle.
                     # No synchronous controller read and no new Sonos checks.
                     if isinstance(request, dict) and request == {'command': 'status'}:
+                        admit_maintenance_work(maintenance_barrier, request)
                         send_reply(conn, publisher.read())
                     else:
-                        future = executor.submit(operate, request)
+                        future = submit_maintenance_work(
+                            executor, maintenance_barrier, operate, request)
                         pending.append((conn, future))
+                except AdmissionRefused:
+                    send_reply(conn, {'ok': False, 'error': 'maintenance admission closed'})
                 except (ValueError, UnicodeError, socket.timeout, OSError) as exc:
                     send_reply(conn, {'ok': False, 'error': f'bad request: {type(exc).__name__}'})
     finally:
