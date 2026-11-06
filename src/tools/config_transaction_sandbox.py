@@ -7,6 +7,7 @@ Sonos control, hardware access or service restart is possible through this API.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path
 import stat
@@ -26,10 +27,10 @@ def digest(raw: bytes) -> str:
 class OfflineSandbox:
     """Exercise backup -> atomic replacement -> guarded restore on test files.
 
-    A fresh sandbox owns all its paths. This is not crash-recovery machinery:
-    backup metadata currently lives only in memory. Production support must
-    not be exposed until durable provenance, service preflight, locking and
-    post-crash recovery are separately implemented and validated.
+    A fresh sandbox owns all its paths. A synced, value-free intent journal
+    supports offline restart simulations. This is NOT production crash recovery:
+    service preflight, durable recovery locking and real crash testing are
+    independently required before production support can be exposed.
     """
 
     def __init__(self):
@@ -95,6 +96,77 @@ class OfflineSandbox:
         if actual != before_data or actual_identity != identity:
             raise TransactionRejected("test file changed during transaction")
 
+    def _journal(self):
+        """Read the sandbox's persistent, redacted transaction intent."""
+        try:
+            data, _ = self._read("transaction-intent.json")
+            item = json.loads(data)
+            if (not isinstance(item, dict) or item.get("version") != 1 or
+                    set(item) != {"version", "original_sha256",
+                                  "candidate_sha256", "template_sha256",
+                                  "selected_keys"}):
+                raise TransactionRejected("invalid transaction intent")
+            if (any(not isinstance(item[field], str) or
+                    len(item[field]) != 64 or
+                    any(c not in "0123456789abcdef" for c in item[field])
+                    for field in ("original_sha256", "candidate_sha256",
+                                  "template_sha256")) or
+                    not isinstance(item["selected_keys"], list) or
+                    not item["selected_keys"] or
+                    any(not isinstance(k, str) for k in item["selected_keys"])):
+                raise TransactionRejected("invalid transaction intent")
+            return item
+        except (ValueError, UnicodeError, TypeError) as exc:
+            raise TransactionRejected("invalid transaction intent") from exc
+
+    def simulate_process_restart(self):
+        """Discard volatile bookkeeping, retaining only sandbox files.
+
+        This does not kill a process or reopen its directory. It is an
+        intentionally limited, deterministic restart simulation.
+        """
+        self._require_open()
+        self._backup_name = None
+        self._backup_digest = None
+        self._current_digest = None
+
+    def inspect_after_restart(self, template: bytes):
+        """Read-only recovery classification using persisted intent.
+
+        The operator must explicitly supply the *same* reference template;
+        the journal alone cannot authorize a rollback or replacement.
+        """
+        intent = self._journal()
+        if digest(template) != intent["template_sha256"]:
+            raise TransactionRejected("reference template has changed")
+        original, _ = self._read("backup-original.toml")
+        if digest(original) != intent["original_sha256"]:
+            raise TransactionRejected("backup does not match journal")
+        candidate, source_sha = build_candidate(
+            original, template, tuple(intent["selected_keys"]))
+        if (source_sha != intent["original_sha256"] or
+                digest(candidate) != intent["candidate_sha256"]):
+            raise TransactionRejected("candidate does not match journal")
+        current, _ = self._read("current.toml")
+        if current == original:
+            return "not_replaced"
+        if current == candidate:
+            return "replacement_verified"
+        raise TransactionRejected("unrecognized current configuration")
+
+    def arm_rollback_after_restart(self, template: bytes):
+        """Re-arm rollback only on independently verified sandbox bytes."""
+        if self._backup_name is not None:
+            raise TransactionRejected("transaction already tracked")
+        result = self.inspect_after_restart(template)
+        if result != "replacement_verified":
+            raise TransactionRejected("no verified replacement to restore")
+        intent = self._journal()
+        self._backup_name = "backup-original.toml"
+        self._backup_digest = intent["original_sha256"]
+        self._current_digest = intent["candidate_sha256"]
+        return self._current_digest
+
     def seed(self, raw: bytes):
         """Create a synthetic original exactly once."""
         self._require_open()
@@ -118,8 +190,8 @@ class OfflineSandbox:
         fail_at='before_replace' or 'after_replace' injects a failure.
         """
         self._require_open()
-        if self._backup_name is not None:
-            raise TransactionRejected("transaction already applied")
+        if self._backup_name is not None or (self.directory / "transaction-intent.json").exists():
+            raise TransactionRejected("transaction already applied or recovery required")
         original, identity = self._read("current.toml")
         if (expected_sha256 != digest(original) or
                 expected_sha256 != self._current_digest):
@@ -145,6 +217,17 @@ class OfflineSandbox:
             if staged_data != candidate or backup_data != original:
                 raise TransactionRejected("transaction content mismatch")
             self._check_unchanged("current.toml", original, identity)
+            journal = {
+                "version": 1,
+                "original_sha256": digest(original),
+                "candidate_sha256": digest(candidate),
+                "template_sha256": digest(template),
+                "selected_keys": list(selected_keys),
+            }
+            self._create_synced("transaction-intent.json", (
+                json.dumps(journal, sort_keys=True, separators=(",", ":")) + "\\n"
+            ).encode("ascii"))
+            os.fsync(self._dirfd)
             if fail_at == "before_replace":
                 raise TransactionRejected("injected failure before replace")
             if fail_at not in (None, "after_replace"):
@@ -179,6 +262,11 @@ class OfflineSandbox:
         self._require_open()
         if self._backup_name is not None:
             raise TransactionRejected("transaction already tracked")
+        intent = self._journal()
+        if (intent["original_sha256"] != expected_original_sha256 or
+                intent["template_sha256"] != digest(template) or
+                tuple(intent["selected_keys"]) != selected_keys):
+            raise TransactionRejected("transaction intent mismatch")
         original, _ = self._read("backup-original.toml")
         if digest(original) != expected_original_sha256:
             raise TransactionRejected("backup does not match original checksum")
@@ -188,7 +276,8 @@ class OfflineSandbox:
         current, _ = self._read("current.toml")
         if current == original:
             return "not_replaced"
-        if current != candidate:
+        if (current != candidate or
+                digest(candidate) != intent["candidate_sha256"]):
             raise TransactionRejected("interrupted target differs from known candidate")
         self._backup_name = "backup-original.toml"
         self._backup_digest = digest(original)
