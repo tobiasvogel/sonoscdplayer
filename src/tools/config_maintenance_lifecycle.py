@@ -96,6 +96,20 @@ class OfflineMaintenanceLifecycle:
             self._state = LifecycleState.CHANGE_POSSIBLE
         return self.report()
 
+    def halt_for_uncertain_evidence(self):
+        """Fail closed if an observed file or fence becomes untrustworthy.
+
+        Unlike cancel_before_change(), this cannot reopen admission. No
+        configuration write is performed or authorized.
+        """
+        with self._guard:
+            if self._state not in (LifecycleState.QUIESCED,
+                                   LifecycleState.CHANGE_POSSIBLE):
+                raise AdmissionRefused("no maintenance evidence to invalidate")
+            self._barrier.close()
+            self._state = LifecycleState.HALTED
+        return self.report()
+
     def finish_after_external_review(self):
         """End the offline session; never reopen after a possible write.
 
