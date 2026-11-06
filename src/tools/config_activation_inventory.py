@@ -21,6 +21,8 @@ def inspect_player_activation(*, runner=subprocess.run):
     report = {
         "read_only": True,
         "metadata_available": False,
+        "metadata_complete": False,
+        "missing_properties": [],
         "unit_loaded": False,
         "service_active": None,
         "restart_policy": "unknown",
@@ -48,28 +50,29 @@ def inspect_player_activation(*, runner=subprocess.run):
         key, value = line.split("=", 1)
         if key in _FIELDS and key not in fields:
             fields[key] = value
-    if not all(k in fields for k in _FIELDS):
+    report["missing_properties"] = [k for k in _FIELDS if k not in fields]
+    report["metadata_complete"] = not report["missing_properties"]
+    if fields.get("LoadState") not in ("loaded", "not-found", "masked", "error"):
         return report
-    if fields["LoadState"] not in ("loaded", "not-found", "masked", "error"):
-        return report
-    if fields["ActiveState"] not in ("active", "inactive", "failed", "activating",
+    if fields.get("ActiveState") not in ("active", "inactive", "failed", "activating",
                                     "deactivating", "reloading"):
         return report
     report["metadata_available"] = True
     report["unit_loaded"] = fields["LoadState"] == "loaded"
     report["service_active"] = fields["ActiveState"] == "active"
     # Only return explicitly allowlisted enums, never raw unit metadata.
-    policy = fields["Restart"]
+    policy = fields.get("Restart")
     if policy in ("no", "always", "on-success", "on-failure",
                   "on-abnormal", "on-watchdog", "on-abort"):
         report["restart_policy"] = policy
-    state = fields["UnitFileState"]
+    state = fields.get("UnitFileState")
     if state in ("enabled", "disabled", "static", "masked",
                  "indirect", "generated", "linked", "alias", "transient"):
         report["unit_file_state"] = state
     for name in _RELATIONS:
-        report["activation_relationships"][name] = (
-            "present" if fields[name].strip() else "none_observed")
-    if fields["RefuseManualStart"] in ("yes", "no"):
+        if name in fields:
+            report["activation_relationships"][name] = (
+                "present" if fields[name].strip() else "none_observed")
+    if fields.get("RefuseManualStart") in ("yes", "no"):
         report["manual_start_refused"] = fields["RefuseManualStart"] == "yes"
     return report
