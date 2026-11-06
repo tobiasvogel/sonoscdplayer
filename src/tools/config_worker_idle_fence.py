@@ -36,6 +36,9 @@ def freeze_after_worker_drain(barrier, executor, controller, *, timeout=5.0):
             or executor._max_workers != 1):
         raise AdmissionRefused("single-worker FIFO executor required")
 
+    # Check executor identity before changing admission state. The same lock
+    # coordinates binding, tracked submissions and the drain transition.
+    barrier.bind_executor(executor)
     deadline = time.monotonic() + timeout
     barrier.begin_draining()
     # Admission and executor submission are synchronized by barrier.submit.
