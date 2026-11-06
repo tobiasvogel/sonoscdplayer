@@ -766,3 +766,24 @@ D. Review the concrete service lifecycle and safety effects, including
 
 **No live apply, no service stops, no unit modifications, no sentinel or
 shutdown-hook changes are authorized by this architecture note.**
+
+### Effective runtime flags verified on the Pi (2026-11-06)
+
+A further read-only inspection of the effective `ExecStart` and the
+player's actual `--config` file confirmed:
+
+- Player has explicit `--config` and `--socket` arguments.
+- The live `service.shutdown_policy` is `stop_owned`. Exiting the
+  player can send Sonos STOP for a freshly verified owned stream; no
+  maintenance code may silently stop the service.
+- Buttons run with `--gpio --commands` but **without `--execute`**.
+  Button activity is therefore still in its preview command mode on the
+  currently installed Pi. This is not an excuse to omit review of other
+  clients of the player's control socket.
+
+**Decision:** Build a pure, offline maintenance-admission state machine
+first. Do not wire it into the live socket loop or change systemd unit files.
+It must fail closed on queued/in-flight commands, refresh work, active
+stream/reader or group membership and missing evidence. Even a simulated
+`FROZEN` state does not authorize configuration writes, service stops,
+Sonos operations or display actions. Integration requires another review.
