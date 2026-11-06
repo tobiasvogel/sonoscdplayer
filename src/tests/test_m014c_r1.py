@@ -46,4 +46,4 @@ class TestOLEDAmbient(unittest.TestCase):
                       '--ambient-socket', str(Path(tmp) / 'missing-ambient.sock'),
                       '--socket', str(Path(tmp) / 'missing-player.sock'),
                       '--seconds','0.02','--splash-seconds','0','--refresh-ms','200'])
-        self.assertIn('service_offline',buf.getvalue())
+        self.assertIn('status_unavailable',buf.getvalue())

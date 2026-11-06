@@ -345,9 +345,10 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                         if (missing or changed) and now >= next_drive_recovery:
                             next_drive_recovery = now + max(10.0, power.config['interval'])
                             try:
-                                if restore_drive_for_explicit_action(
-                                        controller, power, drive_id, drive_toc) and disc_monitor is not None:
-                                    disc_monitor.rebind_verified(controller.server.device)
+                                # Legacy recovery path: this whole block only runs
+                                # without a DiscMonitor (the monitor rebinds itself).
+                                restore_drive_for_explicit_action(
+                                    controller, power, drive_id, drive_toc)
                             except (OSError, RuntimeError, ValueError) as exc:
                                 print(f'[drive] idle USB recovery deferred: {type(exc).__name__}: {exc}',
                                       flush=True)

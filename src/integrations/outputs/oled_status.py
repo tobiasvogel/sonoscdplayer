@@ -377,8 +377,12 @@ def main(argv=None):
                                                language=(menu.language if menu is not None else language))
                             label={'screen':'status_invalid','hardware':args.execute}
                     else:
-                        frame=status_frame(error='unavailable or invalid status',
-                                           language=(menu.language if menu is not None else language))
+                        # Menu input is still processed while the player service is
+                        # down, so an open menu must stay visible instead of being
+                        # replaced by the error screen (it is the Wi-Fi fallback).
+                        frame=(menu.frame(image_to_frame) if menu is not None and menu.active
+                               else status_frame(error='unavailable or invalid status',
+                                                 language=(menu.language if menu is not None else language)))
                         label={'screen':'status_unavailable','error':type(exc).__name__,'hardware':args.execute}
                 current=bytes(frame.data)
                 if current!=previous:
