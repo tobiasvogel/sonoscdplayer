@@ -40,6 +40,7 @@ TRANSPORT_RESPONSE_TIMEOUTS = {
     'stop': 10.0,
     'next': 130.0,
     'previous': 130.0,
+    'eject': 10.0,
 }
 DEFAULT_COMMAND_RESPONSE_TIMEOUT = 1.0
 
@@ -148,7 +149,7 @@ def handle_event(name, event, *, commands=False, execute=False, socket_path=DEFA
         # buttons remain blocked in safe execute mode.
         if command == 'playpause':
             target_executor.submit()
-        elif command in ('stop', 'next', 'previous'):
+        elif command in ('stop', 'next', 'previous', 'eject'):
             target_executor.submit(command)
         else:
             print(f'command skipped in safe execute mode: {command}', flush=True)
@@ -237,7 +238,7 @@ def main():
     group.add_argument('--gpio', action='store_true')
     group.add_argument('--simulate', type=Path, metavar='JSONL')
     p.add_argument('--commands', action='store_true', help='show allowed command mappings')
-    p.add_argument('--execute', action='store_true', help='execute safe PLAY/PAUSE, STOP and track changes (requires --selected-target-execute)')
+    p.add_argument('--execute', action='store_true', help='execute safe PLAY/PAUSE, STOP, track changes and idle-only EJECT (requires --selected-target-execute)')
     p.add_argument('--selected-target-preview', action='store_true',
                    help='read-only status/get-target planning for PLAY/PAUSE; never sends transport')
     p.add_argument('--selected-target-execute', action='store_true',

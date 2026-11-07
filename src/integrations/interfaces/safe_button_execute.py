@@ -7,14 +7,14 @@ implicit fallback to the legacy 'playpause' RPC.
 import threading
 
 try:
-    from .safe_button_policy import plan_playpause, plan_stop, plan_track_change
+    from .safe_button_policy import plan_playpause, plan_stop, plan_track_change, plan_eject
     from .safe_button_preview import read_snapshot
 except ImportError:
-    from safe_button_policy import plan_playpause, plan_stop, plan_track_change
+    from safe_button_policy import plan_playpause, plan_stop, plan_track_change, plan_eject
     from safe_button_preview import read_snapshot
 
 
-SAFE_COMMANDS = frozenset(('play-selected', 'pause', 'resume', 'stop', 'next', 'previous'))
+SAFE_COMMANDS = frozenset(('play-selected', 'pause', 'resume', 'stop', 'next', 'previous', 'eject'))
 
 
 class SelectedTargetExecutor:
@@ -32,7 +32,7 @@ class SelectedTargetExecutor:
         self._busy = False
 
     def submit(self, action='playpause'):
-        if action not in ('playpause', 'stop', 'next', 'previous'):
+        if action not in ('playpause', 'stop', 'next', 'previous', 'eject'):
             return False
         with self._lock:
             if self._busy:
@@ -42,8 +42,10 @@ class SelectedTargetExecutor:
         def perform():
             try:
                 status = self.reader(self.socket_path, 'status')
-                target = self.reader(self.socket_path, 'get-target')
-                command = (plan_stop(status, target) if action == 'stop'
+                target = (None if action == 'eject' else
+                          self.reader(self.socket_path, 'get-target'))
+                command = (plan_eject(status) if action == 'eject'
+                           else plan_stop(status, target) if action == 'stop'
                            else plan_track_change(status, target, action)
                            if action in ('next', 'previous')
                            else plan_playpause(status, target))

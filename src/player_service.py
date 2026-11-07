@@ -25,6 +25,7 @@ import tomllib
 from cd_toc import read_toc
 from disc_startup import inspect_initial_disc
 from disc_monitor import DiscMonitor
+from safe_drive_eject import eject_verified_idle
 from player_state import PlayerState, Mode
 from drive_power import DrivePowerManager, load_config
 from drive_identity import usb_identity, recovered_device
@@ -35,7 +36,7 @@ from player_play import make_url, prepare_selection
 from sonos_parallel_test import detect_drive
 
 MAX_REQUEST = 1024
-COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery')
+COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'eject', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery')
 
 
 def response(controller, *, ok, error=None, commands=None):
@@ -48,7 +49,7 @@ def response(controller, *, ok, error=None, commands=None):
     return result
 
 
-def handle_command(controller, request, selection=None):
+def handle_command(controller, request, selection=None, eject=None):
     """UID is command-scoped; never include it in a reply."""
     if not isinstance(request, dict) or not set(request).issubset({'command', 'uid', 'force', 'members', 'confirm'}) or 'command' not in request:
         return response(controller, ok=False, error='invalid request keys')
@@ -81,7 +82,7 @@ def handle_command(controller, request, selection=None):
         return response(controller, ok=False, error='PLAY requires --uid')
     if command not in ('play', 'playpause', 'sonos-status', 'set-target') and not (command == 'stop' and force) and uid is not None:
         return response(controller, ok=False, error='UID only accepted with PLAY')
-    if not (command in ('status', 'sonos-status', 'play', 'playpause', 'pause', 'resume', 'next', 'previous', 'stop', 'reset', 'help', 'set-target', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery')
+    if not (command in ('status', 'sonos-status', 'play', 'playpause', 'pause', 'resume', 'next', 'previous', 'eject', 'stop', 'reset', 'help', 'set-target', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery')
             or re.fullmatch(r'select [0-9]{1,3}', command)):
         return response(controller, ok=False, error='unknown command')
     try:
@@ -105,6 +106,11 @@ def handle_command(controller, request, selection=None):
             reply = response(controller, ok=True)
             reply['group_recovery'] = inspected
             return reply
+        if command == 'eject':
+            if eject is None:
+                raise RuntimeError('EJECT unavailable: no verified disc monitor')
+            eject()
+            return response(controller, ok=True)
         if command == 'play-selected':
             if selection is None or selection.uid_for_explicit_action() is None:
                 raise ValueError('no confirmed target')
@@ -129,6 +135,13 @@ def handle_command(controller, request, selection=None):
             controller.command(command)
         return response(controller, ok=True)
     except Exception as exc:
+        if command == 'eject':
+            # Keep physical diagnostic server-side; never reveal Sonos target UIDs.
+            detail = str(exc)
+            if not detail.startswith('EJECT '):
+                detail = ('errno=' + str(exc.errno) if isinstance(exc, OSError)
+                          and exc.errno is not None else type(exc).__name__)
+            print('[inp03] EJECT rejected: ' + detail, flush=True)
         return response(controller, ok=False, error=f'{type(exc).__name__}: {exc}')
 
 
@@ -258,7 +271,10 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                         reply = response(controller, ok=False, error=f'drive unavailable: {type(exc).__name__}: {exc}')
                         publisher.publish(controller, power)
                         return reply
-                reply = handle_command(controller, request, selection)
+                reply = handle_command(
+                    controller, request, selection,
+                    eject=(lambda: eject_verified_idle(controller, disc_monitor)
+                           if disc_monitor is not None else None))
                 publisher.publish(controller, power)
                 return reply
 

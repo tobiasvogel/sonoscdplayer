@@ -123,3 +123,27 @@ def plan_track_change(status, target, direction):
     if mode in ('PLAYING', 'PAUSED') and owned is True and active is True:
         return direction
     return None
+
+
+def plan_eject(status):
+    """Permit candidate EJECT only for a known idle and ready disc.
+
+    The player independently revalidates drive identity, lock, reader, group,
+    media state and the physical eject boundary. No Sonos target is needed.
+    """
+    if not isinstance(status, dict) or status.get('ok') is not True:
+        return None
+    state = status.get('state')
+    if not isinstance(state, dict) or state.get('schema_version') != 1:
+        return None
+    player, sonos, stream, disc = (
+        state.get('player'), state.get('sonos'), state.get('stream'), state.get('disc'))
+    if not all(isinstance(x, dict) for x in (player, sonos, stream, disc)):
+        return None
+    if (player.get('mode') != 'STOPPED'
+            or sonos.get('owned') is not False
+            or sonos.get('group_cleanup_pending') is not False
+            or stream.get('active') is not False
+            or disc.get('mode') != 'READY'):
+        return None
+    return 'eject'
