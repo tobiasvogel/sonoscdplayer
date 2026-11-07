@@ -14,7 +14,7 @@ class ButtonMappingTests(unittest.TestCase):
 
     def test_release_and_unknown_controls_are_inert(self):
         for name in ('previous', 'skip', 'stop', 'playpause', 'eject', 'encoder_sw',
-                     'encoder', 'power', 'connect', 'eject', 'volume_up', 'volume_dn'):
+                     'encoder', 'power', 'connect', 'volume_up', 'volume_dn'):
             for event in ('released', 'right', 'left'):
                 self.assertIsNone(map_event(name, event))
         for name in ('encoder_sw', 'power', 'connect', 'volume_up', 'volume_dn'):
