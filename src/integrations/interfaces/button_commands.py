@@ -7,6 +7,7 @@ PRESS_COMMANDS = {
     'stop': 'stop',
     'playpause': 'playpause',
     'skip': 'next',
+    'eject': 'eject',
 }
 
 
