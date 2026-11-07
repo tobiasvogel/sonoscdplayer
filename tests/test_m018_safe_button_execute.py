@@ -244,7 +244,7 @@ class ExecuteTests(unittest.TestCase):
         worker = SelectedTargetExecutor('/fake',
                   reader=lambda *args: (_ for _ in ()).throw(AssertionError()),
                   sender=lambda *args: sends.append(args))
-        self.assertFalse(worker.submit('eject'))
+        self.assertFalse(worker.submit('power'))
         self.assertEqual(sends, [])
 
 
