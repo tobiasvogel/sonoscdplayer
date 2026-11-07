@@ -1,6 +1,7 @@
 """Offline tests of the statically built late-shutdown C hook.
 
-Run tools/build_final_shutdown_hook.sh before these tests.
+If the build artifact is missing, these tests are skipped. To run them,
+build first with: sh tools/build_final_shutdown_hook.sh.
 All invocations use --dry-run and cannot write to SPI/GPIO or shut down the Pi.
 """
 import subprocess
@@ -13,10 +14,9 @@ BINARY = ROOT / "build/shutdown-hook/sonoscdplayer-final-shutdown-hook"
 
 
 class StaticFinalShutdownHookTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
+    def setUp(self):
         if not BINARY.is_file():
-            raise AssertionError("Build first: sh tools/build_final_shutdown_hook.sh")
+            self.skipTest("Build first: sh tools/build_final_shutdown_hook.sh")
 
     def invoke(self, verb):
         return subprocess.run(
