@@ -28,6 +28,7 @@ from disc_monitor import DiscMonitor
 from safe_drive_eject import eject_verified_idle
 from player_state import PlayerState, Mode
 from drive_power import DrivePowerManager, load_config
+from drive_wake_validation import wait_for_woken_disc
 from drive_identity import usb_identity, recovered_device
 from player_controller import Controller, ProcessServer, routed_source_ip
 from player_target_selection import SelectedTarget
@@ -145,6 +146,55 @@ def handle_command(controller, request, selection=None, eject=None):
         return response(controller, ok=False, error=f'{type(exc).__name__}: {exc}')
 
 
+
+def wake_before_new_play(power, monitor, request, *, stopped):
+    """Wake and verify before the existing explicit PLAY media guard.
+
+    Never contacts Sonos. An unverified wake blocks the requested PLAY.
+    """
+    if (
+        not stopped
+        or not isinstance(request, dict)
+        or request.get('command') not in ('play', 'play-selected', 'playpause')
+        or power is None
+        or power.idle_policy is None
+    ):
+        return True
+
+    power.activity()
+
+    if not power.idle_policy.play_must_wait:
+        return True
+
+    # An old-style player without a DiscMonitor cannot safely verify
+    # the post-wake medium under this new feature.
+    if monitor is None:
+        return False
+
+    return power.wake(
+        verify=lambda device: wait_for_woken_disc(monitor, device)
+    )
+
+
+
+def process_drive_activity(power, monitor):
+    """Record physical activity; verify wake without any Sonos transport."""
+    if power is None or power.idle_policy is None:
+        return True
+
+    power.activity()
+
+    if not power.idle_policy.play_must_wait:
+        return True
+
+    if monitor is None:
+        return False
+
+    return power.wake(
+        verify=lambda device: wait_for_woken_disc(monitor, device)
+    )
+
+
 def disc_allows_new_play(controller, request, monitor):
     """Only explicit new PLAY needs physical TOC revalidation.
 
@@ -228,6 +278,20 @@ def restore_drive_for_explicit_action(controller, power, original_id, original_t
     return True
 
 
+
+def disc_poll_allowed(power):
+    """Do not probe media after an attempted idle STOP or during wake."""
+    policy = getattr(power, 'idle_policy', None) if power is not None else None
+    if policy is None:
+        return True
+    return not (
+        policy.stop_attempted
+        or policy.spun_down
+        or policy.wake_in_progress
+        or policy.wake_fault_latched
+    )
+
+
 def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None):
     path = Path(socket_path).expanduser().absolute()
     if not path.parent.is_dir():
@@ -255,6 +319,33 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
         with concurrent.futures.ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix='player-control') as executor:
             def operate(request):
+                # Exact, dedicated RPC: activity alone never authorizes
+                # playback, transport, target changes or EJECT.
+                if isinstance(request, dict) and request == {'command': 'drive-activity'}:
+                    ok = process_drive_activity(power, disc_monitor)
+                    reply = response(
+                        controller, ok=ok,
+                        error=None if ok else 'drive wake unverified',
+                    )
+                    if power is not None:
+                        reply['state']['drive_power'] = power.snapshot(
+                            reader_active=controller.server.reader_active()
+                        )
+                    publisher.publish(controller, power)
+                    return reply
+
+                # A stopped drive must be woken and verified BEFORE the
+                # DiscMonitor's existing PLAY-boundary TOC validation.
+                if not wake_before_new_play(
+                    power, disc_monitor, request,
+                    stopped=(controller.state.mode == Mode.STOPPED),
+                ):
+                    reply = response(
+                        controller, ok=False,
+                        error='drive wake unverified; PLAY blocked',
+                    )
+                    publisher.publish(controller, power)
+                    return reply
                 # Check the *physical* TOC immediately before a new PLAY. The
                 # 3-second cached monitor status must not authorize stale media.
                 if not disc_allows_new_play(controller, request, disc_monitor):
@@ -311,7 +402,12 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 now = time.monotonic()
                 # Safe status inspection only. NEVER touch optical media while
                 # reader/stream/group ownership is attached.
-                if disc_monitor is not None and now >= next_disc_check:
+                idle_drive_poll_blocked = not disc_poll_allowed(power)
+                if (
+                    disc_monitor is not None
+                    and now >= next_disc_check
+                    and not idle_drive_poll_blocked
+                ):
                     next_disc_check = now + 3.0
                     try:
                         changed = disc_monitor.poll(controller)
@@ -323,7 +419,17 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                         print(f'[disc] monitor deferred: {type(exc).__name__}: {exc}', flush=True)
                 if power is not None and (controller.disc_status is None or
                                           controller.disc_status.mode.value == 'READY'):
-                    power.tick(reader_active=controller.server.reader_active())
+                    power.tick(
+                        reader_active=controller.server.reader_active(),
+                        playback_active=(
+                            controller.state.mode != Mode.STOPPED
+                            or bool(controller.owned_url)
+                            or controller.server.alive()
+                        ),
+                        group_cleanup_pending=bool(
+                            controller._joined or controller._group_uncertain
+                        ),
+                    )
                 publisher.publish(controller, power)
 
             busy = None
