@@ -4,7 +4,7 @@ from pathlib import Path
 import tomllib
 
 BUTTON_NAMES = ('power', 'connect', 'eject', 'previous', 'stop', 'playpause',
-                'skip', 'volume_up', 'volume_dn')
+                'skip', 'volume_up', 'volume_dn', 'speaker_select')
 PULLS = {'off', 'up', 'down'}
 LEVELS = {'high', 'low'}
 TRANSITIONS = {
@@ -78,8 +78,16 @@ def load_config(path):
     buttons = {}
     pins = []
     for name in BUTTON_NAMES:
+        if name == 'speaker_select':
+            raw_pin = b.get(name, -1)
+            # TOML has no null literal. Missing, -1 and an empty quoted value
+            # mean that no physical speaker button is installed.
+            if raw_pin == -1 or raw_pin == '' or raw_pin == 'null':
+                if name in overrides:
+                    raise ValueError('Cannot override an unassigned speaker_select')
+                continue
         values = defaults | overrides.get(name, {})
-        button = ButtonConfig(_pin(b[name]), _pull(values.get('pull', 'off')),
+        button = ButtonConfig(_pin(raw_pin if name == 'speaker_select' else b[name]), _pull(values.get('pull', 'off')),
                               _level(values.get('active_level', 'high')),
                               _ms(values.get('debounce_ms', 0), 'debounce_ms'))
         buttons[name] = button
