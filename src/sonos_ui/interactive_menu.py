@@ -14,6 +14,8 @@ from .i18n import Translator, available_languages
 from .single_target import select_one, TargetSelectionError
 from .target_rpc_client import submit_target
 from .selection_plan import plan_from_applied
+from .connect_notice import ConnectNoticeView
+from .notice_render import NoticeRenderer
 
 
 POWER_ITEMS = ('back', 'poweroff', 'reboot')
@@ -49,6 +51,37 @@ class InteractiveMenu:
         self.power_notice = ''
         self._power_busy = False
         self._power_result = None
+        self.connect_notices = ConnectNoticeView()
+        self._connect_renderer = NoticeRenderer()
+        self._notice_previous_active = None
+
+    def _open_targets(self, now):
+        """Open existing target selection, never start playback."""
+        self.connect_notices.clear(now=now)
+        self._notice_previous_active = None
+        self.active = True
+        self.language_picker = False
+        self._next_refresh = 0.0
+        self._start_discovery(now)
+        return True
+
+    def _connect_event(self, action, now):
+        if self._power_busy or self.power_menu:
+            return False
+        if action not in ('status', 'settings', 'setup_requested',
+                          'warning_1', 'warning_2', 'warning_3',
+                          'warning_4', 'warning_5'):
+            return False
+        if self._notice_previous_active is None:
+            self._notice_previous_active = self.active
+        self.connect_notices.show(action, now=now)
+        self.active = True
+        return True
+
+    def _restore_after_notice(self):
+        if self._notice_previous_active is not None:
+            self.active = self._notice_previous_active
+            self._notice_previous_active = None
 
     def _power_event(self, name, event):
         """Handle input while the power menu is open. Returns True if the frame changed."""
@@ -173,12 +206,34 @@ class InteractiveMenu:
                 self.state = replace(self.state, notice=result[1])
             self._pending_selection = None
             changed = True
-        if self.active and not self.power_menu and now >= self._next_refresh:
+        if self._notice_previous_active is not None and self.connect_notices.current(now=now) is None:
+            self._restore_after_notice()
+            changed = True
+        if (self.active and not self.power_menu and
+                self._notice_previous_active is None and now >= self._next_refresh):
             self._start_discovery(now)
         return changed
 
     def event(self, name, event, now=None):
         now = time.monotonic() if now is None else now
+        if (name, event) == ('speaker_select', 'pressed'):
+            if self._power_busy or self.power_menu:
+                return False
+            return self._open_targets(now)
+        if name == 'connect':
+            return self._connect_event(event, now)
+        if (name, event) == ('power', 'short') and self._power_action is not None:
+            self.connect_notices.clear(now=now)
+            self._restore_after_notice()
+        if (self._notice_previous_active is not None and
+                self.connect_notices.current(now=now) is not None):
+            if (name, event) == ('encoder_sw', 'pressed'):
+                if self.connect_notices.confirm(now=now):
+                    self._restore_after_notice()
+                    return True
+            # A displayed notice consumes encoder input rather than
+            # changing an obscured speaker selection.
+            return False
         if self._power_action is not None and (name, event) == ('power', 'short'):
             if self.power_menu:
                 return self._power_event(name, event)
@@ -196,10 +251,7 @@ class InteractiveMenu:
             return False
         if event != 'pressed' and name != 'encoder':
             return False
-        # Connect is deliberately not a menu input. It remains available for
-        # future explicit Sonos connectivity actions in the player layer.
-        if name == 'connect':
-            return False
+        # CONNECT semantic actions are handled before ordinary menu inputs.
         if name == 'encoder_sw' and event == 'pressed' and not self.active:
             self.active = True
             self.language_picker = False
@@ -242,6 +294,11 @@ class InteractiveMenu:
         return True
 
     def frame(self, image_to_frame):
+        active_notice = (self.connect_notices.current(now=time.monotonic())
+                         if self._notice_previous_active is not None else None)
+        if active_notice is not None:
+            return image_to_frame(self._connect_renderer.render(
+                active_notice, language=self.language, grayscale=True))
         if self.power_menu:
             return image_to_frame(self.renderer.render_power(
                 self.power_focus, self.power_notice, gray=True))
