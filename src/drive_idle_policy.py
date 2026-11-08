@@ -31,7 +31,8 @@ class IdleDrivePolicy:
         # button press or encoder turn in the same service lifetime.
         if self.wake_fault_latched:
             return None
-        self.stop_attempted = False
+        # Retain STOP uncertainty until a verified wake succeeds.
+        # A failed STOP must not be cleared by physical input.
         if self.spun_down and not self.wake_in_progress:
             self.wake_in_progress = True
             return 'wake'

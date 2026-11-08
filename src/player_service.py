@@ -147,6 +147,17 @@ def handle_command(controller, request, selection=None, eject=None):
 
 
 
+
+def idle_stop_unverified(power):
+    """An attempted but unacknowledged STOP requires intervention."""
+    policy = getattr(power, 'idle_policy', None)
+    return (
+        policy is not None
+        and getattr(policy, 'stop_attempted', False)
+        and not getattr(policy, 'spun_down', False)
+    )
+
+
 def wake_before_new_play(power, monitor, request, *, stopped, publish_wake=None):
     """Wake and verify before the existing explicit PLAY media guard.
 
@@ -162,6 +173,9 @@ def wake_before_new_play(power, monitor, request, *, stopped, publish_wake=None)
         return True
 
     power.activity()
+
+    if idle_stop_unverified(power):
+        return False
 
     if not power.idle_policy.play_must_wait:
         return True
@@ -186,6 +200,9 @@ def process_drive_activity(power, monitor, *, publish_wake=None):
         return True
 
     power.activity()
+
+    if idle_stop_unverified(power):
+        return False
 
     if not power.idle_policy.play_must_wait:
         return True
@@ -298,6 +315,23 @@ def disc_poll_allowed(power):
     )
 
 
+
+def eject_blocked_by_idle_policy(power):
+    """Fail closed if the motor state has not been safely restored.
+
+    No device probing, START, EJECT, or Sonos operations here.
+    """
+    policy = getattr(power, 'idle_policy', None)
+    if policy is None:
+        return False
+    return bool(
+        policy.stop_attempted
+        or policy.spun_down
+        or policy.wake_in_progress
+        or policy.wake_fault_latched
+    )
+
+
 def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None):
     path = Path(socket_path).expanduser().absolute()
     if not path.parent.is_dir():
@@ -376,6 +410,19 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                         reply = response(controller, ok=False, error=f'drive unavailable: {type(exc).__name__}: {exc}')
                         publisher.publish(controller, power)
                         return reply
+                if (
+                    isinstance(request, dict)
+                    and isinstance(request.get('command'), str)
+                    and request['command'].strip().lower() == 'eject'
+                    and eject_blocked_by_idle_policy(power)
+                ):
+                    reply = response(
+                        controller, ok=False,
+                        error='EJECT blocked: idle drive state unverified',
+                    )
+                    publisher.publish(controller, power)
+                    return reply
+
                 reply = handle_command(
                     controller, request, selection,
                     eject=(lambda: eject_verified_idle(controller, disc_monitor)

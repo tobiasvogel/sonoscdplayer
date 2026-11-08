@@ -195,10 +195,18 @@ def should_publish_drive_activity(name, event, *, safe_executor):
     )
     if not physical:
         return False
+    command = map_event(name, event)
+
+    # EJECT is a separate, fail-closed INP-03 operation.
+    # Never wake the spindle merely because EJECT was pressed.
+    if command == 'eject':
+        return False
+
+    # PLAY/PAUSE already performs its own synchronous wake preflight.
     return not (
         safe_executor
         and event == 'pressed'
-        and map_event(name, event) == 'playpause'
+        and command == 'playpause'
     )
 
 

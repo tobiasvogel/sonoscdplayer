@@ -30,8 +30,14 @@ class IdleDrivePolicyTests(unittest.TestCase):
         self.assertFalse(p.spun_down)
         self.assertIsNone(p.idle_action(602, playback_active=False, reader_active=False))
         p.activity(603)
+        # An unconfirmed STOP is not cleared by another button press.
+        # No automatic motor retry is permitted, even after a new deadline.
+        self.assertTrue(p.stop_attempted)
+        self.assertFalse(p.spun_down)
+        self.assertFalse(p.keepalive_allowed(604))
         self.assertIsNone(p.idle_action(902, playback_active=False, reader_active=False))
-        self.assertEqual(p.idle_action(903, playback_active=False, reader_active=False), 'stop')
+        self.assertIsNone(p.idle_action(903, playback_active=False, reader_active=False))
+        self.assertTrue(p.stop_attempted)
 
     def test_keepalive_continues_every_interval_before_idle_deadline(self):
         p = IdleDrivePolicy(idle_seconds=300, last_activity=0)
