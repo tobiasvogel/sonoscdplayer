@@ -1,54 +1,87 @@
 # Power button
 
-| Gesture | Result |
+SonosCDPlayer supports a dedicated Power button for shutting down or restarting the device.
+
+A short press can open a power menu on the display. Holding the button requests an orderly system shutdown directly, even if the display menu is unavailable.
+
+Power actions are **optional** and must be explicitly enabled.
+
+## Button behaviour
+
+| Action | Behaviour |
 | --- | --- |
-| Short press | Opens the power menu on the OLED: **Back** (default), **Power off**, **Restart**. Turn the encoder, press it to choose. A second short press also closes the menu. |
-| Hold for 3 s or more | Powers the system off directly, with or without the menu and the OLED. |
+| Short press | Opens the display's power menu when UI power actions are enabled |
+| Short press while the menu is open | Closes the menu |
+| Long press (3 seconds by default) | Requests a system shutdown, independently of the display |
 
-The hold time is `[power] long_press_ms` in `interface.toml` (3000 to 10000, never shorter than 3 s).
+The power menu offers **Back** (the default selection), **Power off**, and **Restart**. Turn the rotary encoder to navigate, then press it to confirm.
 
-## How it fits together
+A long press does not also trigger a short press when the button is released.
 
-* The buttons process owns the GPIO. It tells a short press apart from a long
-  one (`integrations/interfaces/power_gesture.py`), sends a short press to the
-  OLED process over the existing UI event socket and handles a long press
-  itself, so shutdown does not depend on the display.
-* The OLED process shows the menu (`sonos_ui/interactive_menu.py`) and runs the
-  chosen action on a worker thread.
-* Both end in `src/power_action.py`, which runs exactly
-  `/usr/bin/systemctl --no-ask-password poweroff|reboot`: no shell, no input
-  in the command line, and only one request per process once it was accepted.
-* systemd stops the units. The player service now handles `SIGTERM` like
-  Ctrl+C, so a CD stream is stopped and Sonos is released through the normal
-  `shutdown_owned` path before the system goes down.
+## Configuring the long press
 
-## Privilege
+The hold duration is configured in the hardware interface TOML file:
 
-The services run as `pi`. A polkit rule grants that user exactly four
-`org.freedesktop.login1` actions (power off and reboot, with and without other
-sessions) and nothing else:
-
-```sh
-sudo install -m 0644 systemd/polkit/50-sonoscdplayer-power.rules /etc/polkit-1/rules.d/
-sudo systemctl daemon-reload   # not needed for polkit, harmless
+```toml
+[power]
+long_press_ms = 3000
 ```
 
-Check it as the service user: `sudo -u pi systemctl --no-ask-password reboot --dry-run`
-should not ask for authentication (`--dry-run` shows what would happen without doing it).
-Delete the rule file to revoke the permission.
+The supported range is **3000–10000 milliseconds** (3–10 seconds).
 
-## Enabling
+See [`config/interface.example.toml`](../config/interface.example.toml) for the reference hardware configuration.
 
-Both switches are opt-in, like the other command paths:
+## Enabling power actions
 
-* buttons: `interface_input … --gpio --commands --power-actions`
-* OLED: `oled_status … --ui-modern --ui-events-socket … --ui-power-actions`
+Power actions are opt-in. The relevant command-line options are:
 
-Without `--power-actions` a long press only logs "preview only"; without
-`--ui-power-actions` the short press does nothing. The files in
-`systemd/m016b-release/` already contain both flags. Install the polkit rule
-first, then restart the buttons and OLED units.
+| Component | Option |
+| --- | --- |
+| Hardware input service | `--power-actions` |
+| Display service | `--ui-power-actions` |
 
-The experimental OLED shutdown screen (`docs/EXPERIMENTAL_SHUTDOWN.md`) is
-independent and keeps working, because the system goes down through the normal
-systemd shutdown.
+The input service also needs its usual `--gpio --commands` configuration. The display requires its interactive mode (`--ui-modern`) and an active `--ui-events-socket` for receiving short presses.
+
+Without `--power-actions`, holding the button only logs a preview message; it does not shut down the system. Without `--ui-power-actions`, a short press does not open an actionable power menu.
+
+The repository contains systemd configurations and examples, including `systemd/m016b-release/`. Review these against the actual installation rather than treating them as universal drop-in instructions. Restart the relevant services after making configuration changes, while the player is idle.
+
+## System permissions
+
+The input and display services generally run without root privileges, so they need narrowly scoped permission to request shutdown or reboot.
+
+SonosCDPlayer supplies a polkit rule:
+
+[`systemd/polkit/50-sonoscdplayer-power.rules`](../systemd/polkit/50-sonoscdplayer-power.rules)
+
+On a compatible system, install the rule with:
+
+```sh
+sudo install -m 0644 \
+    systemd/polkit/50-sonoscdplayer-power.rules \
+    /etc/polkit-1/rules.d/
+```
+
+**Important:** The supplied rule is restricted to the `pi` service user in the Raspberry Pi reference installation. If your services use another account, review and adapt the rule before installation.
+
+The rule permits only the specified power-off and reboot actions; it does not grant general administrative privileges. To revoke the permission, remove the installed rule from `/etc/polkit-1/rules.d/`.
+
+## Shutdown behaviour
+
+Both the menu and the long-press path request an orderly shutdown through systemd. During shutdown, the player attempts to stop its CD stream and release its owned Sonos playback session.
+
+The Power button **does not directly disconnect electrical power**. A long press requests shutdown; successful completion still depends on the operating system.
+
+### Optional shutdown screen
+
+An optional **"Safe to unplug"** OLED screen can be displayed near the end of the shutdown sequence. It is a separate feature and is not needed for the Power button itself.
+
+See [Optional OLED shutdown screen](EXPERIMENTAL_SHUTDOWN.md) for its requirements, installation, and behaviour.
+
+## Notes
+
+- The long-press shutdown path does not depend on the display service.
+- The implementation restricts power requests to the supported actions and guards against duplicate accepted requests within a process.
+- Button mappings, service flags, and system permissions must match the actual installation.
+
+Test the configured controls and display menu before relying on them for everyday operation.
