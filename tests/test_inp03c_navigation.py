@@ -52,9 +52,10 @@ class NavigationTests(unittest.TestCase):
         self.choose(menu, 0)
         self.assertEqual(menu.section, 'network_status')
         deadline = time.monotonic() + 2
-        while len(reads) < 1 and time.monotonic() < deadline:
+        while menu.network_snapshot.preferred != 'wifi' and time.monotonic() < deadline:
+            menu.poll(now=1)
             time.sleep(0.005)
-        menu.poll(now=1)
+        self.assertEqual(reads, [1])
         self.assertEqual(menu.network_snapshot.preferred, 'wifi')
         frame = menu.frame(image_to_frame)
         self.assertEqual(len(frame.data), 8192)
