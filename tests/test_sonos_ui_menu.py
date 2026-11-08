@@ -22,18 +22,19 @@ class InteractiveMenuTests(unittest.TestCase):
         self.assertFalse(menu.event('encoder','right'))
         self.assertFalse(menu.active)
 
-    def test_encoder_opens_and_back_closes_menu(self):
+    def test_encoder_opens_main_and_back_closes_menu(self):
         menu=self.make_menu()
         self.assertTrue(menu.event('encoder_sw','pressed',now=0))
         self.assertTrue(menu.active)
-        menu.state=menu.state.update(topology())
-        menu.state=__import__('dataclasses').replace(menu.state,focus=len(menu.state.topology.targets)+2)
-        self.assertTrue(menu.event('encoder_sw','pressed',now=1))
+        self.assertEqual(menu.section, 'main')
+        for _ in range(3):
+            menu.event('encoder','right',now=1)
+        self.assertTrue(menu.event('encoder_sw','pressed',now=2))
         self.assertFalse(menu.active)
 
     def test_encoder_selects_only_local_draft(self):
         menu=self.make_menu()
-        menu.event('encoder_sw','pressed',now=0)
+        menu.event('speaker_select','pressed',now=0)
         menu.state=menu.state.update(topology())
         self.assertTrue(menu.event('encoder_sw','pressed'))
         self.assertEqual(len(menu.state.draft),1)
@@ -41,14 +42,14 @@ class InteractiveMenuTests(unittest.TestCase):
 
     def test_encoder_moves_focus(self):
         menu=self.make_menu()
-        menu.event('encoder_sw','pressed',now=0)
+        menu.event('speaker_select','pressed',now=0)
         menu.state=menu.state.update(topology())
         menu.event('encoder','right')
         self.assertEqual(menu.state.focus,1)
 
     def test_back_cancels_unconfirmed_selection(self):
         menu=self.make_menu()
-        menu.event('encoder_sw','pressed',now=0)
+        menu.event('speaker_select','pressed',now=0)
         menu.state=menu.state.update(topology())
         menu.event('encoder_sw','pressed')
         menu.state=__import__('dataclasses').replace(menu.state,focus=len(menu.state.topology.targets)+2)
