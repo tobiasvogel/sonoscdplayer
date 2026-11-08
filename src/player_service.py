@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import select
+import signal
 import socket
 import stat
 import sys
@@ -579,6 +580,19 @@ def refuse_existing_control_socket(socket_path):
         raise FileExistsError(f'refusing existing socket/path: {path}')
 
 
+def _terminate(_signum, _frame):
+    raise KeyboardInterrupt
+
+
+def install_sigterm_handler():
+    """Turn systemd's SIGTERM (stop, reboot, poweroff) into the clean shutdown path.
+
+    Without this the process dies at once and ``shutdown_owned`` never runs, so a
+    system poweroff could leave a CD stream URI on the Sonos speaker.
+    """
+    return signal.signal(signal.SIGTERM, _terminate)
+
+
 def run(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--device', default='auto')
@@ -597,6 +611,8 @@ def run(argv=None):
     ctrl = None
     power = None
     shutdown_policy = 'stop_owned'
+    previous_sigterm = (install_sigterm_handler()
+                        if threading.current_thread() is threading.main_thread() else None)
     try:
         refuse_existing_control_socket(ns.socket)
         disc_status, toc = inspect_initial_disc(base, requested_device=ns.device)
@@ -657,6 +673,8 @@ def run(argv=None):
             ctrl.close()
         if power is not None:
             power.close()
+        if previous_sigterm is not None:
+            signal.signal(signal.SIGTERM, previous_sigterm)
     return 0
 
 

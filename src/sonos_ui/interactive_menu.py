@@ -16,8 +16,11 @@ from .target_rpc_client import submit_target
 from .selection_plan import plan_from_applied
 
 
+POWER_ITEMS = ('back', 'poweroff', 'reboot')
+
+
 class InteractiveMenu:
-    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None):
+    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None):
         self.state = MultiSelection()
         self.language = Translator(language).language
         self.languages = available_languages()
@@ -38,6 +41,49 @@ class InteractiveMenu:
         self._target_generation = 0
         self._target_worker = None
         self._pending_selection = None
+        # Power menu: only available when a power_action(action) -> bool callable
+        # is injected (fail closed). It runs on a worker thread, never on the display loop.
+        self._power_action = power_action
+        self.power_menu = False
+        self.power_focus = 0
+        self.power_notice = ''
+        self._power_busy = False
+        self._power_result = None
+
+    def _power_event(self, name, event):
+        """Handle input while the power menu is open. Returns True if the frame changed."""
+        if self._power_busy:
+            return False  # shutting down or restarting: ignore everything
+        if (name, event) == ('power', 'short'):
+            return self._close_power()
+        if (name, event) == ('encoder', 'right'):
+            self.power_focus = min(len(POWER_ITEMS) - 1, self.power_focus + 1)
+        elif (name, event) == ('encoder', 'left'):
+            self.power_focus = max(0, self.power_focus - 1)
+        elif (name, event) == ('encoder_sw', 'pressed'):
+            choice = POWER_ITEMS[self.power_focus]
+            if choice == 'back':
+                return self._close_power()
+            self._power_busy = True
+            self.power_notice = 'status.power_' + choice
+            def work():
+                try:
+                    ok = self._power_action(choice) is True
+                except Exception:
+                    ok = False
+                with self._lock:
+                    self._power_result = ok
+            threading.Thread(target=work, name='ui-power-action', daemon=True).start()
+        else:
+            return False
+        self.power_notice = self.power_notice if self._power_busy else ''
+        return True
+
+    def _close_power(self):
+        self.power_menu = False
+        self.active = False
+        self.power_notice = ''
+        return True
 
     def _start_discovery(self, now):
         if self._worker is not None and self._worker.is_alive():
@@ -103,6 +149,13 @@ class InteractiveMenu:
         with self._lock:
             new = self._pending
             self._pending = None
+            power_result = self._power_result
+            self._power_result = None
+        if power_result is False:
+            # The system did not accept the request: the menu stays open and usable.
+            self._power_busy = False
+            self.power_notice = 'status.power_failed'
+            changed = True
         if new is not None:
             # Topology refresh must not erase a completed target-RPC notice.
             self.state = self.state.update(new)
@@ -120,12 +173,27 @@ class InteractiveMenu:
                 self.state = replace(self.state, notice=result[1])
             self._pending_selection = None
             changed = True
-        if self.active and now >= self._next_refresh:
+        if self.active and not self.power_menu and now >= self._next_refresh:
             self._start_discovery(now)
         return changed
 
     def event(self, name, event, now=None):
         now = time.monotonic() if now is None else now
+        if self._power_action is not None and (name, event) == ('power', 'short'):
+            if self.power_menu:
+                return self._power_event(name, event)
+            # Short power press opens the power menu from anywhere, closing any
+            # other menu state; a pending target request keeps running unseen.
+            self.power_menu = True
+            self.language_picker = False
+            self.power_focus = 0  # "Zurück" is always the default
+            self.power_notice = ''
+            self.active = True
+            return True
+        if self.power_menu:
+            return self._power_event(name, event)
+        if name == 'power':
+            return False
         if event != 'pressed' and name != 'encoder':
             return False
         # Connect is deliberately not a menu input. It remains available for
@@ -174,6 +242,9 @@ class InteractiveMenu:
         return True
 
     def frame(self, image_to_frame):
+        if self.power_menu:
+            return image_to_frame(self.renderer.render_power(
+                self.power_focus, self.power_notice, gray=True))
         if self.language_picker:
             from PIL import Image, ImageDraw
             t=self.renderer.theme

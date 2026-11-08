@@ -37,3 +37,19 @@ class MultiRenderer(Renderer):
         status=self.tr(state.notice) if state.notice else (self.tr('status.incomplete') if state.topology.error else self.tr('status.no_changes'))
         self.bottom(im,status=status,footer=self.tr('footer.mark'))
         return ssd1327_gray(im) if gray else im
+
+    def render_power(self,focus,notice='',*,gray=False):
+        """Power menu: Zurück / Ausschalten / Neustarten. ``notice`` is a locale key."""
+        t=self.theme
+        im=Image.new('RGB',(128,128),t.background)
+        self.shell(im,self.tr('menu.power'))
+        d=ImageDraw.Draw(im)
+        for pos,(key,mark) in enumerate((('menu.back','<'),('menu.poweroff','×'),('menu.reboot','↻'))):
+            y=27+pos*22
+            selected=pos==focus
+            if selected:d.rounded_rectangle((4,y,123,y+19),radius=3,fill=t.accent)
+            col=t.selection_text if selected else t.primary
+            self.text(im,(8,y+3),mark,fill=col,size=11,width=14,height=15)
+            self.text(im,(26,y+3),self.tr(key),fill=col,size=11,bold=selected,width=96,height=15)
+        self.bottom(im,status=self.tr(notice or 'status.power_choose'),footer=self.tr('footer.select'))
+        return ssd1327_gray(im) if gray else im

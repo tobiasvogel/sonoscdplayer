@@ -14,6 +14,11 @@ skip = 16
 volume_up = 27
 volume_dn = 22
 
+# Power button: a short press opens the power menu on the OLED; holding it for
+# long_press_ms (minimum 3000) shuts the player down directly.
+[power]
+long_press_ms = 3000
+
 [encoder]
 encoder_a = 6
 encoder_b = 26

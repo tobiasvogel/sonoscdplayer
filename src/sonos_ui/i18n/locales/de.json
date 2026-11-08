@@ -68,5 +68,12 @@
   "header.error": "FEHLER",
   "status.starting": "Wiedergabe startet",
   "status.error": "Player-Fehler",
-  "status.stopped": "Wiedergabe gestoppt"
+  "status.stopped": "Wiedergabe gestoppt",
+  "menu.power": "Ein/Aus",
+  "menu.poweroff": "Ausschalten",
+  "menu.reboot": "Neustarten",
+  "status.power_choose": "Aktion wählen",
+  "status.power_poweroff": "Fährt herunter…",
+  "status.power_reboot": "Startet neu…",
+  "status.power_failed": "Aktion fehlgeschlagen"
 }
