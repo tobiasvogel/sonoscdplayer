@@ -88,5 +88,19 @@
   "network.status_preview": "Netzwerkstatus: Anzeige folgt",
   "network.settings_preview": "Netzwerkeinstellungen: Einrichtung folgt",
   "network.setup_warning": "Einrichtungsmodus in {seconds} Sekunden",
-  "network.setup_requested": "Einrichtungsmodus angefordert (noch nicht aktiv)"
+  "network.setup_requested": "Einrichtungsmodus angefordert (noch nicht aktiv)",
+  "menu.main": "Hauptmenü",
+  "menu.network": "Netzwerk",
+  "network.ethernet": "Ethernet",
+  "network.wifi": "WLAN",
+  "network.preferred": "Bevorzugt",
+  "network.state.connected": "Verbunden",
+  "network.state.connecting": "Verbindungsaufbau",
+  "network.state.disconnected": "Getrennt",
+  "network.state.unavailable": "Nicht verfügbar",
+  "network.state.unknown": "Unbekannt",
+  "network.preferred.ethernet": "Ethernet",
+  "network.preferred.wifi": "WLAN",
+  "network.preferred.none": "Keine Verbindung",
+  "network.readonly": "Nur Statusanzeige"
 }
