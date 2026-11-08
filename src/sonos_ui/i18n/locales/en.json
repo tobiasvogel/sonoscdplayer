@@ -68,5 +68,12 @@
   "header.error": "ERROR",
   "status.starting": "Starting playback",
   "status.error": "Player error",
-  "status.stopped": "Playback stopped"
+  "status.stopped": "Playback stopped",
+  "menu.power": "Power",
+  "menu.poweroff": "Power off",
+  "menu.reboot": "Restart",
+  "status.power_choose": "Choose action",
+  "status.power_poweroff": "Shutting down…",
+  "status.power_reboot": "Restarting…",
+  "status.power_failed": "Action failed"
 }

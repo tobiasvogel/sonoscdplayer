@@ -208,6 +208,8 @@ def main(argv=None):
     p.add_argument('--execute',action='store_true')
     p.add_argument('--ui-target-rpc',action='store_true',
                    help='experimental: explicitly enable set-target on menu confirmation')
+    p.add_argument('--ui-power-actions',action='store_true',
+                   help='enable the power menu (power off / restart); needs the polkit rule from docs/POWER_BUTTON.md')
     p.add_argument('--ui-events-socket',default=None,
                    help='private encoder event socket; requires --ui-modern')
     p.add_argument('--socket',default=DEFAULT_SOCKET)
@@ -243,6 +245,8 @@ def main(argv=None):
     if args.gpio != args.execute: p.error('--gpio and --execute must be given together')
     if args.ui_target_rpc and not (args.ui_events_socket and args.ui_modern):
         p.error('--ui-target-rpc requires --ui-modern and --ui-events-socket')
+    if args.ui_power_actions and not (args.ui_events_socket and args.ui_modern):
+        p.error('--ui-power-actions requires --ui-modern and --ui-events-socket')
     if args.ui_events_socket and not args.ui_modern:
         p.error('--ui-events-socket requires --ui-modern')
     try:
@@ -303,8 +307,12 @@ def main(argv=None):
         else:
             sender = None
             group_sender = None
+        power_action = None
+        if args.ui_power_actions:
+            from power_action import PowerRequester
+            power_action = PowerRequester().request
         menu = InteractiveMenu(language=language, target_rpc=sender,
-                               group_target_rpc=group_sender)
+                               group_target_rpc=group_sender, power_action=power_action)
         receiver_context = EventReceiver(args.ui_events_socket)
     def stop_on_sigterm(_signum, _frame):
         # systemd's normal SIGTERM must run finally and release SPI/GPIO.

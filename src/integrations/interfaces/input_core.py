@@ -33,6 +33,7 @@ class Config:
     buttons: dict
     encoder: EncoderConfig
     poll_interval_ms: int
+    power_hold_ms: int = 3000
 
 
 def _level(value):
@@ -99,7 +100,10 @@ def load_config(path):
     pins += [enc.a, enc.b, enc.switch.pin]
     if len(pins) != len(set(pins)):
         raise ValueError('Duplicate GPIO pin assignment')
-    return Config(buttons, enc, poll)
+    hold = raw.get('power', {}).get('long_press_ms', 3000)
+    if isinstance(hold, bool) or not isinstance(hold, int) or not 3000 <= hold <= 10000:
+        raise ValueError('power.long_press_ms must be an integer between 3000 and 10000')
+    return Config(buttons, enc, poll, hold)
 
 
 class Button:

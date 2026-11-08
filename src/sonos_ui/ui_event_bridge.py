@@ -13,7 +13,8 @@ import queue
 import threading
 
 ALLOWED = frozenset({('encoder', 'left'), ('encoder', 'right'),
-                     ('encoder_sw', 'pressed'), ('connect', 'pressed')})
+                     ('encoder_sw', 'pressed'), ('connect', 'pressed'),
+                     ('power', 'short')})
 MAX_EVENT_BYTES = 128
 
 

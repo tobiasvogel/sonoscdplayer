@@ -28,6 +28,11 @@ try:
 except ImportError:
     from safe_button_execute import SelectedTargetExecutor
 
+try:
+    from .power_gesture import PowerCoordinator
+except ImportError:
+    from power_gesture import PowerCoordinator
+
 DEFAULT_CONFIG = Path(__file__).with_name('interface.toml')
 DEFAULT_SOCKET = '/run/sonoscdplayer/control.sock'
 
@@ -164,6 +169,23 @@ def handle_event(name, event, *, commands=False, execute=False, socket_path=DEFA
 
 
 
+def make_power_shutdown(enabled, requester=None, start=None):
+    """Return the long-press callback; it never blocks the GPIO sampling loop."""
+    if enabled and requester is None:
+        from power_action import PowerRequester
+        requester = PowerRequester()
+    start = start or (lambda target: threading.Thread(
+        target=target, name='power-shutdown', daemon=True).start())
+
+    def shutdown():
+        if not enabled:
+            print('power button held: shutdown preview only (--power-actions not set)', flush=True)
+            return
+        print('power button held: requesting poweroff', flush=True)
+        start(lambda: requester.request('poweroff'))
+    return shutdown
+
+
 def pins_for(cfg):
     return {b.pin: b.pull for b in cfg.buttons.values()} | {
         cfg.encoder.a: cfg.encoder.pull, cfg.encoder.b: cfg.encoder.pull,
@@ -191,7 +213,7 @@ def run_sim(cfg, input_file):
                     print(f'{step["ms"]}ms {name}: {event}', flush=True)
 
 
-def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None, ui_events_socket=None, target_preview_enabled=False, target_execute_enabled=False):
+def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None, ui_events_socket=None, target_preview_enabled=False, target_execute_enabled=False, power_actions=False):
     try:
         import RPi.GPIO as GPIO
     except ImportError as exc:
@@ -216,12 +238,19 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
                            if target_execute_enabled else None)
         if publisher is not None:
             publisher.start()
+        power = PowerCoordinator(
+            cfg.power_hold_ms,
+            publish=(publisher.enqueue if publisher is not None else (lambda *_: False)),
+            shutdown=make_power_shutdown(power_actions))
         print('GPIO command mode active.' if execute else 'GPIO diagnostics active; Ctrl+C to exit. No Sonos commands.', flush=True)
         while True:
-            for name, event in engine.sample(sample(), time.monotonic_ns() // 1_000_000):
+            now_ms = time.monotonic_ns() // 1_000_000
+            for name, event in engine.sample(sample(), now_ms):
+                power.event(name, event, now_ms)
                 if publisher is not None:
                     publisher.enqueue(name, event)
                 handle_event(name, event, commands=commands, execute=execute, socket_path=socket_path, uid=uid, dispatcher=dispatcher, target_preview=target_preview, target_executor=target_executor)
+            power.tick(time.monotonic_ns() // 1_000_000)
             time.sleep(cfg.poll_interval_ms / 1000)
     except KeyboardInterrupt:
         pass
@@ -244,6 +273,9 @@ def main():
     p.add_argument('--selected-target-execute', action='store_true',
                    help='with --execute: safe state-checked one-shot transport actions')
     p.add_argument('--socket', default=DEFAULT_SOCKET)
+    p.add_argument('--power-actions', action='store_true',
+                   help='with --gpio: holding the power button really powers the system off '
+                        '(needs the polkit rule from docs/POWER_BUTTON.md); otherwise preview only')
     p.add_argument('--ui-events-socket', default=None,
                    help='optional nonblocking read-only UI event observer')
     p.add_argument('--uid-file', type=Path, help='private 0600 file for playpause UID; never logged')
@@ -259,6 +291,8 @@ def main():
         p.error('--selected-target-execute requires --gpio --commands --execute without --selected-target-preview')
     if args.uid_file:
         p.error('--uid-file is not used by safe selected-target execution')
+    if args.power_actions and not args.gpio:
+        p.error('--power-actions requires --gpio')
     if args.ui_events_socket is not None and not args.gpio:
         p.error('--ui-events-socket requires --gpio')
     cfg = load_config(args.config)
@@ -269,7 +303,8 @@ def main():
         run_gpio(cfg, commands=args.commands, execute=args.execute, socket_path=args.socket,
                  uid=uid, ui_events_socket=args.ui_events_socket,
                  target_preview_enabled=args.selected_target_preview,
-                 target_execute_enabled=args.selected_target_execute)
+                 target_execute_enabled=args.selected_target_execute,
+                 power_actions=args.power_actions)
 
 
 if __name__ == '__main__':
