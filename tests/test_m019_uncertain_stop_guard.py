@@ -63,12 +63,13 @@ class UncertainStopTests(unittest.TestCase):
         self.assertIsNone(action)
         self.assertTrue(power.idle_policy.stop_attempted)
 
-    def test_uncertain_stop_blocks_eject(self):
+    def test_uncertain_stop_keeps_the_disc_removable(self):
+        # PLAY stays blocked (tests below); EJECT may proceed to its own checks.
         power = self.make_uncertain_power()
 
         power.activity()
 
-        self.assertTrue(
+        self.assertFalse(
             eject_blocked_by_idle_policy(power)
         )
 

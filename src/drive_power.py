@@ -235,6 +235,12 @@ class DrivePowerManager:
             self.last_error = f'keepalive: {type(exc).__name__}: {exc}'
             self.last_start = self.clock()
 
+    def clear_fault_after_eject(self):
+        """A verified EJECT removed the disc a failed wake could not verify."""
+        if self.idle_policy is not None:
+            self.idle_policy.reset_after_eject(self.clock())
+            self.last_error = None
+
     def wake(self, *, verify):
         """Wake after a user event; no PLAY until the caller verifies the disc.
 
@@ -283,6 +289,8 @@ class DrivePowerManager:
                 'idle_spun_down': (self.idle_policy.spun_down if self.idle_policy else False),
                 'idle_waking': (self.idle_policy.wake_in_progress if self.idle_policy else False),
                 'idle_wake_fault_latched': (self.idle_policy.wake_fault_latched if self.idle_policy else False),
+                'idle_wake_retry_in_seconds': (self.idle_policy.retry_state(self.clock())[0] if self.idle_policy else None),
+                'idle_wake_retries_exhausted': (self.idle_policy.retry_state(self.clock())[1] if self.idle_policy else False),
                 'idle_stop_attempted': (self.idle_policy.stop_attempted if self.idle_policy else False),
                 'power_condition_probe': self.power_condition_probe,
                 'power_condition_probe_error': self.power_condition_probe_error,

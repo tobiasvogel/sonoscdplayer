@@ -10,14 +10,14 @@ from .render import font
 from .theme import MODERN_HIFI, ssd1327_gray
 
 ICON_ROOT = Path(__file__).resolve().parents[1] / "data" / "icons"
-ICON_PREFIX = {"info": "info_ ", "success": "success_",
+ICON_PREFIX = {"info": "info_", "success": "success_",
                "warning": "warning_", "error": "error_"}
 COLOR = {"info": "secondary", "success": "playing",
          "warning": "warning", "error": "warning"}
 
 
 def icon_file(severity, grayscale=False, icon_root=ICON_ROOT):
-    """Use exactly the published filenames, including the legacy info space."""
+    """Use exactly the published filenames."""
     prefix = ICON_PREFIX[severity]
     suffix = "bw_small" if grayscale else "color_small"
     path = Path(icon_root) / (prefix + suffix + ".png")

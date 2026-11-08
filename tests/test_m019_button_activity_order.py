@@ -94,15 +94,26 @@ class ButtonActivityOrderTests(unittest.TestCase):
             calls.count(("send", "drive-activity")), 1
         )
 
-    def test_failed_eject_wake_blocks_eject(self):
-        calls = self.execute("eject", fail_activity=True)
-        self.assertEqual(
-            calls[0], ("send", "drive-activity")
-        )
-        self.assertFalse(any(
-            kind == "read" for kind, _ in calls
-        ))
-        self.assertNotIn(("send", "eject"), calls)
+    def test_failed_eject_wake_does_not_keep_the_disc_inside(self):
+        # The wake failed (latched fault), but EJECT still goes on to the
+        # player, which re-verifies the drive before touching the tray.
+        with patch(
+            "integrations.interfaces.safe_button_execute.plan_eject",
+            return_value="eject",
+        ):
+            calls = self.execute("eject", fail_activity=True)
+        self.assertEqual(calls[0], ("send", "drive-activity"))
+        self.assertIn(("read", "status"), calls)
+        self.assertIn(("send", "eject"), calls)
+        self.assertNotIn(("read", "get-target"), calls)
+
+    def test_failed_wake_still_blocks_every_other_command(self):
+        for action in ("playpause", "stop", "next", "previous"):
+            with self.subTest(action=action):
+                calls = self.execute(action, fail_activity=True)
+                self.assertEqual(
+                    [c for c in calls if c[0] != "report"],
+                    [("send", "drive-activity")])
 
 
 if __name__ == "__main__":

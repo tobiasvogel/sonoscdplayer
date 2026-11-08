@@ -61,10 +61,7 @@ def run_action(action, *, wake_fails=False):
 class WakeOrderTests(unittest.TestCase):
 
     def test_each_transport_button_wakes_before_reading(self):
-        for action in (
-            "playpause", "stop", "next",
-            "previous", "eject"
-        ):
+        for action in ("playpause", "stop", "next", "previous"):
             with self.subTest(action=action):
                 calls = run_action(action)
 
@@ -82,15 +79,16 @@ class WakeOrderTests(unittest.TestCase):
                 )
 
     def test_failed_wake_blocks_following_commands(self):
-        for action in (
-            "playpause", "stop", "next",
-            "previous", "eject"
-        ):
+        for action in ("playpause", "stop", "next", "previous"):
             with self.subTest(action=action):
                 self.assertEqual(
                     run_action(action, wake_fails=True),
                     [("send", "drive-activity")],
                 )
+
+    def test_failed_wake_does_not_stop_eject_from_reaching_the_player_checks(self):
+        calls = run_action("eject", wake_fails=True)
+        self.assertEqual(calls, [("send", "drive-activity"), ("read", "status")])
 
     def test_eject_still_uses_separate_policy(self):
         calls = run_action("eject")

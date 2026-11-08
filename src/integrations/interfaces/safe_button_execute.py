@@ -45,7 +45,15 @@ class SelectedTargetExecutor:
                 if self.activity_before_read:
                     # Finish wake/verification before short status reads.
                     # Failed or uncertain acknowledgement blocks transport.
-                    self.sender(self.socket_path, 'drive-activity', None)
+                    try:
+                        self.sender(self.socket_path, 'drive-activity', None)
+                    except Exception as exc:
+                        if action != 'eject':
+                            raise
+                        # A failed wake must not keep the disc inside: the
+                        # player still verifies the drive before ejecting.
+                        self.report('selected-target execute: drive wake unverified ('
+                                    + type(exc).__name__ + '); EJECT left to player checks')
                 status = self.reader(self.socket_path, 'status')
                 target = (None if action == 'eject' else
                           self.reader(self.socket_path, 'get-target'))

@@ -131,16 +131,39 @@ def drive_wait_frame():
     return image_to_frame(img)
 
 
-def drive_fault_frame():
-    """Persistent read-only warning; never retries drive wake."""
+def drive_fault_details(state):
+    """(seconds until a retry, retries exhausted) from a confirmed latched fault."""
+    power = state.get('drive_power') if isinstance(state, dict) else None
+    if not isinstance(power, dict):
+        return None, False
+    retry = power.get('idle_wake_retry_in_seconds')
+    if isinstance(retry, bool) or not isinstance(retry, int) or retry < 0:
+        retry = None
+    return retry, power.get('idle_wake_retries_exhausted') is True
+
+
+def drive_fault_frame(state=None):
+    """Persistent read-only warning; never retries drive wake itself.
+
+    A key press retries the wake once the cooldown is over; EJECT always works.
+    """
+    retry, exhausted = drive_fault_details(state)
+    if exhausted:
+        lines = ('Retries used up', 'EJECT still works', 'Restart service')
+    elif retry is None:
+        lines = ('Wake failed', 'EJECT still works', 'Check USB power')
+    elif retry > 0:
+        lines = ('Wake failed', f'Retry in {retry} s', 'EJECT still works')
+    else:
+        lines = ('Wake failed', 'Press key: retry', 'EJECT still works')
     img = Image.new('L', (128, 128), 0)
     draw = ImageDraw.Draw(img)
     font = ImageFont.load_default()
     draw.text((5, 4), 'SONOS CD PLAYER', font=font, fill=255)
     draw.line((4, 19, 123, 19), fill=88)
-    draw.text((9, 44), 'CD DRIVE ERROR', font=font, fill=255)
-    draw.text((8, 65), 'Wake failed', font=font, fill=210)
-    draw.text((8, 85), 'Check USB power', font=font, fill=180)
+    draw.text((9, 40), 'CD DRIVE ERROR', font=font, fill=255)
+    for row, text in enumerate(lines):
+        draw.text((8, 62 + row * 18), text, font=font, fill=(210, 180, 150)[row])
     draw.line((4, 121, 123, 121), fill=66)
     return image_to_frame(img)
 
@@ -150,7 +173,7 @@ def status_frame(state=None, error=None, *, language='en'):
     from sonos_ui.i18n import Translator
     tr=Translator(language).tr
     if error is None and drive_fault(state):
-        return drive_fault_frame()
+        return drive_fault_frame(state)
     if error is None and drive_waking(state):
         return drive_wait_frame()
     img=Image.new('L',(128,128),0)
@@ -193,7 +216,7 @@ def modern_status_frame(state=None, error=None, *, cover_mode='auto', language='
     if error is not None or state is None:
         return status_frame(error=error or 'No local status',language=language)
     if drive_fault(state):
-        return drive_fault_frame()
+        return drive_fault_frame(state)
     if drive_waking(state):
         return drive_wait_frame()
     from sonos_ui.player_adapter import project_status
@@ -214,9 +237,15 @@ def safe_modern_status_frame(state, *, cover_mode='auto', language='de'):
 
 def selected_status_frame(state, *, menu=None, ui_modern=False,
                           cover_mode='auto', language='de', cached=False):
-    """Prioritize confirmed drive notices over interactive menu and status."""
+    """Prioritize confirmed drive notices over interactive menu and status.
+
+    The power menu is the one exception: it must stay visible, or its input
+    would act on a screen the user cannot see.
+    """
+    if menu is not None and getattr(menu, 'power_menu', False) is True:
+        return menu.frame(image_to_frame)
     if drive_fault(state):
-        return drive_fault_frame()
+        return drive_fault_frame(state)
     if drive_waking(state):
         return drive_wait_frame()
     if menu is not None and menu.active:

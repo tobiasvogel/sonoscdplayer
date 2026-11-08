@@ -193,9 +193,10 @@ class EjectServeGuardTests(unittest.TestCase):
                     process.kill()
                     process.join(3)
 
-    def test_unconfirmed_stop_blocks_eject(self):
+    def test_unconfirmed_stop_still_reaches_the_eject_handler(self):
         self.scenario(
-            self.flags(stop_attempted=True)
+            self.flags(stop_attempted=True),
+            allowed=True,
         )
 
     def test_sleeping_drive_blocks_eject(self):
@@ -208,9 +209,16 @@ class EjectServeGuardTests(unittest.TestCase):
             self.flags(wake_in_progress=True)
         )
 
-    def test_wake_fault_blocks_eject(self):
+    def test_wake_fault_still_reaches_the_eject_handler(self):
+        # The handler (INP-03 checks) is faked here; it decides on the real drive.
         self.scenario(
-            self.flags(wake_fault_latched=True)
+            self.flags(wake_fault_latched=True, spun_down=True),
+            allowed=True,
+        )
+
+    def test_wake_in_progress_blocks_eject_even_with_a_fault(self):
+        self.scenario(
+            self.flags(wake_fault_latched=True, wake_in_progress=True)
         )
 
     def test_normal_awake_drive_reaches_inp03_handler(self):

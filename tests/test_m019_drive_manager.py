@@ -105,7 +105,7 @@ class PowerManagerTests(unittest.TestCase):
         self.assertEqual([a[1] for a in commands], ['--stop', '--start'])
         self.assertTrue(p.snapshot(reader_active=False)['idle_wake_fault_latched'])
 
-    def test_transport_failure_latches_fault_and_all_subsequent_activity_is_safe(self):
+    def failing_wake_manager(self):
         p, now, commands = self.make_manager()
 
         def fail_wake(args, **kwargs):
@@ -113,12 +113,16 @@ class PowerManagerTests(unittest.TestCase):
             return SimpleNamespace(returncode=35 if '--start' in args else 0,
                                    stdout='', stderr='Transport error')
         p.runner = fail_wake
+        return p, now, commands
+
+    def test_transport_failure_latches_fault_and_activity_inside_cooldown_is_safe(self):
+        p, now, commands = self.failing_wake_manager()
         with mock.patch('drive_power.drive_lock', side_effect=unlocked):
             now[0] = 300
             p.tick()
             self.assertTrue(p.activity())
             self.assertFalse(p.wake(verify=lambda dev: True))
-            for tick in (301, 310, 400, 700):
+            for tick in (301, 310, 340, 359):   # cooldown is 60 s
                 now[0] = tick
                 self.assertFalse(p.activity())
                 self.assertFalse(p.wake(verify=lambda dev: True))
@@ -126,6 +130,82 @@ class PowerManagerTests(unittest.TestCase):
         self.assertEqual([a[1] for a in commands], ['--stop', '--start'])
         self.assertTrue(p.idle_policy.wake_fault_latched)
         self.assertIn('Transport error', p.last_error)
+
+    def test_retry_only_after_cooldown_and_only_on_user_activity(self):
+        p, now, commands = self.failing_wake_manager()
+        with mock.patch('drive_power.drive_lock', side_effect=unlocked):
+            now[0] = 300
+            p.tick()
+            p.activity()
+            p.wake(verify=lambda dev: True)
+            # No activity: ticks alone never retry, however long we wait.
+            for now[0] in (400, 500, 900):
+                p.tick()
+            self.assertEqual([a[1] for a in commands], ['--stop', '--start'])
+            self.assertEqual(p.snapshot(reader_active=False)['idle_wake_retry_in_seconds'], 0)
+            now[0] = 361   # 61 s after the failure at t=300
+            self.assertTrue(p.activity())
+            self.assertFalse(p.wake(verify=lambda dev: True))
+        self.assertEqual([a[1] for a in commands], ['--stop', '--start', '--start'])
+
+    def test_retries_are_bounded_and_then_final(self):
+        p, now, commands = self.failing_wake_manager()
+        with mock.patch('drive_power.drive_lock', side_effect=unlocked):
+            now[0] = 300
+            p.tick()
+            for now[0] in (300, 400, 500, 600, 1000, 5000):
+                if p.activity():
+                    p.wake(verify=lambda dev: True)
+        self.assertEqual([a[1] for a in commands].count('--start'), 3)
+        snap = p.snapshot(reader_active=False)
+        self.assertTrue(snap['idle_wake_fault_latched'])
+        self.assertTrue(snap['idle_wake_retries_exhausted'])
+        self.assertIsNone(snap['idle_wake_retry_in_seconds'])
+
+    def test_successful_retry_clears_the_fault_and_resets_the_count(self):
+        p, now, commands = self.failing_wake_manager()
+        with mock.patch('drive_power.drive_lock', side_effect=unlocked):
+            now[0] = 300
+            p.tick()
+            p.activity()
+            p.wake(verify=lambda dev: True)
+            p.runner = lambda args, **kw: SimpleNamespace(returncode=0, stdout='', stderr='')
+            now[0] = 400
+            self.assertTrue(p.activity())
+            self.assertTrue(p.wake(verify=lambda dev: True))
+        policy = p.idle_policy
+        self.assertFalse(policy.wake_fault_latched)
+        self.assertFalse(policy.play_must_wait)
+        self.assertEqual((policy.wake_failures, policy.fault_at), (0, None))
+
+    def test_failed_verification_after_retry_counts_as_a_failure(self):
+        p, now, commands = self.failing_wake_manager()
+        p.runner = lambda args, **kw: SimpleNamespace(returncode=0, stdout='', stderr='')
+        with mock.patch('drive_power.drive_lock', side_effect=unlocked):
+            now[0] = 300
+            p.tick()
+            p.activity()
+            self.assertFalse(p.wake(verify=lambda dev: False))   # disc differs
+            now[0] = 400
+            self.assertTrue(p.activity())
+            self.assertFalse(p.wake(verify=lambda dev: False))
+        self.assertEqual(p.idle_policy.wake_failures, 2)
+        self.assertTrue(p.idle_policy.play_must_wait)
+
+    def test_clear_fault_after_eject_restores_a_clean_state(self):
+        p, now, commands = self.failing_wake_manager()
+        with mock.patch('drive_power.drive_lock', side_effect=unlocked):
+            now[0] = 300
+            p.tick()
+            p.activity()
+            p.wake(verify=lambda dev: True)
+        now[0] = 320
+        p.clear_fault_after_eject()
+        policy = p.idle_policy
+        self.assertFalse(any((policy.wake_fault_latched, policy.spun_down, policy.stop_attempted,
+                              policy.wake_in_progress, policy.play_must_wait)))
+        self.assertEqual((policy.wake_failures, policy.fault_at, policy.last_activity), (0, None, 320))
+        self.assertIsNone(p.last_error)
 
     def test_stop_error_does_not_keepalive_or_retry_blindly(self):
         p, now, commands = self.make_manager()

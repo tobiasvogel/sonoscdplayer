@@ -355,17 +355,36 @@ def disc_poll_allowed(power):
 def eject_blocked_by_idle_policy(power):
     """Fail closed if the motor state has not been safely restored.
 
+    Two stuck states are exceptions, because the disc must stay removable: a
+    latched wake fault, and a STOP that was sent but never acknowledged. The
+    EJECT path itself re-verifies drive identity, media and idleness under the
+    device lock and refuses otherwise. PLAY stays blocked in both.
+
     No device probing, START, EJECT, or Sonos operations here.
     """
     policy = getattr(power, 'idle_policy', None)
     if policy is None:
         return False
-    return bool(
-        policy.stop_attempted
-        or policy.spun_down
-        or policy.wake_in_progress
-        or policy.wake_fault_latched
-    )
+    if policy.wake_in_progress:
+        return True
+    if policy.wake_fault_latched or idle_stop_unverified(power):
+        return False
+    return bool(policy.stop_attempted or policy.spun_down)
+
+
+def eject_and_recover(controller, monitor, power):
+    """Verified EJECT; if it succeeded from a stuck idle state, clear that state.
+
+    While a wake fault is latched or a STOP is unconfirmed the disc monitor
+    stays blocked, so without this a newly inserted disc would never be detected.
+    """
+    policy = getattr(power, 'idle_policy', None)
+    stuck = bool(policy is not None
+                 and (policy.wake_fault_latched or idle_stop_unverified(power)))
+    result = eject_verified_idle(controller, monitor)
+    if stuck:
+        power.clear_fault_after_eject()
+    return result
 
 
 def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None):
@@ -461,7 +480,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
 
                 reply = handle_command(
                     controller, request, selection,
-                    eject=(lambda: eject_verified_idle(controller, disc_monitor)
+                    eject=(lambda: eject_and_recover(controller, disc_monitor, power)
                            if disc_monitor is not None else None))
                 publisher.publish(controller, power)
                 return reply
