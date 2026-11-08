@@ -9,6 +9,9 @@ pcm_timeout_seconds = 45
 enabled = true
 strategy = "auto" # off | start | keepalive | power_condition | auto
 keepalive_interval_seconds = 10
+# Default: spin down after 2 minutes of safe inactivity.
+# Configurable: 30..86400 seconds.
+idle_spin_down_seconds = 120
 
 # Advanced: only fields advertised as changeable are written.
 # Volatile only; NEVER --save. No writes without explicit overrides.

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from drive_access import drive_lock
+from drive_idle_policy import IdleDrivePolicy
 from pathlib import Path
 import re
 import subprocess
@@ -27,15 +28,24 @@ def load_config(path):
     enabled = raw.get('enabled', True)
     strategy = raw.get('strategy', 'auto')
     interval = raw.get('keepalive_interval_seconds', 10)
+    idle_seconds = raw.get('idle_spin_down_seconds', None)
     changes = raw.get('mode_page_overrides', {})
     if type(enabled) is not bool or strategy not in STRATEGIES:
         raise ValueError('invalid drive_power enabled/strategy')
     if type(interval) not in (int, float) or not 3 <= interval <= 3600:
         raise ValueError('keepalive interval must be 3..3600 seconds')
+    if idle_seconds is not None:
+        if type(idle_seconds) not in (int, float) or not 30 <= idle_seconds <= 86400:
+            raise ValueError('idle_spin_down_seconds must be 30..86400 seconds')
+        if not enabled or strategy not in ('keepalive', 'auto'):
+            raise ValueError('idle spin-down requires enabled keepalive or auto strategy')
     if not isinstance(changes, dict) or any(k not in ALLOWED_FIELDS or type(v) is not int or v < 0 or v > 65535
                                              for k, v in changes.items()):
         raise ValueError('invalid or unsupported power-condition field override')
+    if idle_seconds is not None and changes:
+        raise ValueError('idle spin-down cannot combine with power-condition overrides')
     return {'enabled': enabled, 'strategy': strategy, 'interval': float(interval),
+            'idle_spin_down_seconds': (float(idle_seconds) if idle_seconds is not None else None),
             'overrides': changes}
 
 
@@ -60,6 +70,7 @@ class DrivePowerManager:
     original: dict = field(default_factory=dict)
     changed: dict = field(default_factory=dict)
     _started: bool = False
+    idle_policy: IdleDrivePolicy | None = None
     power_condition_probe: str = 'not_checked'
     power_condition_fields: dict = field(default_factory=dict)
     power_condition_probe_error: str | None = None
@@ -122,6 +133,11 @@ class DrivePowerManager:
         if self._started:
             return
         self._started = True
+        idle_seconds = self.config.get('idle_spin_down_seconds')
+        if idle_seconds is not None:
+            # Start the inactivity clock at service startup, not at process epoch.
+            self.idle_policy = IdleDrivePolicy(idle_seconds=idle_seconds,
+                                               last_activity=self.clock())
         if not self.config['enabled'] or self.config['strategy'] == 'off':
             return
         strategy = self.config['strategy']
@@ -168,13 +184,48 @@ class DrivePowerManager:
             self.last_start = self.clock() - self.config['interval']
         self.last_error = None
 
-    def tick(self, *, reader_active=False):
+    def activity(self):
+        """Record trusted physical activity; never treat keepalive as user input.
+
+        Returns whether wake is needed. The eventual wake must be verified by
+        the player service before an explicit PLAY can be forwarded.
+        """
+        if self.idle_policy is None:
+            return False
+        return self.idle_policy.activity(self.clock()) == 'wake'
+
+    def tick(self, *, reader_active=False, playback_active=False,
+             group_cleanup_pending=False):
         if reader_active or self.active_strategy != 'keepalive' or self.last_start is None:
             return
-        if self.clock() - self.last_start < self.config['interval']:
+        policy = self.idle_policy
+        now = self.clock()
+        if policy is not None:
+            action = policy.idle_action(
+                now, playback_active=playback_active, reader_active=reader_active,
+                group_cleanup_pending=group_cleanup_pending,
+                drive_ready=self.supported['start_stop_unit'])
+            if action == 'stop':
+                try:
+                    # Never send STOP while a CD reader holds the device lock.
+                    with drive_lock(self.device, blocking=False) as acquired:
+                        if not acquired:
+                            # No STOP happened; retry only after new user activity.
+                            policy.stop_result(acknowledged=False)
+                            return
+                        self._command(['sg_start', '--stop', self.device])
+                        policy.stop_result(acknowledged=True)
+                        self.last_error = None
+                except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+                    policy.stop_result(acknowledged=False)
+                    self.last_error = f'idle spin-down: {type(exc).__name__}: {exc}'
+                return
+            if not policy.keepalive_allowed(now):
+                return
+        if now - self.last_start < self.config['interval']:
             return
         try:
-            # Nonblocking: never delay or overlap an active cdparanoia reader.
+            # Nonblocking lock; no overlapping cdparanoia reader.
             with drive_lock(self.device, blocking=False) as acquired:
                 if not acquired:
                     return
@@ -183,6 +234,35 @@ class DrivePowerManager:
         except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
             self.last_error = f'keepalive: {type(exc).__name__}: {exc}'
             self.last_start = self.clock()
+
+    def wake(self, *, verify):
+        """Wake after a user event; no PLAY until the caller verifies the disc.
+
+        Must run on the serialized player worker. Only a confirmed stop requires
+        a wake; any failure retains the stopped/blocked state.
+        """
+        policy = self.idle_policy
+        if policy is None or not policy.play_must_wait:
+            return True
+        if policy.wake_fault_latched:
+            self.last_error = self.last_error or 'idle wake: previous failure; manual intervention required'
+            return False
+        if not callable(verify):
+            raise ValueError('wake requires disc identity/TOC verification')
+        try:
+            with drive_lock(self.device, blocking=False) as acquired:
+                if not acquired:
+                    raise RuntimeError('drive busy; wake not attempted')
+                self._start_motor()
+            if verify(self.device) is not True:
+                raise RuntimeError('drive/disc verification failed after wake')
+            policy.wake_result(self.clock(), drive_verified=True)
+            self.last_error = None
+            return True
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            policy.wake_result(self.clock(), drive_verified=False)
+            self.last_error = f'idle wake: {type(exc).__name__}: {exc}'
+            return False
 
     def close(self):
         """Best effort restoration of only fields this process changed; never STOP motor."""
@@ -199,6 +279,11 @@ class DrivePowerManager:
                 'requested_strategy': self.config['strategy'],
                 'active_strategy': self.active_strategy, 'device': self.device,
                 'reader_active': bool(reader_active), 'supported': dict(self.supported),
+                'idle_spin_down_seconds': self.config.get('idle_spin_down_seconds'),
+                'idle_spun_down': (self.idle_policy.spun_down if self.idle_policy else False),
+                'idle_waking': (self.idle_policy.wake_in_progress if self.idle_policy else False),
+                'idle_wake_fault_latched': (self.idle_policy.wake_fault_latched if self.idle_policy else False),
+                'idle_stop_attempted': (self.idle_policy.stop_attempted if self.idle_policy else False),
                 'power_condition_probe': self.power_condition_probe,
                 'power_condition_probe_error': self.power_condition_probe_error,
                 'power_condition_probe_exit_code': self.power_condition_probe_exit_code,

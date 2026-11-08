@@ -99,10 +99,60 @@ def short_text(value, max_chars=20):
     return str(value or '')[:max_chars]
 
 
+
+def drive_waking(state):
+    """Only a confirmed active drive wake gets the waiting notice."""
+    return (
+        isinstance(state, dict)
+        and isinstance(state.get('drive_power'), dict)
+        and state['drive_power'].get('idle_waking') is True
+    )
+
+
+def drive_fault(state):
+    """Only a latched drive wake failure gets the error notice."""
+    return (
+        isinstance(state, dict)
+        and isinstance(state.get('drive_power'), dict)
+        and state['drive_power'].get('idle_wake_fault_latched') is True
+    )
+
+
+def drive_wait_frame():
+    """Read-only OLED notice; never sends a drive command."""
+    img = Image.new('L', (128, 128), 0)
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.load_default()
+    draw.text((5, 4), 'SONOS CD PLAYER', font=font, fill=255)
+    draw.line((4, 19, 123, 19), fill=88)
+    draw.text((13, 45), 'PLEASE WAIT', font=font, fill=255)
+    draw.text((9, 66), 'Starting CD drive', font=font, fill=180)
+    draw.line((4, 121, 123, 121), fill=66)
+    return image_to_frame(img)
+
+
+def drive_fault_frame():
+    """Persistent read-only warning; never retries drive wake."""
+    img = Image.new('L', (128, 128), 0)
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.load_default()
+    draw.text((5, 4), 'SONOS CD PLAYER', font=font, fill=255)
+    draw.line((4, 19, 123, 19), fill=88)
+    draw.text((9, 44), 'CD DRIVE ERROR', font=font, fill=255)
+    draw.text((8, 65), 'Wake failed', font=font, fill=210)
+    draw.text((8, 85), 'Check USB power', font=font, fill=180)
+    draw.line((4, 121, 123, 121), fill=66)
+    return image_to_frame(img)
+
+
 def status_frame(state=None, error=None, *, language='en'):
     """Legacy OLED status, localized without changing status protocol fields."""
     from sonos_ui.i18n import Translator
     tr=Translator(language).tr
+    if error is None and drive_fault(state):
+        return drive_fault_frame()
+    if error is None and drive_waking(state):
+        return drive_wait_frame()
     img=Image.new('L',(128,128),0)
     draw=ImageDraw.Draw(img)
     f=ImageFont.load_default()
@@ -142,6 +192,10 @@ def modern_status_frame(state=None, error=None, *, cover_mode='auto', language='
     """
     if error is not None or state is None:
         return status_frame(error=error or 'No local status',language=language)
+    if drive_fault(state):
+        return drive_fault_frame()
+    if drive_waking(state):
+        return drive_wait_frame()
     from sonos_ui.player_adapter import project_status
     from sonos_ui.render import Renderer
     display = project_status(state)
@@ -155,6 +209,25 @@ def safe_modern_status_frame(state, *, cover_mode='auto', language='de'):
         return modern_status_frame(state, cover_mode=cover_mode, language=language)
     except (ValueError, TypeError, KeyError):
         return status_frame(error='invalid player status', language=language)
+
+
+
+def selected_status_frame(state, *, menu=None, ui_modern=False,
+                          cover_mode='auto', language='de', cached=False):
+    """Prioritize confirmed drive notices over interactive menu and status."""
+    if drive_fault(state):
+        return drive_fault_frame()
+    if drive_waking(state):
+        return drive_wait_frame()
+    if menu is not None and menu.active:
+        return menu.frame(image_to_frame)
+    if ui_modern:
+        if cached:
+            return modern_status_frame(
+                state, cover_mode=cover_mode, language=language)
+        return safe_modern_status_frame(
+            state, cover_mode=cover_mode, language=language)
+    return status_frame(state, language=language)
 
 
 class StatusHold:
@@ -362,8 +435,10 @@ def main(argv=None):
                 try:
                     state=hold.success(ready_state if ready_state is not None else request_status(args.socket), time.monotonic())
                     ready_state=None
-                    frame=(menu.frame(image_to_frame) if menu is not None and menu.active else
-                           safe_modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state,language=(menu.language if menu is not None else language)))
+                    frame=selected_status_frame(
+                        state, menu=menu, ui_modern=args.ui_modern,
+                        cover_mode=cover_mode,
+                        language=(menu.language if menu is not None else language))
                     label={'screen':'status','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
                 except (OSError,ValueError,TimeoutError,TypeError) as exc:
                     # The player_service socket is single-threaded. While PLAY waits
@@ -377,8 +452,10 @@ def main(argv=None):
                     # previously cached state may itself be invalid.
                     if busy and state is not None:
                         try:
-                            frame=(menu.frame(image_to_frame) if menu is not None and menu.active else
-                                   modern_status_frame(state, cover_mode=cover_mode, language=(menu.language if menu is not None else language)) if args.ui_modern else status_frame(state,language=(menu.language if menu is not None else language)))
+                            frame=selected_status_frame(
+                                state, menu=menu, ui_modern=args.ui_modern,
+                                cover_mode=cover_mode, cached=True,
+                                language=(menu.language if menu is not None else language))
                             label={'screen':'status_cached','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
                         except (ValueError, TypeError, KeyError):
                             frame=status_frame(error='invalid cached status',
