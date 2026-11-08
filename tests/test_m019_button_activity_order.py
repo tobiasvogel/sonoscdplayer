@@ -78,18 +78,31 @@ class ButtonActivityOrderTests(unittest.TestCase):
             ("send", "drive-activity"), calls
         )
 
-    def test_eject_does_not_inherit_play_wake_preflight(self):
+    def test_eject_wakes_before_separate_eject_policy(self):
         with patch(
             "integrations.interfaces.safe_button_execute.plan_eject",
             return_value="eject",
         ):
             calls = self.execute("eject")
 
-        self.assertEqual(calls[0], ("read", "status"))
-        self.assertNotIn(
-            ("send", "drive-activity"), calls
+        self.assertEqual(calls[:3], [
+            ("send", "drive-activity"),
+            ("read", "status"),
+            ("send", "eject"),
+        ])
+        self.assertEqual(
+            calls.count(("send", "drive-activity")), 1
         )
-        self.assertIn(("send", "eject"), calls)
+
+    def test_failed_eject_wake_blocks_eject(self):
+        calls = self.execute("eject", fail_activity=True)
+        self.assertEqual(
+            calls[0], ("send", "drive-activity")
+        )
+        self.assertFalse(any(
+            kind == "read" for kind, _ in calls
+        ))
+        self.assertNotIn(("send", "eject"), calls)
 
 
 if __name__ == "__main__":

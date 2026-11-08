@@ -55,18 +55,21 @@ class ActivitySelectionTests(unittest.TestCase):
                 )
             )
 
-    def test_eject_never_publishes_motor_wake_activity(self):
+    def test_eject_activity_uses_single_wake_path(self):
         from integrations.interfaces.button_commands import map_event
 
         self.assertEqual(map_event('eject', 'pressed'), 'eject')
-
-        for safe_executor in (False, True):
-            self.assertFalse(
-                should_publish_drive_activity(
-                    'eject', 'pressed',
-                    safe_executor=safe_executor,
-                )
+        self.assertFalse(
+            should_publish_drive_activity(
+                'eject', 'pressed', safe_executor=True
             )
+        )
+        self.assertTrue(
+            should_publish_drive_activity(
+                'eject', 'pressed', safe_executor=False
+            )
+        )
+        for safe_executor in (False, True):
             self.assertFalse(
                 should_publish_drive_activity(
                     'eject', 'released',
@@ -74,14 +77,18 @@ class ActivitySelectionTests(unittest.TestCase):
                 )
             )
 
-    def test_stop_button_still_reports_activity(self):
+    def test_stop_uses_single_synchronous_wake_path(self):
         from integrations.interfaces.button_commands import map_event
 
         self.assertEqual(map_event('stop', 'pressed'), 'stop')
-
-        self.assertTrue(
+        self.assertFalse(
             should_publish_drive_activity(
                 'stop', 'pressed', safe_executor=True
+            )
+        )
+        self.assertTrue(
+            should_publish_drive_activity(
+                'stop', 'pressed', safe_executor=False
             )
         )
 

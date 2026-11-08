@@ -197,16 +197,15 @@ def should_publish_drive_activity(name, event, *, safe_executor):
         return False
     command = map_event(name, event)
 
-    # EJECT is a separate, fail-closed INP-03 operation.
-    # Never wake the spindle merely because EJECT was pressed.
-    if command == 'eject':
-        return False
-
-    # PLAY/PAUSE already performs its own synchronous wake preflight.
+    # Every physical control counts as activity, including EJECT.
+    # EJECT authorization remains guarded separately by INP-03.
+    # Safe executor performs synchronous wake before every mapped
+    # transport action. Other physical inputs use the async publisher.
     return not (
         safe_executor
-        and event == 'pressed'
-        and command == 'playpause'
+        and command in (
+            'playpause', 'stop', 'next', 'previous', 'eject'
+        )
     )
 
 
