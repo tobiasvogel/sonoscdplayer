@@ -143,6 +143,27 @@ class PowerManagerTests(unittest.TestCase):
         self.assertFalse(p.idle_policy.spun_down)
         self.assertTrue(p.idle_policy.stop_attempted)
 
+    def test_busy_device_lock_sends_no_stop_and_does_not_block_play(self):
+        from player_service import idle_stop_unverified
+
+        @contextlib.contextmanager
+        def busy(*args, **kwargs):
+            yield False
+
+        p, now, commands = self.make_manager()
+        now[0] = 300
+        with mock.patch('drive_power.drive_lock', side_effect=busy):
+            p.tick()
+        self.assertEqual(commands, [])
+        self.assertFalse(idle_stop_unverified(p))
+        self.assertFalse(p.idle_policy.play_must_wait)
+        # The next idle check may try again once the lock is free.
+        now[0] = 301
+        with mock.patch('drive_power.drive_lock', side_effect=unlocked):
+            p.tick()
+        self.assertEqual([c[1] for c in commands], ['--stop'])
+        self.assertTrue(p.idle_policy.spun_down)
+
 
 if __name__ == '__main__':
     unittest.main()

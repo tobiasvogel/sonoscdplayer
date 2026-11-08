@@ -210,8 +210,8 @@ class DrivePowerManager:
                     # Never send STOP while a CD reader holds the device lock.
                     with drive_lock(self.device, blocking=False) as acquired:
                         if not acquired:
-                            # No STOP happened; retry only after new user activity.
-                            policy.stop_result(acknowledged=False)
+                            # No STOP was sent: forget the attempt, retry on a later tick.
+                            policy.stop_not_sent()
                             return
                         self._command(['sg_start', '--stop', self.device])
                         policy.stop_result(acknowledged=True)

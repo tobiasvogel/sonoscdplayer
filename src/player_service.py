@@ -419,7 +419,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 # DiscMonitor's existing PLAY-boundary TOC validation.
                 if not wake_before_new_play(
                     power, disc_monitor, request,
-                    stopped=(controller.state.mode == Mode.STOPPED),
+                    stopped=(power is not None and controller.state.mode == Mode.STOPPED),
                     publish_wake=lambda: publisher.publish(
                         controller, power
                     ),

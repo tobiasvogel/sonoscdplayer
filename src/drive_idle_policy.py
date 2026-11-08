@@ -68,6 +68,15 @@ class IdleDrivePolicy:
         if acknowledged is True:
             self.spun_down = True
 
+    def stop_not_sent(self):
+        """The STOP never reached the drive (device lock busy).
+
+        Nothing is uncertain, so the attempt is forgotten: PLAY stays allowed and
+        the next idle check may advise STOP again. Only a STOP that was sent and
+        not acknowledged stays latched via ``stop_result(acknowledged=False)``.
+        """
+        self.stop_attempted = False
+
     def wake_result(self, now, *, drive_verified):
         """START acknowledgement alone is insufficient: verify disc/drive."""
         self.wake_in_progress = False
