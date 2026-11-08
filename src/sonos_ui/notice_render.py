@@ -10,18 +10,25 @@ from .render import font
 from .theme import MODERN_HIFI, ssd1327_gray
 
 ICON_ROOT = Path(__file__).resolve().parents[1] / "data" / "icons"
-ICON_PREFIX = {"info": "info_ ", "success": "success_",
+ICON_PREFIX = {"info": "info_", "success": "success_",
                "warning": "warning_", "error": "error_"}
 COLOR = {"info": "secondary", "success": "playing",
          "warning": "warning", "error": "warning"}
 
 
 def icon_file(severity, grayscale=False, icon_root=ICON_ROOT):
-    """Use exactly the published filenames, including the legacy info space."""
+    """Prefer normalized filenames, with compatibility for legacy info icons."""
     prefix = ICON_PREFIX[severity]
     suffix = "bw_small" if grayscale else "color_small"
-    path = Path(icon_root) / (prefix + suffix + ".png")
-    return path if path.is_file() else None
+    root = Path(icon_root)
+    path = root / (prefix + suffix + ".png")
+    if path.is_file():
+        return path
+    if severity == "info":
+        legacy = root / ("info_ " + suffix + ".png")
+        if legacy.is_file():
+            return legacy
+    return None
 
 
 class NoticeRenderer:
