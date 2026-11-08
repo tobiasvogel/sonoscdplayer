@@ -34,6 +34,11 @@ try:
 except ImportError:
     from power_gesture import PowerCoordinator
 
+try:
+    from .connect_gesture import ConnectGesture
+except ImportError:
+    from connect_gesture import ConnectGesture
+
 DEFAULT_CONFIG = Path(__file__).with_name('interface.toml')
 DEFAULT_SOCKET = '/run/sonoscdplayer/control.sock'
 
@@ -262,6 +267,37 @@ def make_power_shutdown(enabled, requester=None, start=None):
     return shutdown
 
 
+def publish_connect_event(gesture, name, event, now_ms, publish, *,
+                          separate_speaker_button=False):
+    """Publish UI-only semantic gestures, never a network or Sonos action."""
+    if name == 'speaker_select':
+        if event == 'pressed' and separate_speaker_button:
+            publish('speaker_select', 'pressed')
+        return name == 'speaker_select'
+    if name != 'connect':
+        return False
+    if event == 'pressed':
+        gesture.press(now_ms)
+        return True
+    if event == 'released':
+        action = gesture.release(now_ms)
+        if action is not None:
+            if action == 'status' and not separate_speaker_button:
+                publish('speaker_select', 'pressed')
+            else:
+                publish('connect', action)
+        return True
+    return False
+
+
+def tick_connect_event(gesture, now_ms, publish):
+    """Emit bounded countdown updates while the CONNECT button is held."""
+    action = gesture.tick(now_ms)
+    if action is not None:
+        publish('connect', action)
+    return action
+
+
 def pins_for(cfg):
     return {b.pin: b.pull for b in cfg.buttons.values()} | {
         cfg.encoder.a: cfg.encoder.pull, cfg.encoder.b: cfg.encoder.pull,
@@ -290,7 +326,8 @@ def run_sim(cfg, input_file):
 
 
 def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None, ui_events_socket=None, target_preview_enabled=False, target_execute_enabled=False,
-             drive_activity_enabled=False, power_actions=False):
+             drive_activity_enabled=False, power_actions=False,
+             connect_gestures=False):
     try:
         import RPi.GPIO as GPIO
     except ImportError as exc:
@@ -331,12 +368,20 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
             cfg.power_hold_ms,
             publish=(publisher.enqueue if publisher is not None else (lambda *_: False)),
             shutdown=make_power_shutdown(power_actions))
+        connect = ConnectGesture() if connect_gestures else None
+        separate_speaker_button = 'speaker_select' in cfg.buttons
         print('GPIO command mode active.' if execute else 'GPIO diagnostics active; Ctrl+C to exit. No Sonos commands.', flush=True)
         while True:
             now_ms = time.monotonic_ns() // 1_000_000
             for name, event in engine.sample(sample(), now_ms):
                 power.event(name, event, now_ms)
-                if publisher is not None:
+                if connect is not None and name in ('connect', 'speaker_select'):
+                    publish_connect_event(
+                        connect, name, event, now_ms,
+                        publisher.enqueue if publisher is not None
+                        else (lambda *_: False),
+                        separate_speaker_button=separate_speaker_button)
+                elif publisher is not None:
                     publisher.enqueue(name, event)
                 if (
                     activity_publisher is not None
@@ -347,7 +392,13 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
                 ):
                     activity_publisher.enqueue()
                 handle_event(name, event, commands=commands, execute=execute, socket_path=socket_path, uid=uid, dispatcher=dispatcher, target_preview=target_preview, target_executor=target_executor)
-            power.tick(time.monotonic_ns() // 1_000_000)
+            tick_ms = time.monotonic_ns() // 1_000_000
+            power.tick(tick_ms)
+            if connect is not None:
+                tick_connect_event(
+                    connect, tick_ms,
+                    publisher.enqueue if publisher is not None
+                    else (lambda *_: False))
             time.sleep(cfg.poll_interval_ms / 1000)
     except KeyboardInterrupt:
         pass
@@ -377,6 +428,8 @@ def main():
         action='store_true',
         help='opt-in asynchronous physical activity RPC for idle drive wake',
     )
+    p.add_argument('--connect-gestures', action='store_true',
+                   help='opt-in semantic CONNECT/network UI gestures; no network writes')
     p.add_argument('--power-actions', action='store_true',
                    help='with --gpio: holding the power button really powers the system off '
                         '(needs the polkit rule from docs/POWER_BUTTON.md); otherwise preview only')
@@ -397,6 +450,8 @@ def main():
         p.error('--uid-file is not used by safe selected-target execution')
     if args.drive_activity_events and not args.gpio:
         p.error('--drive-activity-events requires --gpio')
+    if args.connect_gestures and (not args.gpio or args.ui_events_socket is None):
+        p.error('--connect-gestures requires --gpio and --ui-events-socket')
     if args.power_actions and not args.gpio:
         p.error('--power-actions requires --gpio')
     if args.ui_events_socket is not None and not args.gpio:
@@ -411,7 +466,8 @@ def main():
                  target_preview_enabled=args.selected_target_preview,
                  target_execute_enabled=args.selected_target_execute,
                  drive_activity_enabled=args.drive_activity_events,
-                 power_actions=args.power_actions)
+                 power_actions=args.power_actions,
+                 connect_gestures=args.connect_gestures)
 
 
 if __name__ == '__main__':
