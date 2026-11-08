@@ -13,8 +13,8 @@ class MultiRenderer(Renderer):
         count=len(state.topology.targets)
         if not count:
             self.text(im,(7,49),self.tr('status.no_targets'),fill=t.secondary,size=9,width=115,height=15)
-        first=max(0,min(max(0,count+3-4),state.focus-1))
-        for pos in range(first,min(first+4,count+3)):
+        first=max(0,min(max(0,count+2-4),state.focus-1))
+        for pos in range(first,min(first+4,count+2)):
             y=27+(pos-first)*18
             focus=pos==state.focus
             if focus:d.rounded_rectangle((4,y,123,y+15),radius=2,fill=t.accent)
@@ -23,9 +23,6 @@ class MultiRenderer(Renderer):
                 name=self.tr('menu.review')
                 check='>'
             elif pos==count+1:
-                name=self.tr('menu.language')
-                check='>'
-            elif pos==count+2:
                 name=self.tr('menu.back')
                 check='<'
             else:
