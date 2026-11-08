@@ -158,6 +158,45 @@ def idle_stop_unverified(power):
     )
 
 
+
+def _diagnosed_wake(power, monitor, *, source):
+    """One existing wake, with passive verification diagnostics."""
+    diagnostics = {}
+    started = time.monotonic()
+
+    def verify(device):
+        diagnostics["verification_entered"] = True
+        return wait_for_woken_disc(
+            monitor, device, diagnostics=diagnostics
+        )
+
+    ok = power.wake(verify=verify)
+    elapsed = time.monotonic() - started
+
+    # Never print USB serials, complete TOCs or Sonos target identifiers.
+    print(
+        "[m019-wake] "
+        f"source={source} "
+        f"ok={ok} "
+        f"elapsed_seconds={elapsed:.2f} "
+        f"verification_entered={diagnostics.get('verification_entered', False)} "
+        f"attempts={diagnostics.get('attempts', 0)} "
+        f"stage={diagnostics.get('stage', 'not_entered')} "
+        f"timeout={diagnostics.get('timeout_reached', False)} "
+        f"check={diagnostics.get('check', '-')} "
+        f"exception={diagnostics.get('exception', '-')} "
+        f"media_code={diagnostics.get('media_code', '-')} "
+        f"observed_tracks={diagnostics.get('observed_tracks', '-')} "
+        f"expected_tracks={diagnostics.get('expected_tracks', '-')}",
+        flush=True,
+    )
+
+    # The manager's original last_error remains available in the
+    # drive_power status snapshot; diagnostics do not modify it.
+    return ok
+
+
+
 def wake_before_new_play(power, monitor, request, *, stopped, publish_wake=None):
     """Wake and verify before the existing explicit PLAY media guard.
 
@@ -188,9 +227,7 @@ def wake_before_new_play(power, monitor, request, *, stopped, publish_wake=None)
     if publish_wake is not None:
         publish_wake()
 
-    return power.wake(
-        verify=lambda device: wait_for_woken_disc(monitor, device)
-    )
+    return _diagnosed_wake(power, monitor, source="play")
 
 
 
@@ -213,9 +250,7 @@ def process_drive_activity(power, monitor, *, publish_wake=None):
     if publish_wake is not None:
         publish_wake()
 
-    return power.wake(
-        verify=lambda device: wait_for_woken_disc(monitor, device)
-    )
+    return _diagnosed_wake(power, monitor, source="activity")
 
 
 def disc_allows_new_play(controller, request, monitor):

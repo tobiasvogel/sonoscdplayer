@@ -92,7 +92,11 @@ class PlayerWakeGateTests(unittest.TestCase):
 
         power.activity.assert_called_once()
         power.wake.assert_called_once()
-        wait.assert_called_once_with(monitor, "/dev/sr0")
+        wait.assert_called_once()
+        self.assertEqual(wait.call_args.args, (monitor, "/dev/sr0"))
+        self.assertIsInstance(
+            wait.call_args.kwargs["diagnostics"], dict
+        )
 
     def test_failed_wake_blocks_play(self):
         power = self.make_power(wake_ok=False)
@@ -138,7 +142,11 @@ class PlayerWakeGateTests(unittest.TestCase):
             )
 
         power.wake.assert_called_once()
-        wait.assert_called_once_with(monitor, "/dev/sr0")
+        wait.assert_called_once()
+        self.assertEqual(wait.call_args.args, (monitor, "/dev/sr0"))
+        self.assertIsInstance(
+            wait.call_args.kwargs["diagnostics"], dict
+        )
 
 
 if __name__ == "__main__":

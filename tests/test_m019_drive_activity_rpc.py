@@ -51,8 +51,12 @@ class DriveActivityRpcTests(unittest.TestCase):
 
         power.activity.assert_called_once()
         power.wake.assert_called_once()
-        verification.assert_called_once_with(
-            monitor, "/dev/sr0"
+        verification.assert_called_once()
+        self.assertEqual(
+            verification.call_args.args, (monitor, "/dev/sr0")
+        )
+        self.assertIsInstance(
+            verification.call_args.kwargs["diagnostics"], dict
         )
 
     def test_failed_wake_rejected(self):
