@@ -1,6 +1,6 @@
 """Pure display timing decisions for notices; no timers or input handlers.
 
-UI-NOTICE-02 will consume these decisions to implement actual scheduling.
+UI-NOTICE-02 consumes these decisions without hardware dependencies.
 """
 from dataclasses import dataclass
 from math import isfinite
@@ -23,7 +23,7 @@ class NoticeTiming:
         Zero means awaiting acknowledgement; errors are never timed.
         A non-dismissible notice may only be cleared by its owning state.
         """
-        if notice.severity == "error":
+        if notice.severity == "error" or not notice.dismissible:
             return None
         seconds = (self.default_duration_seconds if notice.duration_seconds is None
                    else notice.duration_seconds)
