@@ -88,5 +88,19 @@
   "network.status_preview": "Network status: display not yet available",
   "network.settings_preview": "Network settings: setup coming later",
   "network.setup_warning": "Setup mode in {seconds} seconds",
-  "network.setup_requested": "Setup mode requested (not yet active)"
+  "network.setup_requested": "Setup mode requested (not yet active)",
+  "menu.main": "Main menu",
+  "menu.network": "Network",
+  "network.ethernet": "Ethernet",
+  "network.wifi": "Wi-Fi",
+  "network.preferred": "Preferred",
+  "network.state.connected": "Connected",
+  "network.state.connecting": "Connecting",
+  "network.state.disconnected": "Disconnected",
+  "network.state.unavailable": "Unavailable",
+  "network.state.unknown": "Unknown",
+  "network.preferred.ethernet": "Ethernet",
+  "network.preferred.wifi": "Wi-Fi",
+  "network.preferred.none": "No connection",
+  "network.readonly": "Read-only status"
 }
