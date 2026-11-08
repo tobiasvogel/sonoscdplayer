@@ -75,5 +75,14 @@
   "status.power_choose": "Aktion wählen",
   "status.power_poweroff": "Fährt herunter…",
   "status.power_reboot": "Startet neu…",
-  "status.power_failed": "Aktion fehlgeschlagen"
+  "status.power_failed": "Aktion fehlgeschlagen",
+  "network.reset_warning": "Netzwerk wird in {seconds} Sekunden zurückgesetzt",
+  "network.status": "Netzwerkstatus",
+  "network.settings": "Netzwerkeinstellungen",
+  "network.setup_hotspot": "Einrichtungs-Hotspot wird vorbereitet",
+  "system.please_wait": "Bitte warten",
+  "system.shutting_down": "Wird heruntergefahren",
+  "system.restarting": "Wird neu gestartet",
+  "system.ready": "Bereit",
+  "system.error": "Ein Fehler ist aufgetreten"
 }
