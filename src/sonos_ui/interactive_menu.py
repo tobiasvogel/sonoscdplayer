@@ -110,6 +110,7 @@ class InteractiveMenu:
             if self.menu_focus == 0:
                 self._targets_return = 'main'
                 self.section = 'targets'
+                self.state = replace(self.state, focus=0)
                 self._next_refresh = 0.0
                 self._start_discovery(now)
             elif self.menu_focus == 1:
@@ -144,6 +145,7 @@ class InteractiveMenu:
         self.active = True
         self.section = 'targets'
         self._targets_return = 'closed'
+        self.state = replace(self.state, focus=0)
         self.language_picker = False
         self._next_refresh = 0.0
         self._start_discovery(now)
