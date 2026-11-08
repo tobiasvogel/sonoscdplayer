@@ -34,6 +34,13 @@ def verify_woken_disc(monitor, device):
         if not toc.tracks:
             return False
 
+        # Recheck USB identity after potentially blocking TOC access.
+        # Never authorize a disc read across an observed reconnect.
+        if not monitor.path_exists(device):
+            return False
+        if monitor.identity_reader(device) != monitor.identity:
+            return False
+
         return toc == monitor.loaded_toc
 
     except (OSError, RuntimeError, ValueError, TimeoutError):
