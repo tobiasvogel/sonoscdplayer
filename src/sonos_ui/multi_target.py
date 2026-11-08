@@ -92,7 +92,7 @@ class MultiSelection:
         # Keep the last acknowledged target even when discovery temporarily loses
         # a speaker. Never silently shrink or replace the player's target.
         return replace(self,topology=topology,
-                       focus=min(self.focus,len(topology.targets)+2),
+                       focus=min(self.focus,len(topology.targets)+1),
                        notice='status.missing_targets' if missing else self.notice)
 
     def action(self,action):
@@ -102,12 +102,12 @@ class MultiSelection:
             return replace(self,draft=self.applied,notice='')
         n=len(self.topology.targets)
         if action in ('next','previous'):
-            return replace(self,focus=max(0,min(n+2,self.focus+(1 if action=='next' else -1))),
+            return replace(self,focus=max(0,min(n+1,self.focus+(1 if action=='next' else -1))),
                            notice='')
-        if self.focus==n+2:
+        # Back follows Apply. Also accept the old n+2 focus in callers
+        # already holding a pre-navigation state; never expose Language here.
+        if self.focus>=n+1:
             return replace(self,draft=self.applied,notice='menu.back')
-        if self.focus==n+1:
-            return replace(self,notice='menu.language')
         if self.focus==n:
             if self.topology.error or not self.draft:
                 return replace(self,notice='status.invalid_selection')
