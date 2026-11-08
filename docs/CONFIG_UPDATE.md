@@ -1,40 +1,71 @@
 # Updating the player configuration
 
-`tools/config_swap.py` replaces the production config the simple way: stop the
-service, swap the file, start the service. It never writes anything unless you
-pass `--apply`.
+SonosCDPlayer uses TOML files for configuration. The `tools/config_swap.py` utility helps replace an existing **player** configuration while retaining a backup of the previous version.
+
+It provides a dry run, basic validation, a controlled service restart, and a rollback attempt if the restarted service fails its initial check.
+
+## Before you begin
+
+Prepare a new TOML file based on your existing player configuration, preserving any local and hardware-specific settings.
+
+The repository includes [`config/player.example.toml`](../config/player.example.toml) as a reference. **Do not overwrite your existing configuration with the example file:** your installation may use different settings or defaults.
+
+Run the following commands from the repository root, replacing the example paths with the actual paths used by your installation.
+
+## 1. Check the new configuration
 
 ```sh
-# 1. Prepare the new file anywhere (for example a copy of the old one with your edits).
-# 2. Dry run: validates the file and checks the player is idle.
 python3 tools/config_swap.py \
-    --config /home/pi/sonoscdplayer/player.toml \
-    --new ~/player.toml.new \
+    --config /path/to/current/player.toml \
+    --new /path/to/new/player.toml \
     --reference config/player.example.toml
-
-# 3. Really swap (needs permission to run systemctl, so usually sudo).
-sudo python3 tools/config_swap.py --config /home/pi/sonoscdplayer/player.toml \
-    --new ~/player.toml.new --reference config/player.example.toml --apply
 ```
 
-What it does with `--apply`:
+Without `--apply`, the tool performs a dry run: it checks the files and the player's reported state and describes the planned operation **without modifying the configuration or restarting services**.
 
-1. Rejects invalid TOML. With `--reference`, it also rejects a key whose type
-   differs from the reference; missing keys are only listed (the code has its
-   own defaults) and unknown keys are listed as "not in reference".
-2. Asks the running player for its cached status and **refuses while a CD is
-   playing, paused or starting, or while a Sonos session is still owned**. If
-   no player answers on the control socket, nothing can be interrupted and it
-   continues. `--force` swaps anyway and interrupts playback.
-3. Stops the service, keeps the old file as `player.toml.bak-<timestamp>`
-   (mode 0600), and replaces the config atomically. Owner and mode of the old
-   file are kept, so a swap done as root stays readable by the `pi` service.
-4. Starts the service and waits a few seconds. If it is not active, the old
-   file is restored and the service is started again.
+## 2. Apply the update
 
-Only key names are printed, never values. By default the unit
-`sonoscdplayer-player.service` is restarted; pass `--service` (repeatable) to
-include others, such as the buttons unit.
+Once you have reviewed the dry-run result and confirmed that the player is idle:
 
-If you only changed the file and nothing else, you can of course still do it
-by hand: `sudo systemctl stop …`, copy the file, `sudo systemctl start …`.
+```sh
+sudo python3 tools/config_swap.py \
+    --config /path/to/current/player.toml \
+    --new /path/to/new/player.toml \
+    --reference config/player.example.toml \
+    --apply
+```
+
+The tool normally refuses to proceed while the player is active, owns a Sonos session, has pending group cleanup, or reports an active stream.
+
+By default, only `sonoscdplayer-player.service` is restarted. Use the repeatable `--service` option when additional systemd services need to be included.
+
+## What the tool does
+
+When applying a change, the utility:
+
+1. Checks for valid TOML and, if `--reference` is supplied, compares the types of known keys with the reference.
+2. Checks the current player state and normally refuses to interrupt playback or an owned Sonos session.
+3. Creates a timestamped backup of the old configuration alongside the original file.
+4. Stops the selected service, replaces the configuration atomically, and starts the service.
+5. Attempts to restore the previous configuration and restart the service if the initial startup check fails.
+
+Backups use a `.bak-<timestamp>` suffix and restricted file permissions. The replacement preserves the previous configuration's ownership and file mode.
+
+## Important limitations
+
+- **Validation is not exhaustive.** Valid TOML and matching key types do not guarantee valid values or hardware compatibility.
+- **The tool does not merge settings.** Missing and unknown keys are reported with `--reference`, but you remain responsible for reviewing changes.
+- **An initial successful service check is not a full functional test.** Test the affected features after updating.
+- **Only selected services are restarted.** Other services may retain their previous configuration.
+- **An unavailable player control socket is not proof that all player processes have stopped.** Check the actual services before applying an update.
+- **Rollback is best-effort.** If recovery fails, inspect the service status and use the preserved backup.
+
+The optional `--force` flag bypasses the normal busy-state check and **may interrupt playback**. Avoid it for routine updates.
+
+## Related configuration files
+
+- [`config/player.example.toml`](../config/player.example.toml) — Player configuration reference.
+- [`config/interface.example.toml`](../config/interface.example.toml) — Hardware input configuration.
+- [`config/ui.example.toml`](../config/ui.example.toml) — Display preferences.
+
+This utility is specifically intended for the player configuration. Other settings and services may require separate update procedures.
