@@ -40,6 +40,35 @@ class NavigationTests(unittest.TestCase):
         self.assertTrue(menu.active)
         self.assertEqual(menu.section, 'main')
 
+    def test_speaker_menu_has_only_apply_and_back_after_targets(self):
+        from dataclasses import replace
+        from sonos_ui.multi_target import MultiSelection, Topology
+        from sonos_ui.multi_render import MultiRenderer
+        from sonos_ui.i18n import Translator
+        from PIL import Image
+
+        state = MultiSelection(topology=Topology(()))
+        self.assertEqual(state.action('next').focus, 1)
+        self.assertEqual(state.action('next').action('next').focus, 1)
+        self.assertEqual(state.action('next').action('confirm').notice, 'menu.back')
+        # Old cached focus value still resolves safely to Back.
+        self.assertEqual(replace(state, focus=2).action('confirm').notice, 'menu.back')
+        self.assertNotEqual(Translator('de').tr('menu.language'), 'menu.language')
+        image = MultiRenderer().render_multi(state)
+        self.assertIsInstance(image, Image.Image)
+        self.assertEqual(image.size, (128, 128))
+
+    def test_speaker_back_from_main_without_language_entry(self):
+        from dataclasses import replace
+        from sonos_ui.multi_target import Topology
+        menu = self.make_menu()
+        menu.event('encoder_sw', 'pressed', now=0)
+        self.choose(menu, 0)
+        menu.state = replace(menu.state, topology=Topology(()), focus=1)
+        self.assertTrue(menu.event('encoder_sw', 'pressed', now=1))
+        self.assertEqual(menu.section, 'main')
+        self.assertFalse(menu.language_picker)
+
     def test_network_status_back_and_main_back(self):
         reads = []
         def read():
