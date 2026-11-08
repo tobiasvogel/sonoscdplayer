@@ -147,7 +147,7 @@ def handle_command(controller, request, selection=None, eject=None):
 
 
 
-def wake_before_new_play(power, monitor, request, *, stopped):
+def wake_before_new_play(power, monitor, request, *, stopped, publish_wake=None):
     """Wake and verify before the existing explicit PLAY media guard.
 
     Never contacts Sonos. An unverified wake blocks the requested PLAY.
@@ -171,13 +171,16 @@ def wake_before_new_play(power, monitor, request, *, stopped):
     if monitor is None:
         return False
 
+    if publish_wake is not None:
+        publish_wake()
+
     return power.wake(
         verify=lambda device: wait_for_woken_disc(monitor, device)
     )
 
 
 
-def process_drive_activity(power, monitor):
+def process_drive_activity(power, monitor, *, publish_wake=None):
     """Record physical activity; verify wake without any Sonos transport."""
     if power is None or power.idle_policy is None:
         return True
@@ -189,6 +192,9 @@ def process_drive_activity(power, monitor):
 
     if monitor is None:
         return False
+
+    if publish_wake is not None:
+        publish_wake()
 
     return power.wake(
         verify=lambda device: wait_for_woken_disc(monitor, device)
@@ -322,7 +328,12 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 # Exact, dedicated RPC: activity alone never authorizes
                 # playback, transport, target changes or EJECT.
                 if isinstance(request, dict) and request == {'command': 'drive-activity'}:
-                    ok = process_drive_activity(power, disc_monitor)
+                    ok = process_drive_activity(
+                        power, disc_monitor,
+                        publish_wake=lambda: publisher.publish(
+                            controller, power
+                        ),
+                    )
                     reply = response(
                         controller, ok=ok,
                         error=None if ok else 'drive wake unverified',
@@ -339,6 +350,9 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 if not wake_before_new_play(
                     power, disc_monitor, request,
                     stopped=(controller.state.mode == Mode.STOPPED),
+                    publish_wake=lambda: publisher.publish(
+                        controller, power
+                    ),
                 ):
                     reply = response(
                         controller, ok=False,
