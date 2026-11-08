@@ -104,6 +104,26 @@ class NoticeEngineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.shown(float("nan"))
 
+    def test_sparse_ticks_expire_successive_messages(self):
+        first = Notice("system.ready", priority=10, duration_seconds=2)
+        second = Notice("network.status", priority=1, duration_seconds=3)
+        self.engine.post(first, now=0)
+        self.engine.post(second, now=1)
+        self.assertIsNone(self.shown(10).notice)
+        self.assertEqual(self.engine.pending_count(now=10), 0)
+
+    def test_multiple_preemptions_preserve_remaining(self):
+        low = Notice("system.ready", priority=1, duration_seconds=5)
+        mid = Notice("network.status", priority=2, duration_seconds=3)
+        high = Notice("system.error", severity="error", priority=3)
+        self.engine.post(low, now=0)
+        self.engine.post(mid, now=1)
+        self.engine.post(high, now=2)
+        self.assertTrue(self.engine.confirm(now=10))
+        self.assertEqual(self.shown(12).notice, mid)
+        self.assertEqual(self.shown(13).notice, low)
+        self.assertIsNone(self.shown(17).notice)
+
     def test_configurable_default(self):
         engine = NoticeEngine(timing=NoticeTiming(default_duration_seconds=8))
         engine.post(self.info, now=0)
