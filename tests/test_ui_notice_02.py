@@ -120,9 +120,10 @@ class NoticeEngineTests(unittest.TestCase):
         self.engine.post(mid, now=1)
         self.engine.post(high, now=2)
         self.assertTrue(self.engine.confirm(now=10))
-        self.assertEqual(self.shown(12).notice, mid)
-        self.assertEqual(self.shown(13).notice, low)
-        self.assertIsNone(self.shown(17).notice)
+        self.assertEqual(self.shown(11.5).notice, mid)
+        self.assertEqual(self.shown(12).notice, low)
+        self.assertEqual(self.shown(15).notice, low)
+        self.assertIsNone(self.shown(16).notice)
 
     def test_configurable_default(self):
         engine = NoticeEngine(timing=NoticeTiming(default_duration_seconds=8))
