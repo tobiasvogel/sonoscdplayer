@@ -5,6 +5,7 @@ Only device TYPE and STATE are requested; device names, SSIDs, IPs and
 connection profiles are neither retained nor emitted.
 """
 from dataclasses import dataclass
+import os
 import subprocess
 
 
@@ -53,7 +54,10 @@ def parse_device_status(output):
         if len(fields) != 3:
             continue
         kind = _TYPES.get(fields[1].strip().lower())
-        state = _STATES.get(fields[2].strip().lower())
+        state_text = fields[2].strip().lower()
+        # NM may report an existing IP configuration as externally connected.
+        state = ("connected" if state_text.startswith("connected (")
+                 else _STATES.get(state_text))
         if kind is not None:
             observed[kind].append(state or "unknown")
     summary = {}
@@ -73,7 +77,8 @@ def read_network_status(*, runner=subprocess.run, timeout=2.0):
                "--fields", "DEVICE,TYPE,STATE", "device", "status")
     try:
         completed = runner(command, capture_output=True, text=True,
-                           timeout=timeout, check=False)
+                           timeout=timeout, check=False,
+                           env={**os.environ, "LC_ALL": "C"})
         if completed.returncode != 0:
             return NetworkStatus()
         return parse_device_status(completed.stdout)
