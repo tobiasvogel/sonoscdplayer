@@ -22,7 +22,7 @@ def topology(grouped=False):
 
 
 def menu_confirm(menu):
-    menu.event('encoder_sw','pressed',now=0)
+    menu.event('speaker_select','pressed',now=0)
     menu.state=menu.state.update(topology())
     # Speakers are sorted by display name (Kitchen precedes Office).
     # Explicitly focus the Office target rather than assuming index zero.
@@ -87,7 +87,7 @@ class MenuTargetRPCTests(unittest.TestCase):
         sent=[]
         menu=InteractiveMenu(discover=lambda **kw:topology(),
                              target_rpc=lambda uid:sent.append(uid) or True)
-        menu.event('encoder_sw','pressed',now=0)
+        menu.event('speaker_select','pressed',now=0)
         menu.state=menu.state.update(topology())
         menu.event('encoder_sw','pressed')
         menu.event('encoder','right')
