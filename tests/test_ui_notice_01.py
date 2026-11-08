@@ -58,6 +58,39 @@ class NoticeModelTests(unittest.TestCase):
                              (128, 128))
             self.assertIsNone(icon_file("info", icon_root=directory))
 
+    def test_normalized_info_icons_preferred_over_legacy_whitespace(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            for suffix, grayscale in (("bw_small", True),
+                                      ("color_small", False)):
+                legacy = root / ("info_ " + suffix + ".png")
+                modern = root / ("info_" + suffix + ".png")
+                legacy.write_bytes(b"legacy")
+                self.assertEqual(icon_file("info", grayscale, root), legacy)
+                modern.write_bytes(b"normalized")
+                self.assertEqual(icon_file("info", grayscale, root), modern)
+                legacy.unlink()
+                self.assertEqual(icon_file("info", grayscale, root), modern)
+                modern.unlink()
+                self.assertIsNone(icon_file("info", grayscale, root))
+
+    def test_normalized_icons_are_actually_rendered_not_fallback(self):
+        from PIL import Image
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            # A marker artwork must visibly change a notice raster compared
+            # with the no-icon fallback, for both pixel formats.
+            for grayscale in (False, True):
+                suffix = "bw_small" if grayscale else "color_small"
+                Image.new("RGBA", (16, 16), (255, 255, 255, 255)).save(
+                    root / ("info_" + suffix + ".png"))
+                notice = Notice("system.please_wait", severity="info")
+                actual = NoticeRenderer(icon_root=root).render(
+                    notice, grayscale=grayscale)
+                fallback = NoticeRenderer(icon_root=root / "missing").render(
+                    notice, grayscale=grayscale)
+                self.assertNotEqual(actual.tobytes(), fallback.tobytes())
+
     def test_published_icons_are_resolvable(self):
         root = Path(__file__).resolve().parents[1] / "src" / "data" / "icons"
         for severity in ("info", "success", "warning", "error"):
