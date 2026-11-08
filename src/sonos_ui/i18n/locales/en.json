@@ -75,5 +75,14 @@
   "status.power_choose": "Choose action",
   "status.power_poweroff": "Shutting down…",
   "status.power_reboot": "Restarting…",
-  "status.power_failed": "Action failed"
+  "status.power_failed": "Action failed",
+  "network.reset_warning": "Network reset in {seconds} seconds",
+  "network.status": "Network status",
+  "network.settings": "Network settings",
+  "network.setup_hotspot": "Preparing setup hotspot",
+  "system.please_wait": "Please wait",
+  "system.shutting_down": "Shutting down",
+  "system.restarting": "Restarting",
+  "system.ready": "Ready",
+  "system.error": "An error occurred"
 }
