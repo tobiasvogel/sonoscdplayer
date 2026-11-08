@@ -16,13 +16,15 @@ from .target_rpc_client import submit_target
 from .selection_plan import plan_from_applied
 from .connect_notice import ConnectNoticeView
 from .notice_render import NoticeRenderer
+from .navigation_pages import NavigationRenderer, MAIN_ITEMS, NETWORK_ITEMS, SETTINGS_ITEMS
+from .network_status import NetworkStatus, read_network_status
 
 
 POWER_ITEMS = ('back', 'poweroff', 'reboot')
 
 
 class InteractiveMenu:
-    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None):
+    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None, network_reader=read_network_status):
         self.state = MultiSelection()
         self.language = Translator(language).language
         self.languages = available_languages()
@@ -54,12 +56,94 @@ class InteractiveMenu:
         self.connect_notices = ConnectNoticeView()
         self._connect_renderer = NoticeRenderer()
         self._notice_previous_active = None
+        self.section = 'targets'  # Preserve direct Sonos selection from CONNECT.
+        self.menu_focus = 0
+        self._targets_return = 'closed'
+        self._navigation_renderer = NavigationRenderer()
+        self._network_reader = network_reader
+        self.network_snapshot = NetworkStatus()
+        self._network_pending = None
+        self._network_worker = None
+        self._next_network_refresh = 0.0
+
+    def _open_network_status(self, now):
+        self.section = 'network_status'
+        self.network_snapshot = NetworkStatus()
+        self._next_network_refresh = 0.0
+        self._start_network_read(now)
+
+    def _start_network_read(self, now):
+        if self._network_worker is not None and self._network_worker.is_alive():
+            return
+        self._next_network_refresh = now + 15.0
+        def work():
+            try:
+                snapshot = self._network_reader()
+                if not isinstance(snapshot, NetworkStatus):
+                    snapshot = NetworkStatus()
+            except Exception:
+                snapshot = NetworkStatus()
+            with self._lock:
+                self._network_pending = snapshot
+        self._network_worker = threading.Thread(
+            target=work, name='ui-network-status', daemon=True)
+        self._network_worker.start()
+
+    def _navigation_event(self, name, event, now):
+        if name == 'encoder' and event in ('left', 'right'):
+            choices = {'main': MAIN_ITEMS, 'network': NETWORK_ITEMS,
+                       'settings': SETTINGS_ITEMS}.get(self.section)
+            if choices is None:
+                return False
+            step = 1 if event == 'right' else -1
+            self.menu_focus = max(0, min(len(choices) - 1, self.menu_focus + step))
+            return True
+        if (name, event) != ('encoder_sw', 'pressed'):
+            return False
+        if self.section == 'network_status':
+            self.section = 'network'
+            self.menu_focus = 0
+            return True
+        if self.section not in ('main', 'network', 'settings'):
+            return False
+        if self.section == 'main':
+            if self.menu_focus == 0:
+                self._targets_return = 'main'
+                self.section = 'targets'
+                self._next_refresh = 0.0
+                self._start_discovery(now)
+            elif self.menu_focus == 1:
+                self.section = 'network'
+                self.menu_focus = 0
+            elif self.menu_focus == 2:
+                self.section = 'settings'
+                self.menu_focus = 0
+            else:
+                self.active = False
+        elif self.section == 'network':
+            if self.menu_focus == 0:
+                self._open_network_status(now)
+            elif self.menu_focus == 1:
+                self._connect_event('settings', now)
+            else:
+                self.section = 'main'
+                self.menu_focus = 1
+        elif self.section == 'settings':
+            if self.menu_focus == 0:
+                self.language_picker = True
+                self.language_focus = self.languages.index(self.language)
+            else:
+                self.section = 'main'
+                self.menu_focus = 2
+        return True
 
     def _open_targets(self, now):
         """Open existing target selection, never start playback."""
         self.connect_notices.clear(now=now)
         self._notice_previous_active = None
         self.active = True
+        self.section = 'targets'
+        self._targets_return = 'closed'
         self.language_picker = False
         self._next_refresh = 0.0
         self._start_discovery(now)
@@ -184,11 +268,18 @@ class InteractiveMenu:
             self._pending = None
             power_result = self._power_result
             self._power_result = None
+            network_result = self._network_pending
+            self._network_pending = None
         if power_result is False:
             # The system did not accept the request: the menu stays open and usable.
             self._power_busy = False
             self.power_notice = 'status.power_failed'
             changed = True
+        if network_result is not None:
+            self.network_snapshot = network_result
+            changed = True
+        if self.active and self.section == 'network_status' and not self.power_menu and self._notice_previous_active is None and now >= self._next_network_refresh:
+            self._start_network_read(now)
         if new is not None:
             # Topology refresh must not erase a completed target-RPC notice.
             self.state = self.state.update(new)
@@ -209,7 +300,7 @@ class InteractiveMenu:
         if self._notice_previous_active is not None and self.connect_notices.current(now=now) is None:
             self._restore_after_notice()
             changed = True
-        if (self.active and not self.power_menu and
+        if (self.active and self.section == 'targets' and not self.power_menu and
                 self._notice_previous_active is None and now >= self._next_refresh):
             self._start_discovery(now)
         return changed
@@ -254,12 +345,13 @@ class InteractiveMenu:
         # CONNECT semantic actions are handled before ordinary menu inputs.
         if name == 'encoder_sw' and event == 'pressed' and not self.active:
             self.active = True
+            self.section = 'main'
+            self.menu_focus = 0
             self.language_picker = False
-            self._start_discovery(now)
             return True
         if not self.active:
             return False
-        if self._target_pending:
+        if self._target_pending and self.section == 'targets':
             return False
         if self.language_picker:
             if (name, event) == ('encoder','right'):
@@ -276,6 +368,8 @@ class InteractiveMenu:
             else:
                 return False
             return True
+        if self.section != 'targets':
+            return self._navigation_event(name, event, now)
         action = {('encoder','right'): 'next',
                   ('encoder','left'): 'previous',
                   ('encoder_sw','pressed'): 'confirm'}.get((name,event))
@@ -285,7 +379,11 @@ class InteractiveMenu:
         if action == 'confirm' and self.state.notice == 'status.apply_requested':
             self._send_target()
         if self.state.notice == 'menu.back':
-            self.active = False
+            if self._targets_return == 'main':
+                self.section = 'main'
+                self.menu_focus = 0
+            else:
+                self.active = False
             self.state = replace(self.state, notice='')
         elif self.state.notice == 'menu.language':
             self.language_picker = True
@@ -320,4 +418,14 @@ class InteractiveMenu:
             self.renderer.bottom(im,status=self.renderer.tr('status.local_only'),
                                  footer=self.renderer.tr('footer.confirm'))
             return image_to_frame(im)
+        if self.section in ('main', 'network', 'settings'):
+            items = {'main': MAIN_ITEMS, 'network': NETWORK_ITEMS,
+                     'settings': SETTINGS_ITEMS}[self.section]
+            heading = {'main': 'menu.main', 'network': 'menu.network',
+                       'settings': 'menu.settings'}[self.section]
+            return image_to_frame(self._navigation_renderer.page(
+                heading, items, self.menu_focus, language=self.language))
+        if self.section == 'network_status':
+            return image_to_frame(self._navigation_renderer.network_status(
+                self.network_snapshot, language=self.language))
         return image_to_frame(self.renderer.render_multi(self.state,gray=True))
