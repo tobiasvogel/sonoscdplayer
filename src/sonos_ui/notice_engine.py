@@ -82,8 +82,8 @@ class NoticeEngine:
             following = self._winner()
             if following is not None and following.started_at is None:
                 # No queued notice consumes time before it first becomes visible.
-                following.started_at = now
-            # Remaining active time is never transferred to another notice.
+                following.started_at = expiry
+            # Time since expiry also counts for the next visible notice.
             if following is None:
                 return
 
