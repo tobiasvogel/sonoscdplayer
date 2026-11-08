@@ -387,10 +387,6 @@ class InteractiveMenu:
             else:
                 self.active = False
             self.state = replace(self.state, notice='')
-        elif self.state.notice == 'menu.language':
-            self.language_picker = True
-            self.language_focus = self.languages.index(self.language)
-            self.state = replace(self.state, notice='')
         return True
 
     def frame(self, image_to_frame):
