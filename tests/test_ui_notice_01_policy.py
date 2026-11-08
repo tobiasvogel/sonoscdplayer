@@ -35,7 +35,7 @@ class NoticeTimingTests(unittest.TestCase):
 
     def test_nondismissible_waits_for_owning_state(self):
         notice = Notice("system.shutting_down", dismissible=False,
-                        duration_seconds=0)
+                        duration_seconds=None)
         policy = NoticeTiming()
         self.assertIsNone(policy.automatic_dismiss_after(notice))
         self.assertFalse(policy.encoder_can_confirm(notice))
