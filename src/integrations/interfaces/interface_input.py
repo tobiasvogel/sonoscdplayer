@@ -299,13 +299,21 @@ def tick_connect_event(gesture, now_ms, publish):
 
 
 def pins_for(cfg):
-    return {b.pin: b.pull for b in cfg.buttons.values()} | {
+    return {b.pin: b.pull for b in cfg.buttons.values()
+            if isinstance(b.pin, int)} | {
         cfg.encoder.a: cfg.encoder.pull, cfg.encoder.b: cfg.encoder.pull,
         cfg.encoder.switch.pin: cfg.encoder.switch.pull}
 
 
+def input_sources(cfg):
+    return set(pins_for(cfg)) | {
+        button.pin for button in cfg.buttons.values()
+        if isinstance(button.pin, str)
+    }
+
+
 def run_sim(cfg, input_file):
-    """JSON Lines: {\"ms\":0, \"levels\":{\"17\":0,...}}; first is full snapshot."""
+    """JSON Lines input levels keyed by BCM pin or 'sr0:0'; first snapshot full."""
     engine = None
     levels = {}
     with open(input_file, encoding='utf8') as f:
@@ -313,9 +321,10 @@ def run_sim(cfg, input_file):
             if not line.strip() or line.lstrip().startswith('#'):
                 continue
             step = json.loads(line)
-            levels.update({int(k): int(v) for k, v in step['levels'].items()})
-            if not all(pin in levels for pin in pins_for(cfg)):
-                raise ValueError('First simulation sample must include all configured GPIO pins')
+            levels.update({int(k) if k.isdecimal() else k: int(v)
+                           for k, v in step['levels'].items()})
+            if not input_sources(cfg).issubset(levels):
+                raise ValueError('First simulation sample must include all configured input sources')
             if any(v not in (0, 1) for v in levels.values()):
                 raise ValueError('Simulation levels must be 0 or 1')
             if engine is None:
@@ -334,6 +343,11 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
         raise RuntimeError('RPi.GPIO not installed; use --simulate FILE on other systems') from exc
     pulls = {'off': GPIO.PUD_OFF, 'up': GPIO.PUD_UP, 'down': GPIO.PUD_DOWN}
     pins = pins_for(cfg)
+    try:
+        from .shift_register_74hc165 import ShiftRegisterReader
+    except ImportError:
+        from shift_register_74hc165 import ShiftRegisterReader
+    shift_reader = ShiftRegisterReader(GPIO, cfg.shift_registers)
     # Optional UI transport is started once, outside the GPIO sampling loop.
     # The producer uses put_nowait only; the worker owns all socket I/O.
     publisher = None
@@ -348,7 +362,9 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
         GPIO.setmode(GPIO.BCM)
         for pin, pull in pins.items():
             GPIO.setup(pin, GPIO.IN, pull_up_down=pulls[pull])
-        sample = lambda: {pin: GPIO.input(pin) for pin in pins}
+        shift_reader.setup()
+        def sample():
+            return {pin: GPIO.input(pin) for pin in pins} | shift_reader.sample()
         engine = InputEngine(cfg, sample(), time.monotonic_ns() // 1_000_000)
         dispatcher = None  # CLI execution only uses the safe selected-target path.
         target_preview = SelectedTargetPreview(socket_path) if target_preview_enabled else None
