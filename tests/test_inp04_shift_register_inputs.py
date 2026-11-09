@@ -117,12 +117,12 @@ class ReaderTests(unittest.TestCase):
     def test_single_register_bit_order(self):
         cfg = config_from('stop = "sr0:2"', register_block=REGISTERS)
         # Serial stream Q7(D7) ... Q7(D0).
-        gpio = FakeGPIO([1, 0, 1, 0, 0, 1, 0, 1])
+        gpio = FakeGPIO([1, 1, 0, 0, 0, 1, 0, 1])
         reader = ShiftRegisterReader(gpio, cfg.shift_registers)
         reader.setup()
         result = reader.sample()
         self.assertEqual([result[f'sr0:{i}'] for i in range(8)],
-                         [1, 0, 1, 0, 0, 1, 0, 1])
+                         [1, 0, 1, 0, 0, 0, 1, 1])
         self.assertEqual(gpio.bits, [])
         self.assertEqual(gpio.outputs.count((23, 1)), 7)
         self.assertIn((19, 0), gpio.outputs)
