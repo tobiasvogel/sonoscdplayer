@@ -1,5 +1,6 @@
 """Pure, hardware-independent GPIO event engine. No Sonos/device commands."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import re
 from pathlib import Path
 import tomllib
 
@@ -14,7 +15,7 @@ TRANSITIONS = {
 
 @dataclass(frozen=True)
 class ButtonConfig:
-    pin: int
+    pin: int | str
     pull: str
     active_level: str
     debounce_ms: int
@@ -29,11 +30,20 @@ class EncoderConfig:
     invert_direction: bool
 
 @dataclass(frozen=True)
+class ShiftRegisterConfig:
+    load_pin: int
+    clock_pin: int
+    data_pin: int
+    chips: int
+
+
+@dataclass(frozen=True)
 class Config:
     buttons: dict
     encoder: EncoderConfig
     poll_interval_ms: int
     power_hold_ms: int = 3000
+    shift_registers: dict = field(default_factory=dict)
 
 
 def _level(value):
@@ -60,6 +70,38 @@ def _pin(value):
     return value
 
 
+def _button_source(value, registers):
+    if isinstance(value, str) and ':' in value:
+        match = re.fullmatch(r'([A-Za-z][A-Za-z0-9_]*):([0-9]+)', value)
+        if match is None:
+            raise ValueError(f'Invalid shift register channel: {value!r}')
+        name, index_text = match.groups()
+        if name not in registers or int(index_text) >= registers[name].chips * 8:
+            raise ValueError(f'Unknown or out-of-range shift register channel: {value!r}')
+        if index_text != str(int(index_text)):
+            raise ValueError(f'Noncanonical shift register channel: {value!r}')
+        return value
+    return _pin(value)
+
+
+def _registers(raw):
+    if not isinstance(raw, dict):
+        raise ValueError('shift_registers must be a table')
+    registers = {}
+    for name, values in raw.items():
+        if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*', name):
+            raise ValueError(f'Invalid shift register identifier: {name!r}')
+        if not isinstance(values, dict) or values.get('type') != '74hc165':
+            raise ValueError(f'{name}: type must be 74hc165')
+        chips = values.get('chips', 1)
+        if type(chips) is not int or not 1 <= chips <= 8:
+            raise ValueError(f'{name}: chips must be between 1 and 8')
+        registers[name] = ShiftRegisterConfig(
+            _pin(values['load_pin']), _pin(values['clock_pin']),
+            _pin(values['data_pin']), chips)
+    return registers
+
+
 def load_config(path):
     with open(path, 'rb') as f:
         raw = tomllib.load(f)
@@ -74,6 +116,7 @@ def load_config(path):
     unknown = set(overrides) - set(BUTTON_NAMES)
     if unknown:
         raise ValueError(f'Unknown button override: {sorted(unknown)}')
+    registers = _registers(raw.get('shift_registers', {}))
     b = raw['buttons']
     buttons = {}
     pins = []
@@ -87,11 +130,14 @@ def load_config(path):
                     raise ValueError('Cannot override an unassigned speaker_select')
                 continue
         values = defaults | overrides.get(name, {})
-        button = ButtonConfig(_pin(raw_pin if name == 'speaker_select' else b[name]), _pull(values.get('pull', 'off')),
-                              _level(values.get('active_level', 'high')),
+        source = _button_source(raw_pin if name == 'speaker_select' else b[name], registers)
+        pull = _pull(values.get('pull', 'off'))
+        if isinstance(source, str) and pull != 'off':
+            raise ValueError(f'{name}: pull applies only to direct GPIO buttons')
+        button = ButtonConfig(source, pull, _level(values.get('active_level', 'high')),
                               _ms(values.get('debounce_ms', 0), 'debounce_ms'))
         buttons[name] = button
-        pins.append(button.pin)
+        pins.append(source)
     e = raw['encoder']
     ec = raw.get('encoder_input', {})
     sw = ButtonConfig(_pin(e['encoder_sw']), _pull(ec.get('pull', 'off')),
@@ -106,12 +152,14 @@ def load_config(path):
     enc = EncoderConfig(_pin(e['encoder_a']), _pin(e['encoder_b']), sw,
                         _pull(ec.get('pull', 'off')), steps, invert)
     pins += [enc.a, enc.b, enc.switch.pin]
+    for reg in registers.values():
+        pins.extend((reg.load_pin, reg.clock_pin, reg.data_pin))
     if len(pins) != len(set(pins)):
         raise ValueError('Duplicate GPIO pin assignment')
     hold = raw.get('power', {}).get('long_press_ms', 3000)
     if isinstance(hold, bool) or not isinstance(hold, int) or not 3000 <= hold <= 10000:
         raise ValueError('power.long_press_ms must be an integer between 3000 and 10000')
-    return Config(buttons, enc, poll, hold)
+    return Config(buttons, enc, poll, hold, registers)
 
 
 class Button:
