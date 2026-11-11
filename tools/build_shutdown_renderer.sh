@@ -10,6 +10,11 @@ if [ "$BACKEND" != ssd1327 ]; then
     exit 2
 fi
 mkdir -p "$BUILD_DIR"
+if [ ! -f "$BUILD_DIR/ssd1327_display_config.h" ]; then
+    echo "Missing $BUILD_DIR/ssd1327_display_config.h" >&2
+    echo "Generate it with: python3 tools/generate_ssd1327_display_header.py --config YOUR_PLAYER_TOML --output $BUILD_DIR/ssd1327_display_config.h" >&2
+    exit 2
+fi
 python3 "$ROOT/tools/build_shutdown_renderer.py" \
     --backend "$BACKEND" \
     --wait "$ROOT/src/data/shutdown_screen.png" \
