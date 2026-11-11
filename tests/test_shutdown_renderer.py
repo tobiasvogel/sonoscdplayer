@@ -15,6 +15,17 @@ class ShutdownRendererTests(unittest.TestCase):
         cls.directory = tempfile.TemporaryDirectory()
         cls.build = Path(cls.directory.name)
         cls.executable = cls.build / 'sonoscdplayer-shutdown-display'
+        pin_config = cls.build / 'display.toml'
+        pin_config.write_text('[display]\\ndc_pin = 22\\nrst_pin = 27\\n',
+                              encoding='utf-8')
+        header = subprocess.run(
+            ['python3', str(ROOT / 'tools/generate_ssd1327_display_header.py'),
+             '--config', str(pin_config), '--output',
+             str(cls.build / 'ssd1327_display_config.h')],
+            capture_output=True, text=True,
+        )
+        if header.returncode != 0:
+            raise AssertionError(header.stdout + header.stderr)
         result = subprocess.run(
             ['sh', str(ROOT / 'tools/build_shutdown_renderer.sh')],
             env=os.environ | {'BUILD_DIR': str(cls.build)},
