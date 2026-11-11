@@ -3,6 +3,7 @@
 import argparse
 from pathlib import Path
 from PIL import Image, ImageOps
+from src.integrations.outputs.display_pins import DisplayPins, load_display_pins
 
 INIT=[(0xfd,0x12),(0xae,),(0x15,0,63),(0x75,0,127),
       (0x81,128),(0xa0,0x51),(0xa1,0),(0xa2,0),(0xa4,),
@@ -22,12 +23,13 @@ def to_frame(image):
     return bytes(((((px[x,y]*15+127)//255)<<4)|((px[x+1,y]*15+127)//255))
                  for y in range(128) for x in range(0,128,2))
 
-def build(frame,*,hz=2_000_000,contrast=128,chunk=128):
+def build(frame,*,hz=2_000_000,contrast=128,chunk=128,pins=None):
+    pins = pins if pins is not None else DisplayPins()
     if len(frame)!=8192: raise ValueError('expected 8192 framebuffer bytes')
     if not 100000<=hz<=8000000 or not 0<=contrast<=255 or not 1<=chunk<=4096:
         raise ValueError('invalid splash parameters')
-    lines=['# SSD1327 SPI0/CE0, DC25, RST24 MUST ALREADY BE HIGH',
-           f'define oled spi [copi 10] [cipo 9] [sclk 11] [cs 8] [dc 25] [freq {hz}]']
+    lines=[f'# SSD1327 SPI0/CE0, DC{pins.dc_pin}, RST{pins.rst_pin} MUST ALREADY BE HIGH',
+           f'define oled spi [copi 10] [cipo 9] [sclk 11] [cs 8] [dc {pins.dc_pin}] [freq {hz}]']
     for command in INIT:
         vals=list(command)
         if vals[0]==0x81: vals[1]=contrast
@@ -47,11 +49,14 @@ def main():
     p.add_argument('-o','--output',type=Path,default=Path('ssd1327.splash'))
     p.add_argument('--spi-hz',type=int,default=2_000_000)
     p.add_argument('--contrast',type=int,default=128)
+    p.add_argument('--display-config',type=Path,default=None,
+                   help='Optional TOML with [display] SPI/DC/RESET pins')
     a=p.parse_args()
     with Image.open(a.png) as im:
         im.load()
         framebuffer=to_frame(im)
-    a.output.write_text(build(framebuffer,hz=a.spi_hz,contrast=a.contrast),encoding='utf-8')
+    pins = load_display_pins(a.display_config) if a.display_config is not None else DisplayPins()
+    a.output.write_text(build(framebuffer,hz=a.spi_hz,contrast=a.contrast,pins=pins),encoding='utf-8')
     print(f'Wrote {a.output}: {len(framebuffer)} framebuffer bytes')
 
 if __name__=='__main__': main()
