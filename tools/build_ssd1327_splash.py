@@ -3,6 +3,8 @@
 import argparse
 from pathlib import Path
 from PIL import Image, ImageOps
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.integrations.outputs.display_pins import DisplayPins, load_display_pins
 
 INIT=[(0xfd,0x12),(0xae,),(0x15,0,63),(0x75,0,127),
