@@ -29,6 +29,7 @@ def commands(args):
     led = base + [MODULES['led'], '--config', args.config] + common + hw + ['--seconds', '0']
     # Child processes run continuously; only the supervisor owns the optional deadline.
     oled = base + [MODULES['oled']] + common + hw + [
+        '--display-config', args.config,
         '--seconds', '0', '--splash', args.splash, '--ambient-auto']
     button = base + [MODULES['buttons'], '--config', args.interface_config, '--gpio'] + common
     if args.adopt_boot_splash:
