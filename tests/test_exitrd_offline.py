@@ -13,8 +13,8 @@ def prepare_display_header(directory):
     build = Path(directory)
     config = build / 'test_display.toml'
     config.write_text(
-        '[display]\\ncontroller = "ssd1327"\\ninterface = "spi"\\n'
-        'dc_pin = 22\\nrst_pin = 27\\n',
+        '[display]\ncontroller = "ssd1327"\ninterface = "spi"\n'
+        'dc_pin = 22\nrst_pin = 27\n',
         encoding='utf-8',
     )
     subprocess.run(
