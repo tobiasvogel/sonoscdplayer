@@ -1,10 +1,11 @@
 """M0.14a: opt-in Waveshare 1.5inch SSD1327 SPI0/CE0 test driver.
 
-Hardware SPI: BCM10 MOSI, BCM11 SCLK, BCM8 CE0, BCM25 DC, BCM24 RST.
+Hardware SPI: BCM10 MOSI, BCM11 SCLK, BCM8 CE0; DC and RESET configurable.
 No player or Sonos commands. Hardware imports deferred until --execute.
 """
 from __future__ import annotations
 from dataclasses import dataclass
+from .display_pins import DisplayPins
 import time
 
 WIDTH = HEIGHT = 128
@@ -20,8 +21,7 @@ class DisplayConfig:
     contrast: int = 0x80
 
     def __post_init__(self):
-        if (self.bus,self.device,self.dc_pin,self.rst_pin) != (0,0,25,24):
-            raise ValueError('M0.14a permits only SPI0/CE0, DC=BCM25, RST=BCM24')
+        DisplayPins(self.bus, self.device, self.dc_pin, self.rst_pin)
         if type(self.spi_hz) is not int or not 100_000 <= self.spi_hz <= 8_000_000:
             raise ValueError('SPI clock must be 100000..8000000 Hz')
         if type(self.contrast) is not int or not 0 <= self.contrast <= 255:
