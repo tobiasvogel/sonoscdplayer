@@ -16,7 +16,7 @@ class ShutdownRendererTests(unittest.TestCase):
         cls.build = Path(cls.directory.name)
         cls.executable = cls.build / 'sonoscdplayer-shutdown-display'
         pin_config = cls.build / 'display.toml'
-        pin_config.write_text('[display]\\ndc_pin = 22\\nrst_pin = 27\\n',
+        pin_config.write_text('[display]\ndc_pin = 22\nrst_pin = 27\n',
                               encoding='utf-8')
         header = subprocess.run(
             ['python3', str(ROOT / 'tools/generate_ssd1327_display_header.py'),
