@@ -21,7 +21,8 @@ class DisplayConfig:
     contrast: int = 0x80
 
     def __post_init__(self):
-        DisplayPins(self.bus, self.device, self.dc_pin, self.rst_pin)
+        DisplayPins(spi_bus=self.bus, spi_device=self.device,
+                    dc_pin=self.dc_pin, rst_pin=self.rst_pin)
         if type(self.spi_hz) is not int or not 100_000 <= self.spi_hz <= 8_000_000:
             raise ValueError('SPI clock must be 100000..8000000 Hz')
         if type(self.contrast) is not int or not 0 <= self.contrast <= 255:
