@@ -384,6 +384,7 @@ class ExitrdUnverifiedSafeBuildTests(unittest.TestCase):
 
     def test_normal_build_stays_unverified_safe_disabled(self):
         with tempfile.TemporaryDirectory() as directory:
+            prepare_display_header(directory)
             result = subprocess.run(['sh', str(ROOT / 'tools/build_exitrd.sh')],
                 env={**os.environ, 'BUILD_DIR': directory, 'EXITRD_DIAGNOSTIC': '0',
                      'EXITRD_UNVERIFIED_SAFE': '0'},
