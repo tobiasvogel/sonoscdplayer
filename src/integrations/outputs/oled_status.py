@@ -374,7 +374,10 @@ def main(argv=None):
         p.error('invalid duration')
     if not 200 <= args.refresh_ms <= 10000: p.error('refresh-ms must be 200..10000')
     if not 0 <= args.offline_grace_seconds <= 30: p.error('offline grace must be 0..30 seconds')
-    driver=SSD1327(DisplayConfig(spi_hz=args.spi_hz,contrast=args.contrast)) if args.execute else None
+    display_config = DisplayConfig(bus=display_pins.spi_bus, device=display_pins.spi_device,
+                                   dc_pin=display_pins.dc_pin, rst_pin=display_pins.rst_pin,
+                                   spi_hz=args.spi_hz, contrast=args.contrast)
+    driver=SSD1327(display_config) if args.execute else None
     splash=load_splash(args.splash)
     ambient=OLEDContrastControl(ambient_config) if args.ambient_auto else None
     last_contrast=args.contrast
