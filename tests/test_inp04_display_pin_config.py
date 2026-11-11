@@ -49,8 +49,8 @@ class DisplayPinConfigTests(unittest.TestCase):
     def test_toml_rejects_unimplemented_i2c_interface(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / 'display.toml'
-            config.write_text('[display]\\ncontroller = "ssd1327"\\n'
-                              'interface = "i2c"\\n', encoding='utf-8')
+            config.write_text('[display]\ncontroller = "ssd1327"\n'
+                              'interface = "i2c"\n', encoding='utf-8')
             with self.assertRaisesRegex(ValueError, 'Unsupported display interface'):
                 load_display_pins(config)
 
