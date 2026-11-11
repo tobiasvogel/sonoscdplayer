@@ -15,6 +15,7 @@ import socket
 import time
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from .ssd1327 import SSD1327, DisplayConfig, Framebuffer
+from .display_pins import load_display_pins, DisplayPins
 from .oled_ambient import OLEDAmbientConfig, OLEDContrastControl
 
 DEFAULT_SOCKET = '/tmp/sonoscdplayer-control.sock'
@@ -325,6 +326,8 @@ def main(argv=None):
     p.add_argument('--seconds',type=float,default=30)
     p.add_argument('--refresh-ms',type=int,default=500)
     p.add_argument('--offline-grace-seconds',type=float,default=4.0)
+    p.add_argument('--display-config',type=Path,default=None,
+                   help='Optional TOML with [display] SPI/DC/RESET pins')
     p.add_argument('--spi-hz',type=int,default=2_000_000)
     p.add_argument('--contrast',type=int,default=128)
     p.add_argument('--oled-recover-on-error',action='store_true',
@@ -345,6 +348,11 @@ def main(argv=None):
     cover_mode = args.cover if args.cover is not None else ui_config.cover_mode
     language = ui_config.language
     if args.gpio != args.execute: p.error('--gpio and --execute must be given together')
+    try:
+        display_pins = (load_display_pins(args.display_config)
+                        if args.display_config is not None else DisplayPins())
+    except (OSError, ValueError) as exc:
+        p.error(f'invalid display configuration: {exc}')
     if args.ui_target_rpc and not (args.ui_events_socket and args.ui_modern):
         p.error('--ui-target-rpc requires --ui-modern and --ui-events-socket')
     if args.ui_power_actions and not (args.ui_events_socket and args.ui_modern):
@@ -356,7 +364,9 @@ def main(argv=None):
             timeout_ms=args.ambient_timeout_ms,poll_ms=args.ambient_poll_ms,
             stale_ms=args.ambient_stale_ms,smoothing_ms=args.ambient_smoothing_ms,
             fallback_contrast=args.ambient_fallback_contrast)
-        DisplayConfig(spi_hz=args.spi_hz,contrast=args.contrast)
+        DisplayConfig(bus=display_pins.spi_bus, device=display_pins.spi_device,
+                      dc_pin=display_pins.dc_pin, rst_pin=display_pins.rst_pin,
+                      spi_hz=args.spi_hz, contrast=args.contrast)
     except ValueError as exc: p.error(str(exc))
     if ((args.splash_seconds is not None and (not math.isfinite(args.splash_seconds) or not 0 <= args.splash_seconds <= 30))
             or not math.isfinite(args.splash_ready_timeout) or not 0 < args.splash_ready_timeout <= 300
