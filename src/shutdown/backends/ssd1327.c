@@ -5,9 +5,12 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#ifndef SONOSCDPLAYER_OLED_DC_PIN
-#define SONOSCDPLAYER_OLED_DC_PIN 25u
+#if defined(__has_include)
+# if !__has_include("ssd1327_display_config.h")
+#  error "Missing ssd1327_display_config.h: run python3 tools/generate_ssd1327_display_header.py --config YOUR_PLAYER_TOML --output BUILD_DIR/ssd1327_display_config.h"
+# endif
 #endif
+#include "ssd1327_display_config.h"
 
 #define SSD1327_WIDTH 128u
 #define SSD1327_HEIGHT 128u
