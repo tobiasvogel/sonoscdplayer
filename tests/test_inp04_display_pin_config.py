@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class DisplayPinConfigTests(unittest.TestCase):
     def test_original_default_and_new_board(self):
+        self.assertEqual((DisplayPins().controller, DisplayPins().interface),
+                         ('ssd1327', 'spi'))
         self.assertEqual((DisplayPins().dc_pin, DisplayPins().rst_pin), (25, 24))
         self.assertEqual((DisplayConfig().dc_pin, DisplayConfig().rst_pin), (25, 24))
         new = DisplayPins(dc_pin=22, rst_pin=27)
@@ -26,7 +28,8 @@ class DisplayPinConfigTests(unittest.TestCase):
     def test_toml_splash_and_header_share_pins(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / 'local.toml'
-            config.write_text('[display]\nspi_bus = 0\nspi_device = 0\n'
+            config.write_text('[display]\ncontroller = "ssd1327"\ninterface = "spi"\n'
+                              'spi_bus = 0\nspi_device = 0\n'
                               'dc_pin = 22\nrst_pin = 27\n', encoding='utf-8')
             pins = load_display_pins(config)
             splash = build(bytes(8192), pins=pins)
@@ -35,6 +38,21 @@ class DisplayPinConfigTests(unittest.TestCase):
             self.assertIn('RST27', splash)
             self.assertIn('#define SONOSCDPLAYER_OLED_DC_PIN 22u', header)
             self.assertIn('#define SONOSCDPLAYER_OLED_RST_PIN 27u', header)
+
+    def test_unsupported_display_controllers_and_interfaces_fail_explicitly(self):
+        for controller, interface in (('ssd1306', 'spi'), ('ssd1327', 'i2c'),
+                                      ('ssd1327', 'I2C'), ('unknown', 'i2c')):
+            with self.subTest(controller=controller, interface=interface):
+                with self.assertRaisesRegex(ValueError, 'Unsupported display'):
+                    DisplayPins(controller=controller, interface=interface)
+
+    def test_toml_rejects_unimplemented_i2c_interface(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'display.toml'
+            config.write_text('[display]\\ncontroller = "ssd1327"\\n'
+                              'interface = "i2c"\\n', encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'Unsupported display interface'):
+                load_display_pins(config)
 
     def test_invalid_pins_rejected(self):
         for dc, rst in ((22, 22), (8, 27), (22, 11), (True, 27),
