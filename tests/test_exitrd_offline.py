@@ -8,11 +8,30 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def prepare_display_header(directory):
+    """Generate the shutdown display header for an isolated offline test build."""
+    build = Path(directory)
+    config = build / 'test_display.toml'
+    config.write_text(
+        '[display]\\ncontroller = "ssd1327"\\ninterface = "spi"\\n'
+        'dc_pin = 22\\nrst_pin = 27\\n',
+        encoding='utf-8',
+    )
+    subprocess.run(
+        ['python3', str(ROOT / 'tools/generate_ssd1327_display_header.py'),
+         '--config', str(config),
+         '--output', str(build / 'ssd1327_display_config.h')],
+        capture_output=True, text=True, check=True, timeout=10,
+    )
+
+
+
 class ExitrdOfflineTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()
         cls.executable = Path(cls.temp.name) / 'shutdown'
+        prepare_display_header(cls.temp.name)
         result = subprocess.run(
             ['sh', str(ROOT / 'tools/build_exitrd.sh')],
             env={**os.environ, 'BUILD_DIR': cls.temp.name},
@@ -267,6 +286,7 @@ class ExitrdDiagnosticOfflineTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()
         cls.binary = Path(cls.temp.name) / 'shutdown'
+        prepare_display_header(cls.temp.name)
         result = subprocess.run(
             ['sh', str(ROOT / 'tools/build_exitrd.sh')],
             env={**os.environ, 'BUILD_DIR': cls.temp.name, 'EXITRD_DIAGNOSTIC': '1'},
@@ -313,6 +333,7 @@ class ExitrdDiagnosticOfflineTests(unittest.TestCase):
 
     def test_default_build_remains_non_diagnostic(self):
         with tempfile.TemporaryDirectory() as directory:
+            prepare_display_header(directory)
             result = subprocess.run(['sh', str(ROOT / 'tools/build_exitrd.sh')],
                 env={**os.environ, 'BUILD_DIR': directory, 'EXITRD_DIAGNOSTIC': '0'},
                 capture_output=True, text=True, timeout=40, check=True)
@@ -326,6 +347,7 @@ class ExitrdUnverifiedSafeBuildTests(unittest.TestCase):
     """Experimental early graphic must be deliberate, isolated and never 'approved'."""
 
     def build(self, directory, **extra):
+        prepare_display_header(directory)
         env = {**os.environ, 'BUILD_DIR': str(directory),
                'EXITRD_DIAGNOSTIC': '0', 'EXITRD_UNVERIFIED_SAFE': '1', **extra}
         return subprocess.run(['sh', str(ROOT / 'tools/build_exitrd.sh')],
