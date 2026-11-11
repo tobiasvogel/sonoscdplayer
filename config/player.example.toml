@@ -24,6 +24,8 @@ experimental_safe_screen = false
 # Optional OLED hardware pins. Legacy defaults are DC=25, RESET=24.
 # For the revised button PCB, set DC=22 and RESET=27 locally.
 # [display]
+# controller = "ssd1327" # Future controllers require their own driver
+# interface = "spi"    # i2c reserved for future compatible drivers
 # spi_bus = 0
 # spi_device = 0
 # dc_pin = 22
