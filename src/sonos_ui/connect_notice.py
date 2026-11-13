@@ -16,6 +16,8 @@ class ConnectNoticeView:
         """Replace a CONNECT notice using monotonic seconds."""
         if action == 'status':
             notice = Notice('network.status_preview', duration_seconds=0, priority=20)
+        elif action == 'settings_hint':
+            notice = Notice('network.settings_hint', duration_seconds=0, priority=25)
         elif action == 'settings':
             notice = Notice('network.settings_preview', duration_seconds=0, priority=30)
         elif action == 'setup_requested':

@@ -84,6 +84,8 @@ class ConnectGestureTests(unittest.TestCase):
         g.press(0)
         self.assertEqual(g.release(3000), 'settings')
         g.press(0)
+        self.assertIsNone(g.tick(2999))
+        self.assertEqual(g.tick(3000), 'settings_hint')
         self.assertIsNone(g.tick(4999))
         self.assertEqual([g.tick(x) for x in (5000, 6000, 7000, 8000, 9000)],
                          ['warning_5', 'warning_4', 'warning_3', 'warning_2', 'warning_1'])
@@ -92,14 +94,33 @@ class ConnectGestureTests(unittest.TestCase):
         g.press(0)
         self.assertEqual(g.release(10000), 'setup_requested')
 
+    def test_setup_is_requested_at_ten_seconds_while_still_held(self):
+        g = ConnectGesture()
+        g.press(0)
+        self.assertEqual(g.tick(9999), 'warning_1')
+        self.assertEqual(g.tick(10000), 'setup_requested')
+        self.assertIsNone(g.tick(15000))
+        self.assertIsNone(g.release(20000), 'release must not repeat the request')
+        g.press(30000)
+        self.assertEqual(g.release(30200), 'status')
+
+    def test_settings_hint_is_emitted_once_per_press(self):
+        g = ConnectGesture()
+        g.press(0)
+        self.assertEqual([g.tick(t) for t in (3000, 3500, 4000)],
+                         ['settings_hint', None, None])
+        self.assertEqual(g.release(4200), 'settings')
+        g.press(10000)
+        self.assertEqual(g.tick(13000), 'settings_hint')
+
     def test_warning_never_executes_network_action(self):
         events = []
         g = ConnectGesture()
         publish_connect_event(g, 'connect', 'pressed', 0,
                               lambda *event: events.append(event))
-        for t in (5000, 6000, 7000, 8000, 9000):
+        for t in (5000, 6000, 7000, 8000, 9000, 10000):
             tick_connect_event(g, t, lambda *event: events.append(event))
-        publish_connect_event(g, 'connect', 'released', 10000,
+        publish_connect_event(g, 'connect', 'released', 10500,
                               lambda *event: events.append(event))
         self.assertEqual(events[-1], ('connect', 'setup_requested'))
         self.assertEqual(len(events), 6)
@@ -115,7 +136,8 @@ class ConnectGestureTests(unittest.TestCase):
 
     def test_event_bridge_is_restrictive(self):
         allowed = [('speaker_select', 'pressed'), ('connect', 'status'),
-                   ('connect', 'settings'), ('connect', 'setup_requested')]
+                   ('connect', 'settings'), ('connect', 'settings_hint'),
+                   ('connect', 'setup_requested')]
         allowed.extend(('connect', f'warning_{n}') for n in range(1, 6))
         for pair in allowed:
             with self.subTest(pair=pair):
@@ -140,6 +162,14 @@ class ConnectNoticeTests(unittest.TestCase):
         self.assertIsNotNone(view.current(now=999))
         self.assertTrue(view.confirm(now=1000))
         self.assertIsNone(view.current(now=1000))
+
+    def test_settings_hint_is_localized(self):
+        from sonos_ui.notice import notice_text
+        view = ConnectNoticeView()
+        self.assertTrue(view.show('settings_hint', now=0))
+        current = view.current(now=1)
+        self.assertIn('Netzwerkeinstellungen', notice_text(current, 'de'))
+        self.assertIn('network settings', notice_text(current, 'en'))
 
     def test_normal_menu_does_not_advance_inactive_notice_clock(self):
         menu = InteractiveMenu(discover=lambda **_: None)

@@ -154,7 +154,7 @@ class InteractiveMenu:
     def _connect_event(self, action, now):
         if self._power_busy or self.power_menu:
             return False
-        if action not in ('status', 'settings', 'setup_requested',
+        if action not in ('status', 'settings', 'settings_hint', 'setup_requested',
                           'warning_1', 'warning_2', 'warning_3',
                           'warning_4', 'warning_5'):
             return False

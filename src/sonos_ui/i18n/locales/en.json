@@ -86,6 +86,7 @@
   "system.ready": "Ready",
   "system.error": "An error occurred",
   "network.status_preview": "Network status: display not yet available",
+  "network.settings_hint": "Release for network settings",
   "network.settings_preview": "Network settings: setup coming later",
   "network.setup_warning": "Setup mode in {seconds} seconds",
   "network.setup_requested": "Setup mode requested (not yet active)",

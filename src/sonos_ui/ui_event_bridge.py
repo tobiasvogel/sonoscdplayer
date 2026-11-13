@@ -16,7 +16,7 @@ ALLOWED = frozenset({
     ('encoder', 'left'), ('encoder', 'right'),
     ('encoder_sw', 'pressed'), ('power', 'short'),
     ('speaker_select', 'pressed'),
-    ('connect', 'status'), ('connect', 'settings'),
+    ('connect', 'status'), ('connect', 'settings'), ('connect', 'settings_hint'),
     ('connect', 'setup_requested'),
     *(('connect', f'warning_{seconds}') for seconds in range(1, 6)),
 })

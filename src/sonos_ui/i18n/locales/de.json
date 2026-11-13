@@ -86,6 +86,7 @@
   "system.ready": "Bereit",
   "system.error": "Ein Fehler ist aufgetreten",
   "network.status_preview": "Netzwerkstatus: Anzeige folgt",
+  "network.settings_hint": "Loslassen: Netzwerkeinstellungen",
   "network.settings_preview": "Netzwerkeinstellungen: Einrichtung folgt",
   "network.setup_warning": "Einrichtungsmodus in {seconds} Sekunden",
   "network.setup_requested": "Einrichtungsmodus angefordert (noch nicht aktiv)",
