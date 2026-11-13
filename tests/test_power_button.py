@@ -300,13 +300,19 @@ class WiringTests(unittest.TestCase):
         self.assertEqual(actions, {
             'org.freedesktop.login1.power-off', 'org.freedesktop.login1.power-off-multiple-sessions',
             'org.freedesktop.login1.reboot', 'org.freedesktop.login1.reboot-multiple-sessions'})
-        self.assertIn('subject.user === "pi"', code)
+        self.assertIn('subject.user === "@SONOSCDPLAYER_USER@"', code)
         self.assertNotIn('ignore-inhibit', code)
 
-    def test_release_units_enable_both_switches(self):
-        base = ROOT / 'systemd/m016b-release'
-        self.assertIn('--power-actions', (base / 'sonoscdplayer-buttons.service.d/m016b-ui.conf').read_text())
-        self.assertIn('--ui-power-actions', (base / 'sonoscdplayer-oled.service.d/m016b-ui.conf').read_text())
+    def test_rendered_units_enable_both_switches(self):
+        from tools.render_runtime_units import render
+        units = render(ROOT / 'systemd', checkout='/opt/example/src',
+                       player_config='/etc/example/player.toml',
+                       interface_config='/etc/example/interface.toml',
+                       ui_config='/etc/example/ui.toml',
+                       python_venv='/opt/example/.venv/bin/python',
+                       user='example', power_actions=True)
+        self.assertIn('--power-actions', units['sonoscdplayer-buttons.service'])
+        self.assertIn('--ui-power-actions', units['sonoscdplayer-oled.service'])
 
     def test_player_turns_sigterm_into_the_clean_shutdown_path(self):
         import player_service

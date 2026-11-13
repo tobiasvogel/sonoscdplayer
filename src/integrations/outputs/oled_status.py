@@ -303,7 +303,7 @@ def main(argv=None):
     p=argparse.ArgumentParser(description='M0.14b read-only SSD1327 OLED status')
     p.add_argument('--gpio',action='store_true')
     p.add_argument('--ui-config',type=Path,default=None,
-                   help='read-only UI TOML; defaults to /home/pi/sonoscdplayer/ui.toml')
+                   help='read-only UI TOML; without it, built-in UI defaults are used')
     p.add_argument('--cover',choices=('auto','on','off'),default=None,
                    help='Modern Hi-Fi cover layout: auto (off for 128x128), on, off')
     p.add_argument('--ui-modern',action='store_true',
@@ -340,9 +340,9 @@ def main(argv=None):
     p.add_argument('--ambient-smoothing-ms',type=int,default=2000)
     p.add_argument('--ambient-fallback-contrast',type=int,default=128)
     args=p.parse_args(argv)
-    from sonos_ui.ui_config import load_ui_config, DEFAULT_CONFIG
+    from sonos_ui.ui_config import load_ui_config
     try:
-        ui_config = load_ui_config(args.ui_config or DEFAULT_CONFIG)
+        ui_config = load_ui_config(args.ui_config)
     except (ValueError, OSError) as exc:
         p.error('invalid UI configuration: '+str(exc))
     cover_mode = args.cover if args.cover is not None else ui_config.cover_mode

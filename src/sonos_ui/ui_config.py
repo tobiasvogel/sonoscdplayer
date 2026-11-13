@@ -9,7 +9,9 @@ import tomllib
 import logging
 from .i18n import available_languages
 
-DEFAULT_CONFIG = Path('/home/pi/sonoscdplayer/ui.toml')
+# No built-in installation path: the UI TOML must be passed explicitly
+# (e.g. --ui-config). Without one, the built-in defaults below apply.
+DEFAULT_CONFIG = None
 
 @dataclass(frozen=True)
 class UIConfig:
@@ -24,6 +26,9 @@ class UIConfig:
 
 
 def load_ui_config(path=DEFAULT_CONFIG):
+    if path is None:
+        logging.info('No UI configuration given; using built-in UI defaults')
+        return UIConfig()
     try:
         with open(path, 'rb') as f:
             doc = tomllib.load(f)

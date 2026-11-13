@@ -1,5 +1,6 @@
+#@ Template only: render with tools/render_runtime_units.py before installing.
 [Unit]
-Description=SonosCDPlayer GPIO buttons (command preview only)
+Description=SonosCDPlayer GPIO buttons
 After=local-fs.target
 PartOf=sonoscdplayer.target
 StartLimitIntervalSec=60
@@ -7,12 +8,12 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/src/sonoscdplayer/src
-ExecStart=/usr/bin/python3 -u -m integrations.interfaces.interface_input --config integrations/interfaces/interface.toml --gpio --commands
+User=@SONOSCDPLAYER_USER@
+WorkingDirectory=@SONOSCDPLAYER_SRC@
+ExecStart=/usr/bin/python3 -u -m integrations.interfaces.interface_input --config @SONOSCDPLAYER_INTERFACE_CONFIG@ --gpio --commands
 Restart=on-failure
 RestartSec=2s
 TimeoutStopSec=5s
 
-# Auto-started by sonoscdplayer.target; preview only, no Sonos commands.
-# Enable --execute only after controlled hardware acceptance.
+#@ Unrendered, this unit would only log button commands; the renderer
+#@ enables the safe selected-target executor.

@@ -5,9 +5,10 @@ After=local-fs.target
 ConditionPathExists=/run/initramfs
 
 [Service]
+#@ Template: the config placeholder is filled in by tools/install_exitrd_persistent.py.
 Type=oneshot
 # Deliberately no RemainAfterExit/ExecStop: shutdown must NOT disarm this exitrd.
-ExecStart=/usr/bin/python3 /usr/local/libexec/sonoscdplayer-exitrd/exitrd_autostage.py --config /home/pi/src/sonoscdplayer/src/config.toml --binary /usr/local/libexec/sonoscdplayer-exitrd/shutdown --sha-file /usr/local/libexec/sonoscdplayer-exitrd/shutdown.sha256
+ExecStart=/usr/bin/python3 /usr/local/libexec/sonoscdplayer-exitrd/exitrd_autostage.py --config @SONOSCDPLAYER_PLAYER_CONFIG@ --binary /usr/local/libexec/sonoscdplayer-exitrd/shutdown --sha-file /usr/local/libexec/sonoscdplayer-exitrd/shutdown.sha256
 TimeoutStartSec=45
 UMask=0077
 Environment=PYTHONDONTWRITEBYTECODE=1

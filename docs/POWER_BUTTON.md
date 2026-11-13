@@ -44,25 +44,32 @@ The input service also needs its usual `--gpio --commands` configuration. The di
 
 Without `--power-actions`, holding the button only logs a preview message; it does not shut down the system. Without `--ui-power-actions`, a short press does not open an actionable power menu.
 
-The repository contains systemd configurations and examples, including `systemd/m016b-release/`. Review these against the actual installation rather than treating them as universal drop-in instructions. Restart the relevant services after making configuration changes, while the player is idle.
+The unit files in `systemd/` are templates without installation paths or account names. Render them for your installation with `tools/render_runtime_units.py`; its `--power-actions` option adds both switches and also renders the polkit rule described below:
+
+```sh
+python3 tools/render_runtime_units.py --output-dir /tmp/sonoscdplayer-units \
+    --checkout <checkout>/src --python-venv <venv>/bin/python \
+    --player-config <player.toml> --interface-config <interface.toml> \
+    --ui-config <ui.toml> --service-user <account> --power-actions
+```
+
+The tool only writes the output directory; it does not install anything or call `systemctl`. Review the rendered files against the actual installation before installing them, and restart the relevant services while the player is idle.
 
 ## System permissions
 
 The input and display services generally run without root privileges, so they need narrowly scoped permission to request shutdown or reboot.
 
-SonosCDPlayer supplies a polkit rule:
+SonosCDPlayer supplies a polkit rule template:
 
 [`systemd/polkit/50-sonoscdplayer-power.rules`](../systemd/polkit/50-sonoscdplayer-power.rules)
 
-On a compatible system, install the rule with:
+Do not install the template directly. `tools/render_runtime_units.py --power-actions` writes a copy restricted to the account given with `--service-user`. On a compatible system, install the rendered rule with:
 
 ```sh
 sudo install -m 0644 \
-    systemd/polkit/50-sonoscdplayer-power.rules \
+    /tmp/sonoscdplayer-units/50-sonoscdplayer-power.rules \
     /etc/polkit-1/rules.d/
 ```
-
-**Important:** The supplied rule is restricted to the `pi` service user in the Raspberry Pi reference installation. If your services use another account, review and adapt the rule before installation.
 
 The rule permits only the specified power-off and reboot actions; it does not grant general administrative privileges. To revoke the permission, remove the installed rule from `/etc/polkit-1/rules.d/`.
 

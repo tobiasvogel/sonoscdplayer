@@ -1,3 +1,4 @@
+#@ Template only: render with tools/render_runtime_units.py before installing.
 [Unit]
 Description=SonosCDPlayer CD / Sonos controller
 After=local-fs.target
@@ -7,15 +8,14 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/src/sonoscdplayer/src
+User=@SONOSCDPLAYER_USER@
+WorkingDirectory=@SONOSCDPLAYER_SRC@
 # systemd owns and cleans the private socket directory after a crash/stop.
 RuntimeDirectory=sonoscdplayer
 RuntimeDirectoryMode=0700
 UMask=0077
-# The installed SoCo dependency lives in this project venv, not system Python.
-# A local m016b-config.conf may override the config path to player.toml.
-ExecStart=/home/pi/sonoscdplayer/.venv/bin/python -u player_service.py --config config.toml --socket /run/sonoscdplayer/control.sock
+# The installed SoCo dependency lives in the project venv, not system Python.
+ExecStart=@SONOSCDPLAYER_PYTHON@ -u player_service.py --config @SONOSCDPLAYER_PLAYER_CONFIG@ --socket /run/sonoscdplayer/control.sock
 # Do not automatically restart the Sonos owner until crash/ownership behavior is validated.
 Restart=no
 TimeoutStopSec=15

@@ -66,6 +66,19 @@ def verified_config_text(text: str, enabled: bool) -> str:
     return rendered
 
 
+def rendered_unit_text(template: str, config: Path = CONFIG) -> str:
+    """Fill in the player config path; the versioned unit holds no local paths."""
+    path = str(config)
+    if not config.is_absolute() or any(c.isspace() or ord(c) < 32 for c in path):
+        raise InstallError('player config path must be absolute without whitespace')
+    lines = [line for line in template.splitlines(keepends=True)
+             if not line.startswith('#@')]
+    text = ''.join(lines).replace('@SONOSCDPLAYER_PLAYER_CONFIG@', path)
+    if '@SONOSCDPLAYER_' in text:
+        raise InstallError('unit template contains an unknown placeholder')
+    return text
+
+
 def write_config(enabled: bool):
     if CONFIG.is_symlink() or not CONFIG.is_file():
         raise InstallError('actual player config missing or symlinked')
@@ -145,7 +158,8 @@ def install(expected: str):
         os.chmod(INSTALL / 'shutdown', 0o755)
         (INSTALL / 'shutdown.sha256').write_text(expected + '\n', encoding='ascii')
         os.chmod(INSTALL / 'shutdown.sha256', 0o644)
-        shutil.copyfile(ROOT / 'systemd' / NAME, UNIT)
+        UNIT.write_text(rendered_unit_text(
+            (ROOT / 'systemd' / NAME).read_text(encoding='utf-8')), encoding='utf-8')
         os.chmod(UNIT, 0o644)
         write_config(True)
         command('systemctl', 'daemon-reload')

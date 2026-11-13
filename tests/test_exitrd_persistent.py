@@ -25,6 +25,21 @@ class PersistentExitrdTests(unittest.TestCase):
         self.assertNotIn('poweroff', unit)
         self.assertNotIn('reboot', unit)
 
+    def test_installer_renders_config_path_into_unit(self):
+        template = (ROOT / 'systemd/sonoscdplayer-exitrd.service').read_text()
+        self.assertIn('--config @SONOSCDPLAYER_PLAYER_CONFIG@', template)
+        unit = installer.rendered_unit_text(template, Path('/etc/example/player.toml'))
+        self.assertIn('--config /etc/example/player.toml ', unit)
+        self.assertNotIn('@SONOSCDPLAYER_', unit)
+        self.assertNotIn('#@', unit)
+        for invalid in (Path('relative.toml'), Path('/bad path.toml')):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(installer.InstallError):
+                    installer.rendered_unit_text(template, invalid)
+        with self.assertRaises(installer.InstallError):
+            installer.rendered_unit_text(template + 'X=@SONOSCDPLAYER_OTHER@\n',
+                                         Path('/etc/example/player.toml'))
+
     def test_shipped_template_defaults_off_and_runtime_is_boolean(self):
         self.assertFalse(stager.enabled(ROOT / 'config/player.example.toml'))
         self.assertIsInstance(stager.enabled(ROOT / 'src/config.toml'), bool)

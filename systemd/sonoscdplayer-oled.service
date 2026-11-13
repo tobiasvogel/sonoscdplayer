@@ -1,3 +1,4 @@
+#@ Template only: render with tools/render_runtime_units.py before installing.
 [Unit]
 Description=SonosCDPlayer OLED status frontend
 After=local-fs.target
@@ -7,8 +8,8 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/src/sonoscdplayer/src
+User=@SONOSCDPLAYER_USER@
+WorkingDirectory=@SONOSCDPLAYER_SRC@
 ExecStart=/usr/bin/python3 -u -m integrations.outputs.oled_status --socket /run/sonoscdplayer/control.sock --gpio --execute --seconds 0 --adopt-boot-splash --ambient-auto
 Restart=on-failure
 RestartSec=2s

@@ -1,10 +1,10 @@
 // SonosCDPlayer: let the service user power the Raspberry Pi off or restart it.
 //
-// Install (root):
-//   install -m 0644 systemd/polkit/50-sonoscdplayer-power.rules /etc/polkit-1/rules.d/
+// Template only: render it with
+//   tools/render_runtime_units.py --power-actions --service-user <account> ...
+// and install the rendered copy (root) into /etc/polkit-1/rules.d/.
 // Remove the file to revoke. Nothing else is granted: no suspend, no hibernate,
-// no inhibitor override, no other users. Change "pi" if the services run as
-// another account.
+// no inhibitor override, no other users.
 polkit.addRule(function(action, subject) {
     var allowed = [
         "org.freedesktop.login1.power-off",
@@ -12,7 +12,7 @@ polkit.addRule(function(action, subject) {
         "org.freedesktop.login1.reboot",
         "org.freedesktop.login1.reboot-multiple-sessions"
     ];
-    if (subject.user === "pi" && allowed.indexOf(action.id) >= 0) {
+    if (subject.user === "@SONOSCDPLAYER_USER@" && allowed.indexOf(action.id) >= 0) {
         return polkit.Result.YES;
     }
 });
