@@ -33,8 +33,8 @@ class OutputConfig:
     def __post_init__(self):
         if type(self.power_pin) is not int or type(self.connection_pin) is not int:
             raise ValueError('pins must be integers')
-        if (self.power_pin, self.connection_pin) != (12, 13):
-            raise ValueError('M0.13b is restricted to reserved BCM12/13 outputs')
+        if {self.power_pin, self.connection_pin} != {12, 13}:
+            raise ValueError('LED outputs must use BCM12 and BCM13 exactly once')
         if type(self.pwm_hz) is not int or not 50 <= self.pwm_hz <= 1000:
             raise ValueError('pwm_hz outside 50..1000')
         if type(self.tick_ms) is not int or not 10 <= self.tick_ms <= 250:
@@ -86,7 +86,7 @@ def read_status(socket_path: str, timeout: float = 0.35) -> dict:
 
 
 class PwmOutputs:
-    """Owns ONLY BCM12/13, releases and drives off on shutdown.
+    """Owns ONLY the configured BCM12/13 pins, releases and drives off on shutdown.
 
     `gpio_module` can be a fake in tests. Set-up failure also cleans up pins.
     """
@@ -176,7 +176,7 @@ class LedRenderer:
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='Read-only LED PWM monitor (BCM12/13). Dry-run by default.')
+    parser = argparse.ArgumentParser(description='Read-only LED PWM monitor (configurable BCM12/13 mapping). Dry-run by default.')
     parser.add_argument('--config', default='config.toml')
     parser.add_argument('--socket', default='/tmp/sonoscdplayer-control.sock')
     parser.add_argument('--gpio', action='store_true', help='explicitly enable GPIO backend')

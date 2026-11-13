@@ -8,14 +8,27 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def prepare_display_config(directory):
+    """Write isolated, non-device-specific TOML for an offline build."""
+    config = Path(directory) / 'test_display.toml'
+    config.write_text(
+        '[display]\ncontroller = "ssd1327"\ninterface = "spi"\n'
+        'dc_pin = 22\nrst_pin = 27\n',
+        encoding='utf-8',
+    )
+    return str(config)
+
+
+
 class ExitrdOfflineTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()
         cls.executable = Path(cls.temp.name) / 'shutdown'
+        cls.display_config = prepare_display_config(cls.temp.name)
         result = subprocess.run(
             ['sh', str(ROOT / 'tools/build_exitrd.sh')],
-            env={**os.environ, 'BUILD_DIR': cls.temp.name},
+            env={**os.environ, 'BUILD_DIR': cls.temp.name, 'DISPLAY_CONFIG': cls.display_config},
             text=True, capture_output=True, timeout=40)
         if result.returncode:
             raise AssertionError(result.stdout + result.stderr)
@@ -267,9 +280,10 @@ class ExitrdDiagnosticOfflineTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()
         cls.binary = Path(cls.temp.name) / 'shutdown'
+        cls.display_config = prepare_display_config(cls.temp.name)
         result = subprocess.run(
             ['sh', str(ROOT / 'tools/build_exitrd.sh')],
-            env={**os.environ, 'BUILD_DIR': cls.temp.name, 'EXITRD_DIAGNOSTIC': '1'},
+            env={**os.environ, 'BUILD_DIR': cls.temp.name, 'DISPLAY_CONFIG': cls.display_config, 'EXITRD_DIAGNOSTIC': '1'},
             text=True, capture_output=True, timeout=40)
         if result.returncode:
             cls.temp.cleanup()
@@ -313,8 +327,9 @@ class ExitrdDiagnosticOfflineTests(unittest.TestCase):
 
     def test_default_build_remains_non_diagnostic(self):
         with tempfile.TemporaryDirectory() as directory:
+            display_config = prepare_display_config(directory)
             result = subprocess.run(['sh', str(ROOT / 'tools/build_exitrd.sh')],
-                env={**os.environ, 'BUILD_DIR': directory, 'EXITRD_DIAGNOSTIC': '0'},
+                env={**os.environ, 'BUILD_DIR': directory, 'DISPLAY_CONFIG': display_config, 'EXITRD_DIAGNOSTIC': '0'},
                 capture_output=True, text=True, timeout=40, check=True)
             self.assertIn('diagnostic=0', result.stdout)
             self.assertIn('safe-approved=0', result.stdout)
@@ -326,8 +341,9 @@ class ExitrdUnverifiedSafeBuildTests(unittest.TestCase):
     """Experimental early graphic must be deliberate, isolated and never 'approved'."""
 
     def build(self, directory, **extra):
+        display_config = prepare_display_config(directory)
         env = {**os.environ, 'BUILD_DIR': str(directory),
-               'EXITRD_DIAGNOSTIC': '0', 'EXITRD_UNVERIFIED_SAFE': '1', **extra}
+               'EXITRD_DIAGNOSTIC': '0', 'EXITRD_UNVERIFIED_SAFE': '1', 'DISPLAY_CONFIG': display_config, **extra}
         return subprocess.run(['sh', str(ROOT / 'tools/build_exitrd.sh')],
                               env=env, text=True, capture_output=True, timeout=40)
 
@@ -362,9 +378,10 @@ class ExitrdUnverifiedSafeBuildTests(unittest.TestCase):
 
     def test_normal_build_stays_unverified_safe_disabled(self):
         with tempfile.TemporaryDirectory() as directory:
+            display_config = prepare_display_config(directory)
             result = subprocess.run(['sh', str(ROOT / 'tools/build_exitrd.sh')],
                 env={**os.environ, 'BUILD_DIR': directory, 'EXITRD_DIAGNOSTIC': '0',
-                     'EXITRD_UNVERIFIED_SAFE': '0'},
+                     'EXITRD_UNVERIFIED_SAFE': '0', 'DISPLAY_CONFIG': display_config},
                 text=True, capture_output=True, timeout=40)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn('unverified-safe=0 delay-seconds=0', result.stdout)

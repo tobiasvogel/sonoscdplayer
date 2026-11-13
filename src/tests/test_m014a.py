@@ -35,7 +35,8 @@ class Tests(unittest.TestCase):
         self.assertEqual(fb.data[0],0)
         self.assertEqual(fb.data[63],255)
     def test_config_guards(self):
-        with self.assertRaises(ValueError): DisplayConfig(dc_pin=23)
+        with self.assertRaises(ValueError): DisplayConfig(dc_pin=8)
+        with self.assertRaises(ValueError): DisplayConfig(dc_pin=24)
         with self.assertRaises(ValueError): DisplayConfig(spi_hz=100)
     def test_dry_run_no_gpio(self): main(['--pattern','gray'])
     def test_explicit_execute(self):
