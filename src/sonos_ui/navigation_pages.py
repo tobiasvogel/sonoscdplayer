@@ -27,7 +27,7 @@ class NavigationRenderer(Renderer):
             self.text(image, (8, y + 2), marker, fill=ink, size=9,
                       width=12, height=14)
             self.text(image, (22, y + 2), tr(items[index]), fill=ink,
-                      size=10, bold=active, width=100, height=14)
+                      size=10, bold=active, width=100, height=14, scroll=active)
         self.bottom(image, status=tr("status.local_only"),
                     footer=tr("footer.select"))
         return ssd1327_gray(image)

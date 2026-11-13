@@ -105,7 +105,7 @@
   "network.preferred.wifi": "Wi-Fi",
   "network.preferred.none": "No connection",
   "network.readonly": "Read-only status",
-  "menu.rescan": "Search targets",
+  "menu.rescan": "Find speakers",
   "status.scan_running": "Searching for speakers …",
   "status.scan_done": "{count} speakers found",
   "status.scan_done_one": "1 speaker found",

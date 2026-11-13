@@ -1,4 +1,4 @@
-"""Speaker list: discovered once at start, cached, manual "Search targets"."""
+"""Speaker list: discovered once at start, cached, manual "Find speakers"."""
 import unittest
 
 from sonos_ui.interactive_menu import (EMPTY_SCAN_RETRY_SECONDS, SCAN_RESULT_SECONDS,
@@ -84,7 +84,7 @@ class SpeakerScanCacheTests(unittest.TestCase):
         self.assertEqual(notice_text(done, 'de'), '3 Lautsprecher gefunden')
         self.assertEqual(notice_text(done, 'en'), '3 speakers found')
         from sonos_ui.i18n import Translator
-        self.assertEqual(Translator('de').tr('menu.rescan'), 'Ziele neu suchen')
+        self.assertEqual(Translator('de').tr('menu.rescan'), 'Lautsprecher suchen')
         menu.poll(now=3 + SCAN_RESULT_SECONDS)
         self.assertEqual((menu.active, menu.section), (True, 'settings'))
         self.assertEqual(len(menu.state.topology.targets), 3)

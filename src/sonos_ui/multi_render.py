@@ -60,6 +60,6 @@ class MultiRenderer(Renderer):
             if selected:d.rounded_rectangle((4,y,123,y+19),radius=3,fill=t.accent)
             col=t.selection_text if selected else t.primary
             self.text(im,(8,y+3),mark,fill=col,size=11,width=14,height=15)
-            self.text(im,(26,y+3),self.tr(key),fill=col,size=11,bold=selected,width=96,height=15)
+            self.text(im,(26,y+3),self.tr(key),fill=col,size=11,bold=selected,width=96,height=15,scroll=selected)
         self.bottom(im,status=self.tr(notice or 'status.power_choose'),footer=self.tr('footer.select'))
         return ssd1327_gray(im) if gray else im

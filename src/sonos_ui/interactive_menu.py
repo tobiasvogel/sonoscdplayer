@@ -27,7 +27,7 @@ POWER_ITEMS = ('back', 'poweroff', 'reboot')
 ACCEPTED_NOTICE_SECONDS = 1.0
 SCAN_RESULT_SECONDS = 2.0
 # Speakers are discovered once when the OLED service starts and cached; only an
-# empty or failed result is retried in the background. "Search targets" in the
+# empty or failed result is retried in the background. "Find speakers" in the
 # settings menu forces a new discovery.
 EMPTY_SCAN_RETRY_SECONDS = 30.0
 # INP-02: how long an acknowledged volume level stays visible.
@@ -178,7 +178,7 @@ class InteractiveMenu:
             self._start_discovery(now)
 
     def _request_scan(self, now):
-        """Settings > Search targets: forced discovery with visible progress."""
+        """Settings > Find speakers: forced discovery with visible progress."""
         self._scan_requested = True
         self._show_notice(Notice('status.scan_running', priority=40,
                                  dismissible=False), now)
@@ -514,7 +514,8 @@ class InteractiveMenu:
                     ImageDraw.Draw(im).rounded_rectangle((4,y,123,y+19),radius=3,fill=t.accent)
                 col=t.selection_text if index==self.language_focus else t.primary
                 label=self.renderer.translator.language_name(lang)
-                self.renderer.text(im,(10,y+3),label,fill=col,size=11,width=110,height=15)
+                self.renderer.text(im,(10,y+3),label,fill=col,size=11,width=110,height=15,
+                                   scroll=index==self.language_focus)
             self.renderer.bottom(im,status=self.renderer.tr('status.local_only'),
                                  footer=self.renderer.tr('footer.confirm'))
             return image_to_frame(im)

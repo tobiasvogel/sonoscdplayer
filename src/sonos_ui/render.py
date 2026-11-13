@@ -7,7 +7,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from .model import DisplayModel
 from .theme import MODERN_HIFI, ssd1327_gray
-from .marquee import Marquee
+from .marquee import MARQUEE_CLOCK, Marquee
 from .layout_config import DisplayProfile, show_cover
 from .i18n import Translator
 
@@ -41,8 +41,12 @@ class Renderer:
         self.tr=self.translator.tr
         self.cover_enabled=show_cover(cover_mode,display_profile)
 
-    def text(self,canvas,xy,value,*,fill,size=9,bold=False,width=None,height=None,time=0,scroll=False):
-        """Draw top-ink-aligned text, clipped to an explicit rectangular viewport."""
+    def text(self,canvas,xy,value,*,fill,size=9,bold=False,width=None,height=None,time=None,scroll=False):
+        """Draw top-ink-aligned text, clipped to an explicit rectangular viewport.
+
+        With scroll=True, text wider than its viewport runs as a marquee. Without
+        an explicit ``time`` the shared MARQUEE_CLOCK animates it automatically.
+        """
         if value is None or value=='': return
         x,y=xy
         if width is None: width=128-x
@@ -56,6 +60,9 @@ class Renderer:
         bbox=d.textbbox((0,0),label,font=f)
         ink_width=max(0,bbox[2]-bbox[0]); ink_height=max(0,bbox[3]-bbox[1])
         ink_top=max(0,(height-ink_height)//2)
+        if scroll and time is None:
+            time=MARQUEE_CLOCK.elapsed((x,y,width,height,size,bold,label),
+                                       overflows=ink_width>width)
         shift=self.marquee.offset(ink_width,width,time) if scroll else 0
         d.text((-bbox[0]-shift,ink_top-bbox[1]),label,font=f,fill=fill)
         canvas.paste(mask,(x,y),mask)
@@ -86,7 +93,7 @@ class Renderer:
         d.rectangle((0,114,127,126),fill=t.surface)
         self.text(canvas,(5,115),footer,fill=t.secondary,size=8,width=118,height=12)
 
-    def render(self,model:DisplayModel,*,elapsed=0.0,grayscale=False):
+    def render(self,model:DisplayModel,*,elapsed=None,grayscale=False):
         canvas=Image.new('RGB',SIZE,self.theme.background)
         if model.view=='menu': self.menu(canvas,model,elapsed)
         elif model.view=='playback': self.playback(canvas,model,elapsed)

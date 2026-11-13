@@ -236,6 +236,18 @@ def safe_modern_status_frame(state, *, cover_mode='auto', language='de'):
 
 
 
+# While a scrolling text overflows its viewport, redraw this often so the
+# marquee moves smoothly; otherwise keep the configured --refresh-ms.
+MARQUEE_FRAME_SECONDS = 0.1
+
+
+def frame_delay(refresh_seconds):
+    from sonos_ui.marquee import MARQUEE_CLOCK
+    if MARQUEE_CLOCK.animating():
+        return min(refresh_seconds, MARQUEE_FRAME_SECONDS)
+    return refresh_seconds
+
+
 def menu_overlay_active(menu):
     check = getattr(menu, 'volume_overlay_active', None)
     return check() is True if callable(check) else False
@@ -529,7 +541,8 @@ def main(argv=None):
                     write_frame(frame)
                     print(json.dumps(label,ensure_ascii=False),flush=True)
                     previous=current
-                time.sleep(args.refresh_ms/1000 if end is None else min(args.refresh_ms/1000,max(0,end-time.monotonic())))
+                time.sleep(frame_delay(args.refresh_ms/1000) if end is None
+                           else min(frame_delay(args.refresh_ms/1000),max(0,end-time.monotonic())))
     finally:
         try:
             if driver:
