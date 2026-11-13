@@ -84,6 +84,7 @@
   "system.please_wait": "Bitte warten",
   "system.shutting_down": "Wird heruntergefahren",
   "system.restarting": "Wird neu gestartet",
+  "system.safe_to_unplug": "Kann jetzt ausgesteckt werden",
   "system.ready": "Bereit",
   "system.error": "Ein Fehler ist aufgetreten",
   "network.status_preview": "Netzwerkstatus: Anzeige folgt",

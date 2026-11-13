@@ -64,8 +64,9 @@ class ExitrdOfflineTests(unittest.TestCase):
         import re
         import sys
         sys.path.insert(0, str(ROOT / 'tools'))
-        from build_shutdown_renderer import pack_ssd1327
+        from build_shutdown_renderer import compose_frame, configured_language, frame_text
 
+        language = configured_language()
         header = (Path(self.temp.name) / 'shutdown_frames.h').read_text()
         match = re.search(
             r'static const uint8_t shutdown_frame_final\[8192\] = \{(.*?)\};',
@@ -73,8 +74,10 @@ class ExitrdOfflineTests(unittest.TestCase):
         self.assertIsNotNone(match)
         packed = bytes(int(value, 16) for value in
                        re.findall(r'0x([0-9a-f]{2})', match.group(1)))
-        self.assertEqual(packed, pack_ssd1327(ROOT / 'src/data/pleasewait_screen.png'))
-        self.assertNotEqual(packed, pack_ssd1327(ROOT / 'src/data/safetounplug_screen.png'))
+        self.assertEqual(packed, compose_frame(ROOT / 'src/data/pleasewait_screen.png',
+                                               frame_text('final', language)))
+        self.assertNotEqual(packed, compose_frame(ROOT / 'src/data/safetounplug_screen.png',
+                                                  frame_text('safe', language)))
         self.assertNotIn('shutdown_frame_diagnostic', header)
 
     def test_normal_exitrd_uses_final_only_after_successful_poweroff_unmount(self):
@@ -309,10 +312,12 @@ class ExitrdDiagnosticOfflineTests(unittest.TestCase):
     def test_diagnostic_frame_is_distinct_and_has_no_safe_message(self):
         import sys
         sys.path.insert(0, str(ROOT / 'tools'))
-        from build_shutdown_renderer import diagnostic_frame, pack_ssd1327
+        from build_shutdown_renderer import compose_frame, diagnostic_frame, frame_text
         test_frame = diagnostic_frame()
-        normal_frame = pack_ssd1327(ROOT / 'src/data/pleasewait_screen.png')
-        safe_frame = pack_ssd1327(ROOT / 'src/data/safetounplug_screen.png')
+        normal_frame = compose_frame(ROOT / 'src/data/pleasewait_screen.png',
+                                     frame_text('final', 'de'))
+        safe_frame = compose_frame(ROOT / 'src/data/safetounplug_screen.png',
+                                   frame_text('safe', 'de'))
         self.assertEqual(len(test_frame), 8192)
         self.assertNotEqual(test_frame, normal_frame)
         self.assertNotEqual(test_frame, safe_frame)

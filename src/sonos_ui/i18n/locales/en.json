@@ -84,6 +84,7 @@
   "system.please_wait": "Please wait",
   "system.shutting_down": "Shutting down",
   "system.restarting": "Restarting",
+  "system.safe_to_unplug": "Safe to unplug now",
   "system.ready": "Ready",
   "system.error": "An error occurred",
   "network.status_preview": "Network status: display not yet available",
