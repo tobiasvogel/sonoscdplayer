@@ -31,4 +31,4 @@ class M014BR1Tests(unittest.TestCase):
             f=Path(d)/'config.toml'; f.write_text('[drive_power]\nenabled=false\n')
             self.assertFalse(load_config(f)['enabled'])
     def test_bundled_config_enabled(self):
-        self.assertTrue(load_config(Path(__file__).resolve().parents[1]/'config.toml')['enabled'])
+        self.assertTrue(load_config(Path(__file__).resolve().parents[2]/'config/player.example.toml')['enabled'])

@@ -9,8 +9,8 @@ import tomllib
 import logging
 from .i18n import available_languages
 
-# No built-in installation path: the UI TOML must be passed explicitly
-# (e.g. --ui-config). Without one, the built-in defaults below apply.
+# The UI TOML is optional: without a file at the standard location
+# (config_paths.ui_config()) the built-in defaults below apply.
 DEFAULT_CONFIG = None
 
 @dataclass(frozen=True)
@@ -27,12 +27,13 @@ class UIConfig:
 
 def load_ui_config(path=DEFAULT_CONFIG):
     if path is None:
-        logging.info('No UI configuration given; using built-in UI defaults')
-        return UIConfig()
+        import config_paths
+        path = config_paths.ui_config()
     try:
         with open(path, 'rb') as f:
             doc = tomllib.load(f)
     except FileNotFoundError:
+        logging.info('No UI configuration at %s; using built-in UI defaults', path)
         return UIConfig()
     ui = doc.get('ui', {})
     if not isinstance(ui, dict):

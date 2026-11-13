@@ -7,6 +7,7 @@ no autonomous Sonos STOP on exit. Never writes PCM to disk. POSIX terminal.
 from __future__ import annotations
 
 import argparse
+import config_paths
 import pathlib
 import queue
 import re
@@ -684,7 +685,7 @@ def run(argv=None):
     ap.add_argument('--pi-host', required=True)
     ap.add_argument('--uid', required=True)
     ap.add_argument('--port', type=int, default=8765)
-    ap.add_argument('--config', default='config.toml')
+    ap.add_argument('--config', default=str(config_paths.player_config()))
     ns = ap.parse_args(argv)
     if not ns.uid.strip():
         ap.error('nonempty --uid required')

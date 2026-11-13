@@ -39,9 +39,9 @@ sh tools/manage_experimental_exitrd.sh --status
 sh tools/manage_experimental_exitrd.sh --install
 ```
 
-The installer builds the shutdown component, enables `[service].experimental_safe_screen` in `src/config.toml`, and installs a systemd service that prepares the display integration at each startup.
+The installer builds the shutdown component, enables `[service].experimental_safe_screen` in `/etc/sonoscdplayer/player.toml` (see [Configuration](CONFIGURATION.md)), and installs a systemd service that prepares the display integration at each startup.
 
-Installation requires interactive confirmation. The persistent installer targets the reference player configuration path; review your installation before using it on a differently configured system.
+Installation requires interactive confirmation.
 
 ### Disable and uninstall
 

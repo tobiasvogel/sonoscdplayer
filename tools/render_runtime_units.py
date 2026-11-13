@@ -2,8 +2,13 @@
 """Render four standalone SonosCDPlayer runtime units for a local deployment.
 
 The versioned files under systemd/ are templates with @SONOSCDPLAYER_*@
-placeholders; they contain no installation paths or account names. With
---power-actions the power flags are added and the polkit rule is rendered too.
+placeholders; they contain no installation paths or account names. All units
+read their configuration from the standard location (src/config_paths.py,
+/etc/sonoscdplayer by default).
+
+POWER actions (with the polkit rule), drive-activity wake events and CONNECT
+gestures are enabled by default; --no-power-actions, --no-drive-activity-events
+and --no-connect-gestures switch them off.
 
 Preparation only: never installs, removes drop-ins, calls systemctl, or restarts.
 All deployment-specific paths must be passed explicitly and remain local.
@@ -11,6 +16,10 @@ All deployment-specific paths must be passed explicitly and remain local.
 import argparse
 from pathlib import Path
 import re
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+import config_paths  # noqa: E402
 
 
 UNITS = (
@@ -67,17 +76,21 @@ def add_after(text, requirement):
     return replace_directive(text, 'After', ' '.join(existing))
 
 
-def render(source_dir, *, checkout, player_config, interface_config,
-           ui_config, python_venv, user, power_actions=False):
-    values = [checkout, player_config, interface_config, ui_config, python_venv]
-    checkout, player_config, interface_config, ui_config, python_venv = (
-        absolute_path(str(value)) for value in values
-    )
+def render(source_dir, *, checkout, python_venv, user, power_actions=True,
+           drive_activity_events=True, connect_gestures=True):
+    checkout, python_venv = (absolute_path(str(v)) for v in (checkout, python_venv))
+    player_config, interface_config, ui_config = (absolute_path(str(p)) for p in (
+        config_paths.player_config(), config_paths.interface_config(),
+        config_paths.ui_config()))
     user = service_user(user)
     root = Path(source_dir)
     rendered = {}
     oled_power = ' --ui-power-actions' if power_actions else ''
-    buttons_power = ' --power-actions' if power_actions else ''
+    buttons_extra = ''.join(flag for flag, enabled in (
+        (' --power-actions', power_actions),
+        (' --drive-activity-events', drive_activity_events),
+        (' --connect-gestures', connect_gestures),
+    ) if enabled)
     commands = {
         UNITS[0]: (
             f'{python_venv} -u player_service.py --config {player_config} '
@@ -101,7 +114,7 @@ def render(source_dir, *, checkout, player_config, interface_config,
             f'--config {interface_config} --gpio --commands '
             '--socket /run/sonoscdplayer/control.sock '
             '--ui-events-socket /run/sonoscdplayer-ui/events.sock '
-            f'--execute --selected-target-execute{buttons_power}'
+            f'--execute --selected-target-execute{buttons_extra}'
         ),
     }
     for name in UNITS:
@@ -144,25 +157,27 @@ def main(argv=None):
     p.add_argument('--output-dir', type=Path, required=True)
     p.add_argument('--checkout', required=True,
                    help='Absolute path to the intended production src directory')
-    p.add_argument('--player-config', required=True)
-    p.add_argument('--interface-config', required=True)
-    p.add_argument('--ui-config', required=True)
     p.add_argument('--python-venv', required=True)
     p.add_argument('--service-user', required=True,
                    help='Unprivileged account that runs the services')
-    p.add_argument('--power-actions', action='store_true',
-                   help='Enable POWER button actions and render the polkit rule')
+    p.add_argument('--power-actions', action=argparse.BooleanOptionalAction, default=True,
+                   help='POWER button may shut down/restart; renders the polkit rule')
+    p.add_argument('--drive-activity-events', action=argparse.BooleanOptionalAction,
+                   default=True, help='button presses wake an idle optical drive')
+    p.add_argument('--connect-gestures', action=argparse.BooleanOptionalAction,
+                   default=True, help='CONNECT short/long gestures and speaker_select')
     args = p.parse_args(argv)
     units = render(args.repo_root / 'systemd',
-                   checkout=args.checkout, player_config=args.player_config,
-                   interface_config=args.interface_config,
-                   ui_config=args.ui_config, python_venv=args.python_venv,
-                   user=args.service_user, power_actions=args.power_actions)
+                   checkout=args.checkout, python_venv=args.python_venv,
+                   user=args.service_user, power_actions=args.power_actions,
+                   drive_activity_events=args.drive_activity_events,
+                   connect_gestures=args.connect_gestures)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for name, text in units.items():
         out = args.output_dir / name
         out.write_text(text, encoding='utf-8')
         print(f'Rendered {out}')
+    print(f'Configuration is read from {config_paths.config_dir()}')
     print('Preparation only. No systemd configuration was installed or changed.')
 
 

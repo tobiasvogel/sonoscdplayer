@@ -5,6 +5,7 @@ A future pigpio/backend can supply DMA/hardware timing without changing this mod
 """
 from __future__ import annotations
 import argparse
+import config_paths
 import json
 import math
 import signal
@@ -177,7 +178,7 @@ class LedRenderer:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Read-only LED PWM monitor (configurable BCM12/13 mapping). Dry-run by default.')
-    parser.add_argument('--config', default='config.toml')
+    parser.add_argument('--config', default=str(config_paths.player_config()))
     parser.add_argument('--socket', default='/tmp/sonoscdplayer-control.sock')
     parser.add_argument('--gpio', action='store_true', help='explicitly enable GPIO backend')
     parser.add_argument('--execute', action='store_true', help='required with --gpio for real output')

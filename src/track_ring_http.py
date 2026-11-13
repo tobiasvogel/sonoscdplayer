@@ -6,6 +6,7 @@ This server is NOT a seamless concurrent retry implementation.
 """
 from __future__ import annotations
 import argparse
+import config_paths
 import re
 from contextlib import nullcontext
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -538,7 +539,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--device', default='/dev/sr1')
     p.add_argument('--track', type=int, default=1)
-    p.add_argument('--config', default='config.toml')
+    p.add_argument('--config', default=str(config_paths.player_config()))
     p.add_argument('--bind', default='0.0.0.0')
     p.add_argument('--port', type=int, default=8765)
     p.add_argument('--write-timeout', type=float, default=30)

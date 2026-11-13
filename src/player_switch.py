@@ -6,6 +6,7 @@ started exact HTTP URI on the exact solo coordinator, immediately rechecked.
 """
 from __future__ import annotations
 import argparse
+import config_paths
 import pathlib
 import queue
 import re
@@ -71,7 +72,7 @@ def run(argv=None, *, verify=verify_target, drive=detect_drive, toc=read_toc,
     parser.add_argument('--pi-host', required=True)
     parser.add_argument('--uid', required=True)
     parser.add_argument('--port', type=int, default=8765)
-    parser.add_argument('--config', default='config.toml')
+    parser.add_argument('--config', default=str(config_paths.player_config()))
     args = parser.parse_args(argv)
     if not args.uid.strip() or not 15 <= args.switch_after_seconds <= 120 or not 20 <= args.observe_seconds <= 900:
         parser.error('Valid --uid, switch-after-seconds 15..120, observe-seconds 20..900 required')

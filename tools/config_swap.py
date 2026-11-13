@@ -202,7 +202,9 @@ def swap(config, new, *, services, reference=None, socket_path=DEFAULT_SOCKET,
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--config', required=True, type=Path, help='production config to replace')
+    parser.add_argument('--config', type=Path, default=None,
+                        help='production config to replace '
+                             '(default: player.toml in the standard config directory)')
     parser.add_argument('--new', required=True, type=Path, help='new config file')
     parser.add_argument('--reference', type=Path,
                         help='reference TOML (for example config/player.example.toml) for a structure check')
@@ -213,6 +215,10 @@ def main(argv=None):
     parser.add_argument('--force', action='store_true',
                         help='swap even while the player is busy (interrupts playback)')
     args = parser.parse_args(argv)
+    if args.config is None:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+        import config_paths
+        args.config = config_paths.player_config()
     try:
         return swap(args.config, args.new, services=args.services or [DEFAULT_SERVICE],
                     reference=args.reference, socket_path=args.socket,

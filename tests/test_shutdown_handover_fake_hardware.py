@@ -62,6 +62,10 @@ class ShutdownHandoverFakeHardwareTests(unittest.TestCase):
             env['PYTHONPATH'] = os.pathsep.join((str(directory), str(ROOT / 'src'),
                                                   env.get('PYTHONPATH', '')))
             env['SONOSCDPLAYER_FAKE_HW_LOG'] = str(log)
+            # Hardware mode reads [display] pins from the standard player.toml.
+            (directory / 'player.toml').write_bytes(
+                (ROOT / 'config/player.example.toml').read_bytes())
+            env['SONOSCDPLAYER_CONFIG_DIR'] = str(directory)
             env['SONOSCDPLAYER_PRESERVE_DISPLAY_ON_EXIT'] = '1' if preserve else '0'
             proc = subprocess.Popen([
                 sys.executable, '-u', '-m', 'integrations.outputs.oled_status',

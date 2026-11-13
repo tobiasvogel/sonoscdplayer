@@ -8,6 +8,7 @@ No automatic PLAY or STOP on startup/exit.
 from __future__ import annotations
 
 import argparse
+import config_paths
 import copy
 import concurrent.futures
 import threading
@@ -616,7 +617,7 @@ def run(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--device', default='auto')
     ap.add_argument('--port', type=int, default=8765)
-    ap.add_argument('--config', default='config.toml')
+    ap.add_argument('--config', default=str(config_paths.player_config()))
     ap.add_argument('--socket', default='/tmp/sonoscdplayer-control.sock')
     ns = ap.parse_args(argv)
     if ns.device != 'auto' and not re.fullmatch(r'/dev/sr\d+', ns.device):

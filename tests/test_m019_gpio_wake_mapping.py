@@ -66,7 +66,7 @@ class GPIOWakeMappingTests(unittest.TestCase):
 
         config = load_config(
             Path(__file__).resolve().parents[1]
-            / "src/integrations/interfaces/interface.toml"
+            / "config/interface.example.toml"
         )
 
         names = set(config.buttons) | {"encoder_sw"}

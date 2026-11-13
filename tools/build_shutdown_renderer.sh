@@ -9,8 +9,9 @@ if [ "$BACKEND" != ssd1327 ]; then
     echo "unsupported shutdown backend: $BACKEND" >&2
     exit 2
 fi
-# An explicit local TOML is mandatory; never reuse stale device-specific headers.
-: "${DISPLAY_CONFIG:?Set DISPLAY_CONFIG to the local player TOML containing [display]}"
+# The player TOML (standard location unless DISPLAY_CONFIG is set) is mandatory;
+# never reuse stale device-specific headers.
+DISPLAY_CONFIG="${DISPLAY_CONFIG:-${SONOSCDPLAYER_CONFIG_DIR:-/etc/sonoscdplayer}/player.toml}"
 [ -f "$DISPLAY_CONFIG" ] || { echo "DISPLAY_CONFIG file not found: $DISPLAY_CONFIG" >&2; exit 2; }
 mkdir -p "$BUILD_DIR"
 python3 "$ROOT/tools/generate_ssd1327_display_header.py" \

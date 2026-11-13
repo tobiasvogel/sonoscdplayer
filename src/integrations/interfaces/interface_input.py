@@ -39,7 +39,13 @@ try:
 except ImportError:
     from connect_gesture import ConnectGesture
 
-DEFAULT_CONFIG = Path(__file__).with_name('interface.toml')
+try:
+    import config_paths
+except ImportError:  # executed as a plain script from its own directory
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    import config_paths
+
 DEFAULT_SOCKET = '/run/sonoscdplayer/control.sock'
 
 # PLAY can spend up to 120 seconds prebuffering before acknowledging.
@@ -428,7 +434,8 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--config', type=Path, default=DEFAULT_CONFIG)
+    p.add_argument('--config', type=Path, default=None,
+                   help='interface TOML (default: interface.toml in the standard config directory)')
     group = p.add_mutually_exclusive_group(required=True)
     group.add_argument('--gpio', action='store_true')
     group.add_argument('--simulate', type=Path, metavar='JSONL')
@@ -453,6 +460,8 @@ def main():
                    help='optional nonblocking read-only UI event observer')
     p.add_argument('--uid-file', type=Path, help='private 0600 file for playpause UID; never logged')
     args = p.parse_args()
+    if args.config is None:
+        args.config = config_paths.interface_config()
     if args.execute and (not args.commands or not args.gpio):
         p.error('--execute requires --commands --gpio')
     if args.selected_target_preview and (not args.gpio or not args.commands or args.execute):

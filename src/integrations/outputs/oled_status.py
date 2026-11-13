@@ -303,7 +303,8 @@ def main(argv=None):
     p=argparse.ArgumentParser(description='M0.14b read-only SSD1327 OLED status')
     p.add_argument('--gpio',action='store_true')
     p.add_argument('--ui-config',type=Path,default=None,
-                   help='read-only UI TOML; without it, built-in UI defaults are used')
+                   help='read-only UI TOML (default: ui.toml in the standard config directory; '
+                        'built-in defaults if absent)')
     p.add_argument('--cover',choices=('auto','on','off'),default=None,
                    help='Modern Hi-Fi cover layout: auto (off for 128x128), on, off')
     p.add_argument('--ui-modern',action='store_true',
@@ -327,7 +328,8 @@ def main(argv=None):
     p.add_argument('--refresh-ms',type=int,default=500)
     p.add_argument('--offline-grace-seconds',type=float,default=4.0)
     p.add_argument('--display-config',type=Path,default=None,
-                   help='Optional TOML with [display] SPI/DC/RESET pins')
+                   help='TOML with optional [display] SPI/DC/RESET pins '
+                        '(default: player.toml in the standard config directory)')
     p.add_argument('--spi-hz',type=int,default=2_000_000)
     p.add_argument('--contrast',type=int,default=128)
     p.add_argument('--oled-recover-on-error',action='store_true',
@@ -349,8 +351,12 @@ def main(argv=None):
     language = ui_config.language
     if args.gpio != args.execute: p.error('--gpio and --execute must be given together')
     try:
-        display_pins = (load_display_pins(args.display_config)
-                        if args.display_config is not None else DisplayPins())
+        import config_paths
+        display_path = args.display_config or config_paths.player_config()
+        if args.display_config is None and not display_path.exists() and not args.execute:
+            display_pins = DisplayPins()  # offline preview without a configured device
+        else:
+            display_pins = load_display_pins(display_path)
     except (OSError, ValueError) as exc:
         p.error(f'invalid display configuration: {exc}')
     if args.ui_target_rpc and not (args.ui_events_socket and args.ui_modern):

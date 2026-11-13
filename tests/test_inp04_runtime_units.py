@@ -1,9 +1,11 @@
 """Offline checks for the one-time post-merge systemd unit preparation."""
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
-from tools.render_runtime_units import UNITS, render, main
+from tools.render_runtime_units import POLKIT_RULE, UNITS, render, main
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,17 +15,18 @@ class RuntimeUnitRenderTests(unittest.TestCase):
     def setUp(self):
         self.inputs = dict(
             checkout='/opt/example/src',
-            player_config='/etc/example/player.toml',
-            interface_config='/etc/example/interface.toml',
-            ui_config='/etc/example/ui.toml',
             python_venv='/opt/example/.venv/bin/python',
             user='example',
         )
+        env = mock.patch.dict(os.environ, {'SONOSCDPLAYER_CONFIG_DIR': '/etc/example'})
+        env.start()
+        self.addCleanup(env.stop)
 
     def test_renders_four_complete_units_and_preserves_safety_controls(self):
         units = render(ROOT / 'systemd', **self.inputs)
-        self.assertEqual(set(units), set(UNITS))
-        for name, content in units.items():
+        self.assertEqual(set(units), set(UNITS) | {POLKIT_RULE})
+        for name in UNITS:
+            content = units[name]
             self.assertIn('WorkingDirectory=/opt/example/src', content)
             self.assertIn('PartOf=sonoscdplayer.target', content)
             self.assertIn('ExecStart=', content)
@@ -45,24 +48,35 @@ class RuntimeUnitRenderTests(unittest.TestCase):
         self.assertIn('RuntimeDirectory=sonoscdplayer-ui', oled)
         self.assertIn('RuntimeDirectoryMode=0700', oled)
         self.assertIn('--oled-recover-on-error --ui-target-rpc', oled)
+        self.assertIn('--display-config /etc/example/player.toml', oled)
+        self.assertIn('--ui-config /etc/example/ui.toml', oled)
         self.assertNotIn('--adopt-boot-splash', oled)
         buttons = units['sonoscdplayer-buttons.service']
         self.assertIn('After=local-fs.target sonoscdplayer-oled.service', buttons)
+        self.assertIn('--config /etc/example/interface.toml', buttons)
         self.assertIn('--execute --selected-target-execute', buttons)
         self.assertNotIn('[Install]', buttons)
-        self.assertNotIn('--power-actions', buttons)
-        self.assertNotIn('--ui-power-actions', oled)
-        self.assertNotIn('50-sonoscdplayer-power.rules', units)
 
-    def test_power_actions_enable_both_switches_and_render_polkit_rule(self):
-        units = render(ROOT / 'systemd', power_actions=True, **self.inputs)
-        self.assertIn('--execute --selected-target-execute --power-actions',
+    def test_optional_switches_are_enabled_by_default(self):
+        units = render(ROOT / 'systemd', **self.inputs)
+        self.assertIn('--execute --selected-target-execute --power-actions '
+                      '--drive-activity-events --connect-gestures',
                       units['sonoscdplayer-buttons.service'])
         self.assertIn('--ui-target-rpc --ui-power-actions',
                       units['sonoscdplayer-oled.service'])
-        rule = units['50-sonoscdplayer-power.rules']
+        rule = units[POLKIT_RULE]
         self.assertIn('subject.user === "example"', rule)
         self.assertNotIn('@SONOSCDPLAYER_', rule)
+
+    def test_each_optional_switch_can_be_disabled(self):
+        units = render(ROOT / 'systemd', power_actions=False,
+                       drive_activity_events=False, connect_gestures=False,
+                       **self.inputs)
+        buttons = units['sonoscdplayer-buttons.service']
+        for flag in ('--power-actions', '--drive-activity-events', '--connect-gestures'):
+            self.assertNotIn(flag, buttons)
+        self.assertNotIn('--ui-power-actions', units['sonoscdplayer-oled.service'])
+        self.assertNotIn(POLKIT_RULE, units)
 
     def test_rejects_root_or_malformed_service_user(self):
         for invalid in ('root', '', 'Pi', 'a b', 'x;rm', '../x'):
@@ -97,15 +111,14 @@ class RuntimeUnitRenderTests(unittest.TestCase):
             argv = ['--repo-root', str(ROOT), '--output-dir', str(out)]
             for name, value in (
                 ('--checkout', self.inputs['checkout']),
-                ('--player-config', self.inputs['player_config']),
-                ('--interface-config', self.inputs['interface_config']),
-                ('--ui-config', self.inputs['ui_config']),
                 ('--python-venv', self.inputs['python_venv']),
                 ('--service-user', self.inputs['user']),
             ):
                 argv.extend((name, value))
-            main(argv)
+            main(argv + ['--no-power-actions'])
             self.assertEqual({p.name for p in out.iterdir()}, set(UNITS))
+            main(argv)
+            self.assertEqual({p.name for p in out.iterdir()}, set(UNITS) | {POLKIT_RULE})
 
 
 if __name__ == '__main__':

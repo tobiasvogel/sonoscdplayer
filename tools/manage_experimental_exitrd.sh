@@ -5,7 +5,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 PYTHON=${PYTHON:-python3}
 ACTION=${1:---help}
-CONFIG="$ROOT/src/config.toml"
+CONFIG="${SONOSCDPLAYER_CONFIG_DIR:-/etc/sonoscdplayer}/player.toml"
 
 usage() {
     cat <<'EOF'
@@ -16,8 +16,9 @@ Usage:
   sh tools/manage_experimental_exitrd.sh --uninstall
   sh tools/manage_experimental_exitrd.sh --disable
 
-By default the script uses src/config.toml (the player service config).
-The --install option sets [service].experimental_safe_screen = true in src/config.toml,
+By default the script uses /etc/sonoscdplayer/player.toml (the player service
+config; SONOSCDPLAYER_CONFIG_DIR overrides the directory).
+The --install option sets [service].experimental_safe_screen = true in that file,
 builds a verified binary, and installs a root-owned boot service. It will re-arm
 at each boot until --uninstall disables it. --enable-once remains RAM-only.
 The script never initiates shutdown or reboot.

@@ -2,11 +2,20 @@
 """Early boot power LED breathe; independent of player, network and sensors."""
 import argparse
 import math
+import os
 import signal
 import time
 import tomllib
 
 PIN=12
+# Keep in sync with src/config_paths.py; this script runs standalone at early boot.
+DEFAULT_CONFIG_DIR='/etc/sonoscdplayer'
+
+
+def default_config_path():
+    return os.path.join(os.environ.get('SONOSCDPLAYER_CONFIG_DIR') or DEFAULT_CONFIG_DIR,
+                        'player.toml')
+
 PERIOD=2.0
 
 def duty_at(seconds):
@@ -62,9 +71,16 @@ def run(gpio=None, *, pin=PIN):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--execute',action='store_true')
-    p.add_argument('--config', help='optional local TOML containing [led_outputs] pins')
+    p.add_argument('--config', help='TOML containing [led_outputs] pins '
+                   '(default: player.toml in the standard config directory, if present)')
     a=p.parse_args()
     if not a.execute: p.error('GPIO access requires --execute')
-    run(pin=configured_power_pin(a.config) if a.config else PIN)
+    if a.config:
+        pin=configured_power_pin(a.config)
+    else:
+        # Early boot must never fail on a missing file: fall back to BCM12.
+        path=default_config_path()
+        pin=configured_power_pin(path) if os.path.isfile(path) else PIN
+    run(pin=pin)
 
 if __name__=='__main__': main()

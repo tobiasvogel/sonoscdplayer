@@ -20,9 +20,11 @@ import tomllib
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
+import config_paths  # noqa: E402
 INSTALL = Path('/usr/local/libexec/sonoscdplayer-exitrd')
 UNIT = Path('/etc/systemd/system/sonoscdplayer-exitrd.service')
-CONFIG = ROOT / 'src/config.toml'
+CONFIG = config_paths.player_config()
 FILES = ('exitrd_autostage.py', 'exitrd_once.py', 'exitrd_preflight.py')
 NAME = 'sonoscdplayer-exitrd.service'
 EXPERIMENTAL = ROOT / 'build/exitrd-unverified-safe/shutdown'

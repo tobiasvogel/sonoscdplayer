@@ -42,7 +42,7 @@ class PersistentExitrdTests(unittest.TestCase):
 
     def test_shipped_template_defaults_off_and_runtime_is_boolean(self):
         self.assertFalse(stager.enabled(ROOT / 'config/player.example.toml'))
-        self.assertIsInstance(stager.enabled(ROOT / 'src/config.toml'), bool)
+        self.assertIsInstance(stager.enabled(ROOT / 'config/player.example.toml'), bool)
 
     def test_autostage_does_not_arm_when_config_disabled(self):
         with patch.object(stager, 'enabled', return_value=False), \

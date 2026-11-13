@@ -10,7 +10,7 @@ from integrations.interfaces.input_core import InputEngine, load_config
 from sonos_ui.input_adapter import to_ui_action
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG_PATH = ROOT / 'src/integrations/interfaces/interface.toml'
+CONFIG_PATH = ROOT / 'config/interface.example.toml'
 
 
 def direction_events(cfg):

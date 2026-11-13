@@ -6,6 +6,7 @@ confirmed via Sonos transport polling; 'play_uri' alone is not confirmation.
 """
 from __future__ import annotations
 import argparse
+import config_paths
 import ipaddress
 import pathlib
 import queue
@@ -59,7 +60,7 @@ def run(argv=None, *, verify=verify_target, drive=detect_drive, toc=read_toc,
     parser.add_argument('--pi-host', required=True)
     parser.add_argument('--uid', required=True)
     parser.add_argument('--port', type=int, default=8765)
-    parser.add_argument('--config', default='config.toml')
+    parser.add_argument('--config', default=str(config_paths.player_config()))
     parser.add_argument('--observe-seconds', type=int, default=210)
     args = parser.parse_args(argv)
     if not args.uid.strip() or args.observe_seconds < 10 or args.observe_seconds > 900:

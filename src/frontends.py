@@ -13,6 +13,8 @@ import subprocess
 import sys
 import time
 
+import config_paths
+
 ROOT = Path(__file__).resolve().parent
 MODULES = {
     'led': 'integrations.outputs.led_pwm',
@@ -45,8 +47,8 @@ def parser():
     p.add_argument('--buttons', action='store_true', help='enable physical input observation')
     p.add_argument('--commands', action='store_true', help='allow mapped button commands; requires --hardware --buttons --uid')
     p.add_argument('--uid', help='explicit target Sonos UID (do not put in public config)')
-    p.add_argument('--config', default='config.toml')
-    p.add_argument('--interface-config', default=str(ROOT / 'integrations/interfaces/interface.toml'))
+    p.add_argument('--config', default=str(config_paths.player_config()))
+    p.add_argument('--interface-config', default=str(config_paths.interface_config()))
     p.add_argument('--splash', default=str(ROOT / 'data/start_screen.png'))
     p.add_argument('--adopt-boot-splash', action='store_true', help='Adopt a verified firmware-initialized OLED; never use without firmware splash')
     p.add_argument('--socket', default='/tmp/sonoscdplayer-control.sock')
@@ -67,7 +69,7 @@ def main(argv=None):
     if args.buttons and not args.hardware and not args.dry_run:
         p.error('physical buttons require --hardware; use --dry-run for preview')
     if args.hardware and not Path(args.config).is_file():
-        p.error('local LED config.toml missing; specify --config')
+        p.error(f'player config missing: {args.config}; see tools/install_config.py')
     jobs = commands(args)
     if not args.buttons:
         jobs = [j for j in jobs if j[0] != 'buttons']

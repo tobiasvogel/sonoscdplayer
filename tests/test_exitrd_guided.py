@@ -39,8 +39,13 @@ class GuidedExitrdTests(unittest.TestCase):
             with self.subTest(args=args):
                 self.assertEqual(self.call(*args).returncode, 2)
 
-    def test_status_on_actual_player_config_is_read_only(self):
-        result = self.call("--status")
+    def test_status_on_standard_player_config_is_read_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "player.toml"
+            original = (ROOT / "config/player.example.toml").read_bytes()
+            config.write_bytes(original)
+            result = self.call("--status", env={"SONOSCDPLAYER_CONFIG_DIR": directory})
+            self.assertEqual(config.read_bytes(), original)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("experimental_safe_screen=", result.stdout)
         self.assertIn("READ-ONLY", result.stdout)

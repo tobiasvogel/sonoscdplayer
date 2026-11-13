@@ -10,13 +10,12 @@ Prepare a new TOML file based on your existing player configuration, preserving 
 
 The repository includes [`config/player.example.toml`](../config/player.example.toml) as a reference. **Do not overwrite your existing configuration with the example file:** your installation may use different settings or defaults.
 
-Run the following commands from the repository root, replacing the example paths with the actual paths used by your installation.
+Run the following commands from the repository root. The active configuration is `/etc/sonoscdplayer/player.toml` (see [Configuration](CONFIGURATION.md)); `--config` defaults to it.
 
 ## 1. Check the new configuration
 
 ```sh
 python3 tools/config_swap.py \
-    --config /path/to/current/player.toml \
     --new /path/to/new/player.toml \
     --reference config/player.example.toml
 ```
@@ -29,7 +28,6 @@ Once you have reviewed the dry-run result and confirmed that the player is idle:
 
 ```sh
 sudo python3 tools/config_swap.py \
-    --config /path/to/current/player.toml \
     --new /path/to/new/player.toml \
     --reference config/player.example.toml \
     --apply

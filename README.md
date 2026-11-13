@@ -140,7 +140,7 @@ SonosCDPlayer uses **TOML configuration files** for software and hardware settin
 | [`config/interface.example.toml`](config/interface.example.toml) | GPIO buttons, rotary encoder, and input behaviour |
 | [`config/ui.example.toml`](config/ui.example.toml) | Display preferences and interface language |
 
-Local configurations should be adapted to the actual hardware and kept separate from repository examples.
+The active configuration lives in **`/etc/sonoscdplayer/`** (`player.toml`, `interface.toml`, `ui.toml`); all services and tools read it from there. The repository files above are templates only. `tools/install_config.py` creates the files from the templates or migrates an existing configuration. See [Configuration files and location](docs/CONFIGURATION.md).
 
 A configuration update utility offers dry-run checks, structural validation against an optional reference, backup creation, and rollback support. Perform service-affecting updates while the player is idle. See [Updating the player configuration](docs/CONFIG_UPDATE.md).
 
@@ -194,6 +194,7 @@ Additional documentation is available in the [`docs/`](docs/) directory.
 
 | Document | Description |
 | --- | --- |
+| [Configuration files and location](docs/CONFIGURATION.md) | Standard location, installation, migration, and systemd units |
 | [Configuration updates](docs/CONFIG_UPDATE.md) | TOML configuration checks, replacement, and rollback |
 | [Display languages and translations](docs/I18N.md) | Language selection and adding translations |
 | [Power button](docs/POWER_BUTTON.md) | Power controls, permissions, and activation |

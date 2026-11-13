@@ -306,11 +306,8 @@ class WiringTests(unittest.TestCase):
     def test_rendered_units_enable_both_switches(self):
         from tools.render_runtime_units import render
         units = render(ROOT / 'systemd', checkout='/opt/example/src',
-                       player_config='/etc/example/player.toml',
-                       interface_config='/etc/example/interface.toml',
-                       ui_config='/etc/example/ui.toml',
                        python_venv='/opt/example/.venv/bin/python',
-                       user='example', power_actions=True)
+                       user='example')
         self.assertIn('--power-actions', units['sonoscdplayer-buttons.service'])
         self.assertIn('--ui-power-actions', units['sonoscdplayer-oled.service'])
 

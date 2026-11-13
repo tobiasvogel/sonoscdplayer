@@ -19,7 +19,7 @@ class DefaultIdleConfigTests(unittest.TestCase):
             return load_config(path)
 
     def test_shipped_default_is_120_seconds(self):
-        config = load_config(ROOT / "src/config.toml")
+        config = load_config(ROOT / "config/player.example.toml")
         self.assertTrue(config["enabled"])
         self.assertEqual(config["strategy"], "auto")
         self.assertEqual(

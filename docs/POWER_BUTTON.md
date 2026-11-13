@@ -4,7 +4,7 @@ SonosCDPlayer supports a dedicated Power button for shutting down or restarting 
 
 A short press can open a power menu on the display. Holding the button requests an orderly system shutdown directly, even if the display menu is unavailable.
 
-Power actions are **optional** and must be explicitly enabled.
+Power actions need command-line switches and a polkit rule. Units rendered with `tools/render_runtime_units.py` include both switches by default; the polkit rule must be installed separately (see below).
 
 ## Button behaviour
 
@@ -33,7 +33,7 @@ See [`config/interface.example.toml`](../config/interface.example.toml) for the 
 
 ## Enabling power actions
 
-Power actions are opt-in. The relevant command-line options are:
+The services themselves keep power actions off unless these command-line options are given:
 
 | Component | Option |
 | --- | --- |
@@ -44,13 +44,11 @@ The input service also needs its usual `--gpio --commands` configuration. The di
 
 Without `--power-actions`, holding the button only logs a preview message; it does not shut down the system. Without `--ui-power-actions`, a short press does not open an actionable power menu.
 
-The unit files in `systemd/` are templates without installation paths or account names. Render them for your installation with `tools/render_runtime_units.py`; its `--power-actions` option adds both switches and also renders the polkit rule described below:
+The unit files in `systemd/` are templates without installation paths or account names. Render them for your installation with `tools/render_runtime_units.py` (see [Configuration](CONFIGURATION.md)). Power actions are enabled by default: the rendered units contain both switches and the polkit rule described below is rendered as well. Use `--no-power-actions` to leave them out:
 
 ```sh
 python3 tools/render_runtime_units.py --output-dir /tmp/sonoscdplayer-units \
-    --checkout <checkout>/src --python-venv <venv>/bin/python \
-    --player-config <player.toml> --interface-config <interface.toml> \
-    --ui-config <ui.toml> --service-user <account> --power-actions
+    --checkout <checkout>/src --python-venv <venv>/bin/python --service-user <account>
 ```
 
 The tool only writes the output directory; it does not install anything or call `systemctl`. Review the rendered files against the actual installation before installing them, and restart the relevant services while the player is idle.
@@ -63,7 +61,7 @@ SonosCDPlayer supplies a polkit rule template:
 
 [`systemd/polkit/50-sonoscdplayer-power.rules`](../systemd/polkit/50-sonoscdplayer-power.rules)
 
-Do not install the template directly. `tools/render_runtime_units.py --power-actions` writes a copy restricted to the account given with `--service-user`. On a compatible system, install the rendered rule with:
+Do not install the template directly. `tools/render_runtime_units.py` writes a copy restricted to the account given with `--service-user`. On a compatible system, install the rendered rule with:
 
 ```sh
 sudo install -m 0644 \

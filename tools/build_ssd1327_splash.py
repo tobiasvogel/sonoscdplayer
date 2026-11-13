@@ -52,12 +52,16 @@ def main():
     p.add_argument('--spi-hz',type=int,default=2_000_000)
     p.add_argument('--contrast',type=int,default=128)
     p.add_argument('--display-config',type=Path,default=None,
-                   help='Optional TOML with [display] SPI/DC/RESET pins')
+                   help='TOML with optional [display] SPI/DC/RESET pins '
+                        '(default: player.toml in the standard config directory)')
     a=p.parse_args()
     with Image.open(a.png) as im:
         im.load()
         framebuffer=to_frame(im)
-    pins = load_display_pins(a.display_config) if a.display_config is not None else DisplayPins()
+    if a.display_config is None:
+        from src import config_paths
+        a.display_config = config_paths.player_config()
+    pins = load_display_pins(a.display_config)
     a.output.write_text(build(framebuffer,hz=a.spi_hz,contrast=a.contrast,pins=pins),encoding='utf-8')
     print(f'Wrote {a.output}: {len(framebuffer)} framebuffer bytes')
 

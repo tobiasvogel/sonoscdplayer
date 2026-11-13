@@ -6,6 +6,7 @@ Test harness, not production control; does not modify the audio server.
 """
 from __future__ import annotations
 import argparse
+import config_paths
 import pathlib
 import queue
 import re
@@ -103,7 +104,7 @@ def main() -> int:
     p.add_argument('--track', type=int, default=1)
     p.add_argument('--port', type=int, default=8765)
     p.add_argument('--pi-host', required=True, help='vom Sonos erreichbare Raspberry-Pi-IP')
-    p.add_argument('--config', default='config.toml')
+    p.add_argument('--config', default=str(config_paths.player_config()))
     p.add_argument('--initial-prebuffer-ms', type=int, default=0)
     p.add_argument('--uid', required=True, help='exakte Ziel-Sonos-UID (keine automatische Zielwahl)')
     p.add_argument('--observe-seconds', type=int, default=210)

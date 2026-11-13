@@ -1,7 +1,7 @@
 // SonosCDPlayer: let the service user power the Raspberry Pi off or restart it.
 //
 // Template only: render it with
-//   tools/render_runtime_units.py --power-actions --service-user <account> ...
+//   tools/render_runtime_units.py --service-user <account> ...
 // and install the rendered copy (root) into /etc/polkit-1/rules.d/.
 // Remove the file to revoke. Nothing else is granted: no suspend, no hibernate,
 // no inhibitor override, no other users.

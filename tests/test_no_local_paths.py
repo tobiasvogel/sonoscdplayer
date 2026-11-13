@@ -4,9 +4,12 @@ Local paths, service accounts and similar deployment details are passed
 explicitly at render/install time (see tools/render_runtime_units.py).
 """
 from pathlib import Path
+import os
 import re
 import subprocess
+import tempfile
 import unittest
+from unittest import mock
 
 from sonos_ui.ui_config import DEFAULT_CONFIG, UIConfig, load_ui_config
 
@@ -55,10 +58,13 @@ class NoLocalPathsTests(unittest.TestCase):
                     findings.append(f'{path.relative_to(ROOT)}:{line}: {label}')
         self.assertEqual(findings, [])
 
-    def test_ui_config_has_no_builtin_installation_path(self):
+    def test_ui_config_defaults_to_standard_location(self):
         self.assertIsNone(DEFAULT_CONFIG)
-        self.assertEqual(load_ui_config(), UIConfig())
-        self.assertEqual(load_ui_config(None), UIConfig())
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.dict(os.environ, {'SONOSCDPLAYER_CONFIG_DIR': directory}):
+            self.assertEqual(load_ui_config(), UIConfig())  # absent: built-in defaults
+            (Path(directory) / 'ui.toml').write_text('[ui]\nlanguage = "en"\n')
+            self.assertEqual(load_ui_config().language, 'en')
 
 
 if __name__ == '__main__':
