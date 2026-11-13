@@ -6,7 +6,7 @@ from sonos_ui.multi_target import from_devices
 
 
 def topology():
-    a=NS(uid='one',player_name='Büro')
+    a=NS(uid='one',player_name='Gästezimmer')
     b=NS(uid='two',player_name='Wohnzimmer')
     g=NS(coordinator=a,members=(a,b))
     a.group=b.group=g

@@ -8,7 +8,7 @@ from sonos_ui.single_target import select_one, TargetSelectionError
 
 
 def target_topology(*, grouped=False):
-    a=NS(uid='speaker-1',player_name='Büro')
+    a=NS(uid='speaker-1',player_name='Gästezimmer')
     b=NS(uid='speaker-2',player_name='Küche')
     if grouped:
         group=NS(coordinator=a,members=(a,b))
@@ -25,7 +25,7 @@ class SingleTargetTests(unittest.TestCase):
         state=state.action('confirm')
         state=replace(state,applied=state.draft)
         selected=select_one(state)
-        self.assertEqual((selected.uid,selected.display_name),('speaker-1','Büro'))
+        self.assertEqual((selected.uid,selected.display_name),('speaker-1','Gästezimmer'))
 
     def test_unconfirmed_selection_rejected(self):
         state=MultiSelection().update(target_topology()).action('confirm')

@@ -5,9 +5,9 @@ from sonos_ui.checkbox_selection import SpeakerChoice, TargetChoice
 
 
 CHOICES = (
-    SpeakerChoice('A', 'Gym', True, True),
-    SpeakerChoice('B', 'Praxis', True, True),
-    SpeakerChoice('C', 'Büro', True, True),
+    SpeakerChoice('A', 'Hobbyraum', True, True),
+    SpeakerChoice('B', 'Musikzimmer', True, True),
+    SpeakerChoice('C', 'Gästezimmer', True, True),
 )
 
 
@@ -54,10 +54,10 @@ class CheckboxSessionTests(unittest.TestCase):
 
     def test_legacy_solo_selection_intent_remains_available(self):
         ui = UISession()
-        ui.set_speaker_names(['Gym', 'Praxis'])
+        ui.set_speaker_names(['Hobbyraum', 'Musikzimmer'])
         ui.input('open_speakers', 1)
         intent = ui.input('confirm', 2)
-        self.assertEqual((intent.speaker_index, intent.speaker_name), (0, 'Gym'))
+        self.assertEqual((intent.speaker_index, intent.speaker_name), (0, 'Hobbyraum'))
 
 
 if __name__ == '__main__':

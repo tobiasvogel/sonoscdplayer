@@ -6,9 +6,9 @@ from sonos_ui.checkbox_selection import CheckboxSelection, SpeakerChoice, Target
 
 def speakers():
     return [
-        SpeakerChoice('A', 'Gym', True, True),
-        SpeakerChoice('B', 'Praxis', True, True),
-        SpeakerChoice('C', 'Büro', True, True),
+        SpeakerChoice('A', 'Hobbyraum', True, True),
+        SpeakerChoice('B', 'Musikzimmer', True, True),
+        SpeakerChoice('C', 'Gästezimmer', True, True),
     ]
 
 
@@ -81,8 +81,8 @@ class CheckboxSelectionTests(unittest.TestCase):
 
     def test_active_or_grouped_speaker_blocks_plan(self):
         self.selection.toggle('A')
-        for choice in (SpeakerChoice('A', 'Gym', True, False),
-                       SpeakerChoice('A', 'Gym', False, True)):
+        for choice in (SpeakerChoice('A', 'Hobbyraum', True, False),
+                       SpeakerChoice('A', 'Hobbyraum', False, True)):
             with self.assertRaisesRegex(RuntimeError, 'grouped or active'):
                 self.selection.preview([choice])
 

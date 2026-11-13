@@ -10,7 +10,7 @@ import sonos_group
 
 UID = 'RINCON_REVIEW_COORD'
 MEMBER_UID = 'RINCON_REVIEW_MEMBER'
-URL = 'http://192.168.1.10:8765/track/1.wav'
+URL = 'http://192.0.2.10:8765/track/1.wav'
 FOREIGN_URL = 'https://example.invalid/foreign.mp3'
 
 
@@ -68,7 +68,7 @@ def owned_controller(mode=Mode.PLAYING, player=None):
     speaker = player or FakeSonos(transport=(
         'PAUSED_PLAYBACK' if mode == Mode.PAUSED else 'PLAYING'))
     server = FakeServer()
-    ctrl = Controller(PlayerState(mode, (1,), 1), UID, '192.168.1.10',
+    ctrl = Controller(PlayerState(mode, (1,), 1), UID, '192.0.2.10',
                       8765, server)
     ctrl.player = speaker
     ctrl.owned_url = URL

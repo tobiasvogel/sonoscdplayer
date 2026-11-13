@@ -6,7 +6,7 @@ from sonos_ui.multi_target import MultiSelection, Target, Topology
 from sonos_ui.interactive_menu import InteractiveMenu
 
 
-TARGETS = Topology((Target('RINCON_TEST1','Gym',('RINCON_TEST1',),('Gym',)),))
+TARGETS = Topology((Target('RINCON_TEST1','Hobbyraum',('RINCON_TEST1',),('Hobbyraum',)),))
 
 
 class SelectionFeedbackTests(unittest.TestCase):

@@ -10,8 +10,8 @@ class TargetBridgeTests(unittest.TestCase):
     def setUp(self):
         self.ui = UISession()
         self.ui.set_speaker_choices((
-            SpeakerChoice('A', 'Gym', True, True),
-            SpeakerChoice('B', 'Praxis', True, True),
+            SpeakerChoice('A', 'Hobbyraum', True, True),
+            SpeakerChoice('B', 'Musikzimmer', True, True),
         ))
         self.ui.input('open_speakers', 1)
         self.ui.input('confirm', 2)
@@ -57,8 +57,8 @@ class TargetBridgeTests(unittest.TestCase):
 
     def test_active_speaker_blocks_rpc_before_submit(self):
         self.ui.set_speaker_choices((
-            SpeakerChoice('A', 'Gym', True, True),
-            SpeakerChoice('B', 'Praxis', False, True),
+            SpeakerChoice('A', 'Hobbyraum', True, True),
+            SpeakerChoice('B', 'Musikzimmer', False, True),
         ))
         calls = []
         with self.assertRaisesRegex(RuntimeError, 'grouped or active'):

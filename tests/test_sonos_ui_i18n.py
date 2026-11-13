@@ -16,7 +16,7 @@ from sonos_ui.multi_target import from_devices
 
 
 def speakers():
-    a=NS(uid='u1',player_name='Büro')
+    a=NS(uid='u1',player_name='Gästezimmer')
     g=NS(coordinator=a,members=(a,))
     a.group=g
     return from_devices((a,))

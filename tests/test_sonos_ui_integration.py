@@ -18,7 +18,7 @@ from sonos_ui.ui_event_bridge import EventReceiver, publish_event, encode_event,
 class UIIntegrationTests(unittest.TestCase):
     @staticmethod
     def grouped_devices():
-        a = NS(uid='one', player_name='Büro')
+        a = NS(uid='one', player_name='Gästezimmer')
         b = NS(uid='two', player_name='Küche')
         c = NS(uid='three', player_name='Wohnzimmer')
         group = NS(coordinator=a, members=(a,b))
@@ -28,7 +28,7 @@ class UIIntegrationTests(unittest.TestCase):
 
     def test_individual_names_even_in_existing_groups(self):
         topology = group_snapshot(self.grouped_devices())
-        self.assertEqual([target.label for target in topology.targets], ['Büro','Küche','Wohnzimmer'])
+        self.assertEqual([target.label for target in topology.targets], ['Gästezimmer','Küche','Wohnzimmer'])
         self.assertEqual(topology.targets[0].members, topology.targets[1].members)
         self.assertFalse(any('+N' in t.label for t in topology.targets))
 
@@ -52,7 +52,7 @@ class UIIntegrationTests(unittest.TestCase):
 
     def test_speaker_discovery_keeps_unicode_names(self):
         snapshot = speaker_snapshot(self.grouped_devices())
-        self.assertEqual(snapshot.names, ('Büro','Küche','Wohnzimmer'))
+        self.assertEqual(snapshot.names, ('Gästezimmer','Küche','Wohnzimmer'))
 
     def test_discovery_failure_is_readonly_error_state(self):
         def unavailable(*,timeout):
@@ -92,7 +92,7 @@ class UIIntegrationTests(unittest.TestCase):
 
     def test_rgb_and_gray_are_exactly_128_square(self):
         render = Renderer()
-        model = DisplayModel(view='menu',speakers=('Büro','Küche','Wohnzimmer'),focus_index=0)
+        model = DisplayModel(view='menu',speakers=('Gästezimmer','Küche','Wohnzimmer'),focus_index=0)
         for gray in (False,True):
             self.assertEqual(render.render(model,grayscale=gray).size,(128,128))
             self.assertEqual(MultiRenderer().render_multi(

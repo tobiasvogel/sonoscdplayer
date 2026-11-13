@@ -29,7 +29,7 @@ def font(size=9,bold=False):
         return ImageFont.truetype(str(FONT_DIR/name),size)
     except OSError as exc:
         raise RuntimeError(
-            'DejaVuSans fonts are required for Unicode text (e.g. Büro, Küche, Drücken). '
+            'DejaVuSans fonts are required for Unicode text (e.g. Gästezimmer, Küche, Drücken). '
             'Install the system package fonts-dejavu-core; refusing Pillow fallback font.'
         ) from exc
 

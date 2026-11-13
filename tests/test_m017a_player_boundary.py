@@ -9,7 +9,7 @@ from sonos_ui.player_command_boundary import (
 
 
 def topology(grouped=False):
-    a=NS(uid='RINCON_123',player_name='Büro')
+    a=NS(uid='RINCON_123',player_name='Gästezimmer')
     b=NS(uid='RINCON_234',player_name='Küche')
     if grouped:
         g=NS(coordinator=a,members=(a,b))
@@ -30,7 +30,7 @@ class PlayerCommandBoundaryTests(unittest.TestCase):
     def test_confirm_only_stores_target_and_never_sends(self):
         sent=[]
         bridge=ExplicitTransport(sender=lambda req: sent.append(req),discover=lambda **kw:topology())
-        self.assertEqual(bridge.confirm(confirmed()),'Büro')
+        self.assertEqual(bridge.confirm(confirmed()),'Gästezimmer')
         self.assertEqual(sent,[])
         self.assertEqual(bridge.target.uid,'RINCON_123')
 

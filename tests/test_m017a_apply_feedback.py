@@ -6,8 +6,8 @@ from sonos_ui.multi_target import Target, Topology
 
 
 TOPOLOGY = Topology((
-    Target('A', 'Gym', ('A',), ('Gym',)),
-    Target('B', 'Praxis', ('B',), ('Praxis',)),
+    Target('A', 'Hobbyraum', ('A',), ('Hobbyraum',)),
+    Target('B', 'Musikzimmer', ('B',), ('Musikzimmer',)),
 ))
 
 

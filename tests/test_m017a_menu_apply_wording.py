@@ -8,8 +8,8 @@ from sonos_ui.selection_plan import plan_from_applied
 class ApplySelectionMenuTests(unittest.TestCase):
     def setUp(self):
         self.topology = Topology((
-            Target('A', 'Gym', ('A',), ('Gym',)),
-            Target('B', 'Praxis', ('B',), ('Praxis',)),
+            Target('A', 'Hobbyraum', ('A',), ('Hobbyraum',)),
+            Target('B', 'Musikzimmer', ('B',), ('Musikzimmer',)),
         ))
 
     def test_action_wording_is_apply_not_review(self):
