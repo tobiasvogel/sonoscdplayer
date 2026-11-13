@@ -34,12 +34,13 @@ from drive_wake_validation import wait_for_woken_disc
 from drive_identity import usb_identity, recovered_device
 from player_controller import Controller, ProcessServer, routed_source_ip
 from player_target_selection import SelectedTarget
+from volume_control import VolumeControl, parse_volume_command
 from sonos_group import normalize_members
 from player_play import make_url, prepare_selection
 from sonos_parallel_test import detect_drive
 
 MAX_REQUEST = 1024
-COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'eject', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery')
+COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'eject', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery', 'volume +N|-N')
 
 
 def response(controller, *, ok, error=None, commands=None):
@@ -52,7 +53,7 @@ def response(controller, *, ok, error=None, commands=None):
     return result
 
 
-def handle_command(controller, request, selection=None, eject=None):
+def handle_command(controller, request, selection=None, eject=None, volume=None):
     """UID is command-scoped; never include it in a reply."""
     if not isinstance(request, dict) or not set(request).issubset({'command', 'uid', 'force', 'members', 'confirm'}) or 'command' not in request:
         return response(controller, ok=False, error='invalid request keys')
@@ -86,9 +87,17 @@ def handle_command(controller, request, selection=None, eject=None):
     if command not in ('play', 'playpause', 'sonos-status', 'set-target') and not (command == 'stop' and force) and uid is not None:
         return response(controller, ok=False, error='UID only accepted with PLAY')
     if not (command in ('status', 'sonos-status', 'play', 'playpause', 'pause', 'resume', 'next', 'previous', 'eject', 'stop', 'reset', 'help', 'set-target', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery')
-            or re.fullmatch(r'select [0-9]{1,3}', command)):
+            or re.fullmatch(r'select [0-9]{1,3}', command)
+            or re.fullmatch(r'volume [+-][0-9]{1,2}', command)):
         return response(controller, ok=False, error='unknown command')
     try:
+        if command.startswith('volume '):
+            if volume is None:
+                raise RuntimeError('volume control unavailable')
+            level = volume.adjust(controller, selection, parse_volume_command(command))
+            reply = response(controller, ok=True)
+            reply['volume'] = level
+            return reply
         if command == 'help':
             return response(controller, ok=True, commands=COMMANDS)
         if command in ('set-target', 'get-target', 'clear-target'):
@@ -403,6 +412,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
     bound_inode = os.lstat(path).st_ino
     publisher = StatusPublisher(controller, power)
     selection = SelectedTarget()
+    volume = VolumeControl()
     if hasattr(controller, 'status_hook'):
         controller.status_hook = lambda: publisher.publish(controller, power)
     pending = []
@@ -479,10 +489,17 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     publisher.publish(controller, power)
                     return reply
 
+                # Volume control is passed only to volume requests, so the
+                # established command path stays unchanged for all others.
+                extra = ({'volume': volume} if isinstance(request, dict)
+                         and isinstance(request.get('command'), str)
+                         and request['command'].strip().lower().startswith('volume ')
+                         else {})
                 reply = handle_command(
                     controller, request, selection,
                     eject=(lambda: eject_and_recover(controller, disc_monitor, power)
-                           if disc_monitor is not None else None))
+                           if disc_monitor is not None else None),
+                    **extra)
                 publisher.publish(controller, power)
                 return reply
 

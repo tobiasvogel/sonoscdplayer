@@ -236,6 +236,11 @@ def safe_modern_status_frame(state, *, cover_mode='auto', language='de'):
 
 
 
+def menu_overlay_active(menu):
+    check = getattr(menu, 'volume_overlay_active', None)
+    return check() is True if callable(check) else False
+
+
 def selected_status_frame(state, *, menu=None, ui_modern=False,
                           cover_mode='auto', language='de', cached=False):
     """Prioritize confirmed drive notices over interactive menu and status.
@@ -249,7 +254,7 @@ def selected_status_frame(state, *, menu=None, ui_modern=False,
         return drive_fault_frame(state)
     if drive_waking(state):
         return drive_wait_frame()
-    if menu is not None and menu.active:
+    if menu is not None and (menu.active or menu_overlay_active(menu)):
         return menu.frame(image_to_frame)
     if ui_modern:
         if cached:

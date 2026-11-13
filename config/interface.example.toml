@@ -20,6 +20,13 @@ speaker_select = -1
 [power]
 long_press_ms = 3000
 
+# Volume buttons: one step (1 of 100) per press; held, they repeat after
+# repeat_delay_ms every repeat_interval_ms. They change the Sonos volume only
+# during own playback, or when stopped on a selected speaker that is idle.
+[volume]
+repeat_delay_ms = 750
+repeat_interval_ms = 250
+
 [encoder]
 encoder_a = 6
 encoder_b = 26

@@ -44,6 +44,9 @@ class Config:
     poll_interval_ms: int
     power_hold_ms: int = 3000
     shift_registers: dict = field(default_factory=dict)
+    # D-012: auto-repeat of held volume buttons.
+    volume_repeat_delay_ms: int = 750
+    volume_repeat_interval_ms: int = 250
 
 
 def _level(value):
@@ -168,7 +171,19 @@ def load_config(path):
     hold = raw.get('power', {}).get('long_press_ms', 3000)
     if isinstance(hold, bool) or not isinstance(hold, int) or not 3000 <= hold <= 10000:
         raise ValueError('power.long_press_ms must be an integer between 3000 and 10000')
-    return Config(buttons, enc, poll, hold, registers)
+    volume = raw.get('volume', {})
+    if not isinstance(volume, dict):
+        raise ValueError('[volume] must be a table')
+    unknown = set(volume) - {'repeat_delay_ms', 'repeat_interval_ms'}
+    if unknown:
+        raise ValueError(f'volume: unknown setting(s): {sorted(unknown)}')
+    delay = volume.get('repeat_delay_ms', 750)
+    interval = volume.get('repeat_interval_ms', 250)
+    for key, value, low, high in (('repeat_delay_ms', delay, 100, 5000),
+                                  ('repeat_interval_ms', interval, 50, 2000)):
+        if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+            raise ValueError(f'volume.{key} must be an integer between {low} and {high}')
+    return Config(buttons, enc, poll, hold, registers, delay, interval)
 
 
 class Button:

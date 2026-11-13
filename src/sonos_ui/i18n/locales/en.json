@@ -69,6 +69,7 @@
   "status.starting": "Starting playback",
   "status.error": "Player error",
   "status.stopped": "Playback stopped",
+  "menu.volume": "Volume",
   "menu.power": "Power",
   "menu.poweroff": "Power off",
   "menu.reboot": "Restart",

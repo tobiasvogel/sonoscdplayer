@@ -35,6 +35,19 @@ class MultiRenderer(Renderer):
         self.bottom(im,status=status,footer=self.tr('footer.mark'))
         return ssd1327_gray(im) if gray else im
 
+    def render_volume(self,level,*,gray=False):
+        """Short volume overlay: big number and a 0..100 bar."""
+        t=self.theme
+        im=Image.new('RGB',(128,128),t.background)
+        self.shell(im,self.tr('menu.volume'))
+        d=ImageDraw.Draw(im)
+        level=max(0,min(100,int(level)))
+        self.text(im,(8,30),str(level),fill=t.primary,size=28,bold=True,width=112,height=34)
+        d.rounded_rectangle((8,74,119,86),radius=3,outline=t.muted)
+        if level:
+            d.rounded_rectangle((10,76,10+round(107*level/100),84),radius=2,fill=t.accent)
+        return ssd1327_gray(im) if gray else im
+
     def render_power(self,focus,notice='',*,gray=False):
         """Power menu: Zurück / Ausschalten / Neustarten. ``notice`` is a locale key."""
         t=self.theme

@@ -103,10 +103,13 @@ SonosCDPlayer supports conventional CD playback controls through configurable ph
 | Next | Select or play the next track |
 | Previous | Select or play the previous track |
 | Eject | Open the drive tray when the required safety conditions are met |
+| Volume + / − | Change the Sonos volume in steps of 1 (the whole group when grouped); hold to repeat. Works during the player's own playback, or before playback on a selected speaker that is not playing anything |
 | Rotary encoder | Navigate the display interface |
 | Encoder press | Confirm menu selections |
 
 Physical playback buttons and disc ejection have been validated on reference hardware.
+
+Volume buttons are implemented but not yet validated on reference hardware.
 
 A Power button implementation provides a display-based power menu and long-press shutdown request. These system actions require explicit configuration.
 

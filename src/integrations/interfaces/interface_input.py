@@ -35,6 +35,11 @@ except ImportError:
     from power_gesture import PowerCoordinator
 
 try:
+    from .volume_buttons import VolumeExecutor, VolumeRepeat
+except ImportError:
+    from volume_buttons import VolumeExecutor, VolumeRepeat
+
+try:
     from .connect_gesture import ConnectGesture
 except ImportError:
     from connect_gesture import ConnectGesture
@@ -61,6 +66,8 @@ TRANSPORT_RESPONSE_TIMEOUTS = {
     'drive-activity': 30.0,
 }
 DEFAULT_COMMAND_RESPONSE_TIMEOUT = 1.0
+# The first volume step on a stopped target may discover the speakers (~5 s).
+VOLUME_RESPONSE_TIMEOUT = 15.0
 
 
 def read_uid(path):
@@ -79,13 +86,20 @@ def read_uid(path):
 
 def send_command(socket_path, command, uid=None):
     """One attempt only: never queue or replay a hardware event."""
+    request_reply(socket_path, command, uid)
+    return True
+
+
+def request_reply(socket_path, command, uid=None):
+    """Like send_command, but return the player's reply dict."""
     request = {'command': command}
     if command == 'playpause':
         if not uid:
             raise ValueError('playpause requires a private UID file')
         request['uid'] = uid
-    response_timeout = TRANSPORT_RESPONSE_TIMEOUTS.get(
-        command, DEFAULT_COMMAND_RESPONSE_TIMEOUT)
+    response_timeout = (VOLUME_RESPONSE_TIMEOUT if command.startswith('volume ')
+                        else TRANSPORT_RESPONSE_TIMEOUTS.get(
+                            command, DEFAULT_COMMAND_RESPONSE_TIMEOUT))
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         # Fail quickly on connect/send; allow bounded time for player work.
         client.settimeout(1.0)
@@ -107,7 +121,7 @@ def send_command(socket_path, command, uid=None):
     reply = json.loads(data.split(b'\n', 1)[0])
     if not isinstance(reply, dict) or reply.get('ok') is not True:
         raise ValueError('player rejected command')
-    return True
+    return reply
 
 
 class CommandDispatcher:
@@ -392,6 +406,15 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
             publish=(publisher.enqueue if publisher is not None else (lambda *_: False)),
             shutdown=make_power_shutdown(power_actions))
         connect = ConnectGesture() if connect_gestures else None
+        # Volume buttons act only in the safe selected-target execute mode;
+        # otherwise their presses are merely logged like other diagnostics.
+        volume_repeat = VolumeRepeat(cfg.volume_repeat_delay_ms,
+                                     cfg.volume_repeat_interval_ms)
+        volume = (
+            VolumeExecutor(socket_path, sender=request_reply,
+                           publish=(publisher.enqueue if publisher is not None else None))
+            if execute and target_executor is not None else None
+        )
         separate_speaker_button = 'speaker_select' in cfg.buttons
         print('GPIO command mode active.' if execute else 'GPIO diagnostics active; Ctrl+C to exit. No Sonos commands.', flush=True)
         while True:
@@ -415,8 +438,14 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
                 ):
                     activity_publisher.enqueue()
                 handle_event(name, event, commands=commands, execute=execute, socket_path=socket_path, uid=uid, dispatcher=dispatcher, target_preview=target_preview, target_executor=target_executor)
+                step = volume_repeat.event(name, event, now_ms)
+                if volume is not None:
+                    volume.submit(step)
             tick_ms = time.monotonic_ns() // 1_000_000
             power.tick(tick_ms)
+            step = volume_repeat.tick(tick_ms)
+            if volume is not None:
+                volume.submit(step)
             if connect is not None:
                 tick_connect_event(
                     connect, tick_ms,

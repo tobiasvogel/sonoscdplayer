@@ -69,6 +69,7 @@
   "status.starting": "Wiedergabe startet",
   "status.error": "Player-Fehler",
   "status.stopped": "Wiedergabe gestoppt",
+  "menu.volume": "Lautstärke",
   "menu.power": "Ein/Aus",
   "menu.poweroff": "Ausschalten",
   "menu.reboot": "Neustarten",

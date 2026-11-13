@@ -24,6 +24,8 @@ POWER_ITEMS = ('back', 'poweroff', 'reboot')
 # After a player-acknowledged "Auswahl übernehmen" the confirmation stays
 # visible this long, then the menu closes to the overview.
 ACCEPTED_CLOSE_SECONDS = 1.5
+# INP-02: how long an acknowledged volume level stays visible.
+VOLUME_OVERLAY_SECONDS = 2.0
 
 
 class InteractiveMenu:
@@ -60,6 +62,8 @@ class InteractiveMenu:
         # None means the overview (no menu was open).
         self._power_return = None
         self._close_menu_at = None
+        self._volume_level = None
+        self._volume_until = 0.0
         self.connect_notices = ConnectNoticeView()
         self._connect_renderer = NoticeRenderer()
         self._notice_previous_active = None
@@ -356,8 +360,19 @@ class InteractiveMenu:
             self._start_discovery(now)
         return changed
 
+    def volume_overlay_active(self, now=None):
+        now = time.monotonic() if now is None else now
+        return self._volume_level is not None and now < self._volume_until
+
     def event(self, name, event, now=None):
         now = time.monotonic() if now is None else now
+        if name == 'volume':
+            # Display only: the level was already set and acknowledged by the player.
+            if not (isinstance(event, str) and event.isdigit() and 0 <= int(event) <= 100):
+                return False
+            self._volume_level = int(event)
+            self._volume_until = now + VOLUME_OVERLAY_SECONDS
+            return True
         if (name, event) == ('speaker_select', 'pressed'):
             if self._power_busy or self.power_menu:
                 return False
@@ -443,6 +458,8 @@ class InteractiveMenu:
         if self.power_menu:
             return image_to_frame(self.renderer.render_power(
                 self.power_focus, self.power_notice, gray=True))
+        if self.volume_overlay_active():
+            return image_to_frame(self.renderer.render_volume(self._volume_level, gray=True))
         if self.language_picker:
             from PIL import Image, ImageDraw
             t=self.renderer.theme
