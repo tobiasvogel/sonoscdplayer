@@ -104,5 +104,10 @@
   "network.preferred.ethernet": "Ethernet",
   "network.preferred.wifi": "Wi-Fi",
   "network.preferred.none": "No connection",
-  "network.readonly": "Read-only status"
+  "network.readonly": "Read-only status",
+  "menu.rescan": "Search targets",
+  "status.scan_running": "Searching for speakers …",
+  "status.scan_done": "{count} speakers found",
+  "status.scan_done_one": "1 speaker found",
+  "status.scan_none": "No speakers found"
 }

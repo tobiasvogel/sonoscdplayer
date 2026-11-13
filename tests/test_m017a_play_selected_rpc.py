@@ -8,6 +8,11 @@ from player_service import handle_command
 from player_target_selection import SelectedTarget
 from player_state import Mode
 
+
+def accepted_notice(menu, now):
+    current = menu.connect_notices.current(now=now)
+    return (current.key, current.severity) if current is not None else None
+
 class Controller:
     def __init__(self):
         self.state = NS(mode=Mode.STOPPED)
@@ -79,7 +84,7 @@ class GroupPlaySelectedTests(unittest.TestCase):
         menu._target_worker.join(timeout=2)
         menu.poll(now=0)
         self.assertEqual(seen,[('A',('B',))])
-        self.assertEqual(menu.state.notice,'status.target_accepted')
+        self.assertEqual(accepted_notice(menu,0),('status.target_accepted','success'))
 
 if __name__=='__main__':
     unittest.main()

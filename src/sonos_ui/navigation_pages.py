@@ -5,7 +5,7 @@ from .theme import ssd1327_gray
 
 MAIN_ITEMS = ("menu.targets", "menu.network", "menu.settings", "menu.back")
 NETWORK_ITEMS = ("network.status", "network.settings", "menu.back")
-SETTINGS_ITEMS = ("menu.language", "menu.back")
+SETTINGS_ITEMS = ("menu.language", "menu.rescan", "menu.back")
 
 
 class NavigationRenderer(Renderer):

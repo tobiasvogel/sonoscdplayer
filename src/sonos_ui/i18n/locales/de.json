@@ -104,5 +104,10 @@
   "network.preferred.ethernet": "Ethernet",
   "network.preferred.wifi": "WLAN",
   "network.preferred.none": "Keine Verbindung",
-  "network.readonly": "Nur Statusanzeige"
+  "network.readonly": "Nur Statusanzeige",
+  "menu.rescan": "Ziele neu suchen",
+  "status.scan_running": "Suche Lautsprecher …",
+  "status.scan_done": "{count} Lautsprecher gefunden",
+  "status.scan_done_one": "1 Lautsprecher gefunden",
+  "status.scan_none": "Keine Lautsprecher gefunden"
 }

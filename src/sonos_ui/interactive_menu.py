@@ -15,15 +15,21 @@ from .single_target import select_one, TargetSelectionError
 from .target_rpc_client import submit_target
 from .selection_plan import plan_from_applied
 from .connect_notice import ConnectNoticeView
+from .notice import Notice
 from .notice_render import NoticeRenderer
 from .navigation_pages import NavigationRenderer, MAIN_ITEMS, NETWORK_ITEMS, SETTINGS_ITEMS
 from .network_status import NetworkStatus, read_network_status
 
 
 POWER_ITEMS = ('back', 'poweroff', 'reboot')
-# After a player-acknowledged "Auswahl übernehmen" the confirmation stays
-# visible this long, then the menu closes to the overview.
-ACCEPTED_CLOSE_SECONDS = 1.5
+# After a player-acknowledged "Auswahl übernehmen" the menu closes and a
+# success notice stays visible this long.
+ACCEPTED_NOTICE_SECONDS = 1.0
+SCAN_RESULT_SECONDS = 2.0
+# Speakers are discovered once when the OLED service starts and cached; only an
+# empty or failed result is retried in the background. "Search targets" in the
+# settings menu forces a new discovery.
+EMPTY_SCAN_RETRY_SECONDS = 30.0
 # INP-02: how long an acknowledged volume level stays visible.
 VOLUME_OVERLAY_SECONDS = 2.0
 
@@ -61,7 +67,8 @@ class InteractiveMenu:
         # Menu position to restore when the power menu is closed with "back";
         # None means the overview (no menu was open).
         self._power_return = None
-        self._close_menu_at = None
+        self._discovery_started = False
+        self._scan_requested = False
         self._volume_level = None
         self._volume_until = 0.0
         self.connect_notices = ConnectNoticeView()
@@ -122,8 +129,7 @@ class InteractiveMenu:
                 self._targets_return = 'main'
                 self.section = 'targets'
                 self.state = replace(self.state, focus=0)
-                self._next_refresh = 0.0
-                self._start_discovery(now)
+                self._discover_if_empty(now)
             elif self.menu_focus == 1:
                 self.section = 'network'
                 self.menu_focus = 0
@@ -144,6 +150,8 @@ class InteractiveMenu:
             if self.menu_focus == 0:
                 self.language_picker = True
                 self.language_focus = self.languages.index(self.language)
+            elif self.menu_focus == 1:
+                self._request_scan(now)
             else:
                 self.section = 'main'
                 self.menu_focus = 2
@@ -158,9 +166,29 @@ class InteractiveMenu:
         self._targets_return = 'closed'
         self.state = replace(self.state, focus=0)
         self.language_picker = False
-        self._next_refresh = 0.0
-        self._start_discovery(now)
+        self._discover_if_empty(now)
         return True
+
+    def _has_targets(self):
+        return bool(self.state.topology.targets) and not self.state.topology.error
+
+    def _discover_if_empty(self, now):
+        """Use the cached speaker list; only search when there is none yet."""
+        if not self._has_targets():
+            self._start_discovery(now)
+
+    def _request_scan(self, now):
+        """Settings > Search targets: forced discovery with visible progress."""
+        self._scan_requested = True
+        self._show_notice(Notice('status.scan_running', priority=40,
+                                 dismissible=False), now)
+        self._start_discovery(now)
+
+    def _show_notice(self, notice, now):
+        if self._notice_previous_active is None:
+            self._notice_previous_active = self.active
+        self.connect_notices.post(notice, now=now)
+        self.active = True
 
     def _connect_event(self, action, now):
         if self._power_busy or self.power_menu:
@@ -239,14 +267,13 @@ class InteractiveMenu:
         self.active = True
         if self.section == 'network_status':
             self._next_network_refresh = 0.0
-        elif self.section == 'targets':
-            self._next_refresh = 0.0
         return True
 
     def _start_discovery(self, now):
         if self._worker is not None and self._worker.is_alive():
             return
-        self._next_refresh = now + self._refresh_seconds
+        self._discovery_started = True
+        self._next_refresh = now + EMPTY_SCAN_RETRY_SECONDS
         language=self.language
         def work():
             try:
@@ -325,6 +352,19 @@ class InteractiveMenu:
             # Topology refresh must not erase a completed target-RPC notice.
             self.state = self.state.update(new)
             changed = True
+            if self._scan_requested:
+                self._scan_requested = False
+                if not self.power_menu:
+                    count = 0 if self.state.topology.error else len(self.state.topology.targets)
+                    if count:
+                        notice = Notice('status.scan_done_one' if count == 1 else 'status.scan_done',
+                                        severity='success', params={'count': count},
+                                        priority=40, duration_seconds=SCAN_RESULT_SECONDS)
+                    else:
+                        notice = Notice('status.scan_none', severity='warning', priority=40,
+                                        duration_seconds=SCAN_RESULT_SECONDS)
+                    self.connect_notices.clear(now=now)
+                    self._show_notice(notice, now)
         with self._lock:
             result = self._target_result
             self._target_result = None
@@ -333,30 +373,31 @@ class InteractiveMenu:
             if result[1] == 'status.target_accepted' and self._pending_selection is not None:
                 # Only the player ACK commits the new local applied target.
                 self.state = replace(self.state, applied=self._pending_selection,
-                                     notice=result[1])
-                # Success closes the menu after a short confirmation; a power
-                # menu opened meanwhile then returns to the overview.
+                                     notice='', focus=0)
+                # Success closes the menu behind a short success notice; a
+                # power menu opened meanwhile then returns to the overview.
                 if self.power_menu:
                     if self._power_return is not None and self._power_return[0] == 'targets':
                         self._power_return = None
                 elif self.active and self.section == 'targets':
-                    self._close_menu_at = now + ACCEPTED_CLOSE_SECONDS
+                    self.active = False
+                    if self._notice_previous_active is not None:
+                        self._notice_previous_active = False
+                    self._show_notice(Notice('status.target_accepted', severity='success',
+                                             priority=60,
+                                             duration_seconds=ACCEPTED_NOTICE_SECONDS), now)
             else:
                 self.state = replace(self.state, notice=result[1])
             self._pending_selection = None
             changed = True
-        if self._close_menu_at is not None and now >= self._close_menu_at:
-            self._close_menu_at = None
-            if (self.active and self.section == 'targets' and not self.power_menu
-                    and self._notice_previous_active is None):
-                self.active = False
-                self.state = replace(self.state, notice='', focus=0)
-                changed = True
         if self._notice_previous_active is not None and self.connect_notices.current(now=now) is None:
             self._restore_after_notice()
             changed = True
-        if (self.active and self.section == 'targets' and not self.power_menu and
-                self._notice_previous_active is None and now >= self._next_refresh):
+        if not self._discovery_started:
+            # Once at service start, in the background.
+            self._start_discovery(now)
+        elif not self._has_targets() and now >= self._next_refresh:
+            # Nothing found yet (e.g. network not ready at boot): retry quietly.
             self._start_discovery(now)
         return changed
 
@@ -425,7 +466,7 @@ class InteractiveMenu:
                 self.language_picker = False
                 self.state = replace(self.state, notice='')
                 # Rebuild localized fallback names after a user language switch.
-                self._next_refresh = 0.0
+                self._start_discovery(now)
             else:
                 return False
             return True
@@ -436,7 +477,6 @@ class InteractiveMenu:
                   ('encoder_sw','pressed'): 'confirm'}.get((name,event))
         if action is None:
             return False
-        self._close_menu_at = None  # user is still working in the list
         self.state = self.state.action(action)
         if action == 'confirm' and self.state.notice == 'status.apply_requested':
             self._send_target()

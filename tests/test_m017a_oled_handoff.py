@@ -9,6 +9,11 @@ from sonos_ui.interactive_menu import InteractiveMenu
 from sonos_ui.multi_target import from_devices
 
 
+
+def accepted_notice(menu, now):
+    current = menu.connect_notices.current(now=now)
+    return (current.key, current.severity) if current is not None else None
+
 def topology(grouped=False):
     a=NS(uid='RINCON_X1',player_name='Office')
     b=NS(uid='RINCON_X2',player_name='Kitchen')
@@ -49,7 +54,7 @@ class MenuTargetRPCTests(unittest.TestCase):
         menu._target_worker.join(timeout=2)
         self.assertTrue(menu.poll(now=0))
         self.assertEqual(sent,['RINCON_X1'])
-        self.assertEqual(menu.state.notice,'status.target_accepted')
+        self.assertEqual(accepted_notice(menu,0),('status.target_accepted','success'))
         self.assertFalse(menu._target_pending)
 
     def test_rejection_is_visible_and_not_retried(self):

@@ -42,7 +42,7 @@ class ApplyFeedbackTests(unittest.TestCase):
         self.apply(menu)
         self.assertEqual(calls, ['A'])
         self.assertEqual(menu.state.applied, frozenset({'A'}))
-        self.assertEqual(menu.state.notice, 'status.target_accepted')
+        self.assertEqual(menu.connect_notices.current(now=8).key, 'status.target_accepted')
 
     def test_group_confirm_sends_once_then_acks(self):
         calls = []
@@ -51,18 +51,19 @@ class ApplyFeedbackTests(unittest.TestCase):
         self.apply(menu, count=2)
         self.assertEqual(calls, [('A', ('B',))])
         self.assertEqual(menu.state.applied, frozenset({'A','B'}))
-        self.assertEqual(menu.state.notice, 'status.target_accepted')
+        self.assertEqual(menu.connect_notices.current(now=8).key, 'status.target_accepted')
 
-    def test_accepted_selection_closes_menu_after_confirmation(self):
-        from sonos_ui.interactive_menu import ACCEPTED_CLOSE_SECONDS
+    def test_accepted_selection_shows_success_notice_then_closes(self):
+        from sonos_ui.interactive_menu import ACCEPTED_NOTICE_SECONDS
         menu = self.new_menu(solo=lambda uid: True)
         self.apply(menu)                                  # poll(8) receives the ACK
-        self.assertTrue(menu.active)
-        self.assertEqual(menu.state.notice, 'status.target_accepted')
-        menu.poll(8 + ACCEPTED_CLOSE_SECONDS - 0.1)
-        self.assertTrue(menu.active, 'confirmation stays visible briefly')
-        menu.poll(8 + ACCEPTED_CLOSE_SECONDS)
-        self.assertFalse(menu.active)
+        notice = menu.connect_notices.current(now=8)
+        self.assertEqual((notice.key, notice.severity), ('status.target_accepted', 'success'))
+        self.assertEqual(notice.duration_seconds, ACCEPTED_NOTICE_SECONDS)
+        self.assertEqual(menu.state.notice, '', 'no tiny status line any more')
+        self.assertTrue(menu.active, 'notice is visible')
+        menu.poll(8 + ACCEPTED_NOTICE_SECONDS)
+        self.assertFalse(menu.active, 'menu closed after the notice')
         self.assertEqual(menu.state.applied, frozenset({'A'}))
 
     def test_rejected_selection_keeps_menu_open(self):
@@ -86,7 +87,6 @@ class ApplyFeedbackTests(unittest.TestCase):
         self.assertEqual(menu.state.draft, draft)
 
     def test_accept_while_power_menu_open_returns_to_overview(self):
-        from sonos_ui.interactive_menu import ACCEPTED_CLOSE_SECONDS
         menu = self.new_menu(solo=lambda uid: True)
         menu._power_action = lambda _choice: True
         self.assertTrue(menu.event('encoder_sw', 'pressed', 1))
@@ -97,7 +97,7 @@ class ApplyFeedbackTests(unittest.TestCase):
         menu._target_worker.join(timeout=2)
         menu.poll(7)
         self.assertEqual(menu.state.applied, frozenset({'A'}))
-        menu.poll(7 + ACCEPTED_CLOSE_SECONDS)
+        menu.poll(9)
         self.assertTrue(menu.power_menu, 'power menu is not closed underneath')
         self.assertTrue(menu.event('power', 'short', 20))
         self.assertFalse(menu.active)

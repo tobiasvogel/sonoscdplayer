@@ -33,6 +33,13 @@ class ConnectNoticeView:
         self._ident = self.engine.post(notice, now=now)
         return True
 
+    def post(self, notice, *, now):
+        """Replace the current notice with any other UI notice."""
+        if self._ident is not None:
+            self.engine.clear(self._ident, now=now)
+        self._ident = self.engine.post(notice, now=now)
+        return True
+
     def current(self, *, now):
         return self.engine.presentation(now=now, base_view=None).notice
 
