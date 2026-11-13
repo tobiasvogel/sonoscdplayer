@@ -5,12 +5,13 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 BUILD_DIR="${BUILD_DIR:-$ROOT/build/shutdown-hook}"
 CC="${CC:-cc}"
+# An explicit local TOML is mandatory; never reuse stale device-specific headers.
+: "${DISPLAY_CONFIG:?Set DISPLAY_CONFIG to the local player TOML containing [display]}"
+[ -f "$DISPLAY_CONFIG" ] || { echo "DISPLAY_CONFIG file not found: $DISPLAY_CONFIG" >&2; exit 2; }
 mkdir -p "$BUILD_DIR"
-if [ ! -f "$BUILD_DIR/ssd1327_display_config.h" ]; then
-    echo "Missing $BUILD_DIR/ssd1327_display_config.h" >&2
-    echo "Generate it with: python3 tools/generate_ssd1327_display_header.py --config YOUR_PLAYER_TOML --output $BUILD_DIR/ssd1327_display_config.h" >&2
-    exit 2
-fi
+python3 "$ROOT/tools/generate_ssd1327_display_header.py" \
+    --config "$DISPLAY_CONFIG" \
+    --output "$BUILD_DIR/ssd1327_display_config.h"
 python3 "$ROOT/tools/build_shutdown_renderer.py" \
     --backend ssd1327 \
     --wait "$ROOT/src/data/shutdown_screen.png" \
