@@ -342,7 +342,7 @@ def run_sim(cfg, input_file):
 
 def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None, ui_events_socket=None, target_preview_enabled=False, target_execute_enabled=False,
              drive_activity_enabled=False, power_actions=False,
-             connect_gestures=False):
+             connect_gestures=False, gpio_warnings=False):
     try:
         import RPi.GPIO as GPIO
     except ImportError as exc:
@@ -365,6 +365,7 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
         from sonos_ui.ui_event_bridge import AsyncEventPublisher
         publisher = AsyncEventPublisher(ui_events_socket)
     try:
+        GPIO.setwarnings(bool(gpio_warnings))
         GPIO.setmode(GPIO.BCM)
         for pin, pull in pins.items():
             GPIO.setup(pin, GPIO.IN, pull_up_down=pulls[pull])
@@ -486,13 +487,20 @@ def main():
         run_sim(cfg, args.simulate)
     else:
         uid = read_uid(args.uid_file) if args.uid_file else None
+        from gpio_settings import gpio_warnings_enabled
+        try:
+            # GPIO library settings are shared with the other services in player.toml.
+            gpio_warnings = gpio_warnings_enabled()
+        except (OSError, ValueError) as exc:
+            p.error(f'invalid [gpio] settings in {config_paths.player_config()}: {exc}')
         run_gpio(cfg, commands=args.commands, execute=args.execute, socket_path=args.socket,
                  uid=uid, ui_events_socket=args.ui_events_socket,
                  target_preview_enabled=args.selected_target_preview,
                  target_execute_enabled=args.selected_target_execute,
                  drive_activity_enabled=args.drive_activity_events,
                  power_actions=args.power_actions,
-                 connect_gestures=args.connect_gestures)
+                 connect_gestures=args.connect_gestures,
+                 gpio_warnings=gpio_warnings)
 
 
 if __name__ == '__main__':

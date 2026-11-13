@@ -26,8 +26,22 @@ def duty_at(seconds):
 
 def configured_power_pin(path):
     """Read only the LED power pin from a local TOML configuration."""
+    return configured_settings(path)[0]
+
+
+def configured_settings(path):
+    """Return (power pin, GPIO warnings) from a local TOML configuration.
+
+    [gpio].warnings mirrors src/gpio_settings.py (standalone at early boot).
+    """
     with open(path, 'rb') as stream:
         document = tomllib.load(stream)
+    gpio_cfg = document.get('gpio', {})
+    if not isinstance(gpio_cfg, dict):
+        raise ValueError('[gpio] must be a TOML table')
+    warnings = gpio_cfg.get('warnings', False)
+    if type(warnings) is not bool:
+        raise ValueError('[gpio].warnings must be true or false')
     led = document.get('led_outputs', {})
     if not isinstance(led, dict):
         raise ValueError('led_outputs must be a TOML table')
@@ -35,10 +49,10 @@ def configured_power_pin(path):
     connection = led.get('connection_pin', 13)
     if type(power) is not int or type(connection) is not int or {power, connection} != {12, 13}:
         raise ValueError('LED outputs must use BCM12 and BCM13 exactly once')
-    return power
+    return power, warnings
 
 
-def run(gpio=None, *, pin=PIN):
+def run(gpio=None, *, pin=PIN, warnings=False):
     if type(pin) is not int or pin not in (12, 13):
         raise ValueError('early power LED pin must be BCM12 or BCM13')
     if gpio is None:
@@ -52,6 +66,7 @@ def run(gpio=None, *, pin=PIN):
     claimed=False
     try:
         for sig in prev: signal.signal(sig,on_signal)
+        if hasattr(gpio,'setwarnings'): gpio.setwarnings(bool(warnings))
         gpio.setmode(gpio.BCM)
         gpio.setup(pin,gpio.OUT,initial=gpio.HIGH)
         claimed=True
@@ -76,11 +91,11 @@ def main():
     a=p.parse_args()
     if not a.execute: p.error('GPIO access requires --execute')
     if a.config:
-        pin=configured_power_pin(a.config)
+        pin,warnings=configured_settings(a.config)
     else:
         # Early boot must never fail on a missing file: fall back to BCM12.
         path=default_config_path()
-        pin=configured_power_pin(path) if os.path.isfile(path) else PIN
-    run(pin=pin)
+        pin,warnings=configured_settings(path) if os.path.isfile(path) else (PIN,False)
+    run(pin=pin,warnings=warnings)
 
 if __name__=='__main__': main()

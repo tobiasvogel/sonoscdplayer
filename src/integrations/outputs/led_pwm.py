@@ -6,6 +6,7 @@ A future pigpio/backend can supply DMA/hardware timing without changing this mod
 from __future__ import annotations
 import argparse
 import config_paths
+from gpio_settings import apply_gpio_warnings, gpio_warnings_enabled
 import json
 import math
 import signal
@@ -91,9 +92,10 @@ class PwmOutputs:
 
     `gpio_module` can be a fake in tests. Set-up failure also cleans up pins.
     """
-    def __init__(self, config: OutputConfig, gpio_module=None):
+    def __init__(self, config: OutputConfig, gpio_module=None, *, gpio_warnings=False):
         self.config = config
         self.gpio = gpio_module
+        self.gpio_warnings = gpio_warnings
         self._pwm = []
         self._initialized = False
 
@@ -105,6 +107,7 @@ class PwmOutputs:
             self.gpio = GPIO
         g = self.gpio
         try:
+            apply_gpio_warnings(g, self.gpio_warnings)
             g.setmode(g.BCM)
             for pin in (self.config.power_pin, self.config.connection_pin):
                 g.setup(pin, g.OUT, initial=g.LOW if self.config.active_high else g.HIGH)
@@ -212,7 +215,7 @@ def main(argv=None):
     last_lux_at = None
     last_sensor_error = None
     from contextlib import nullcontext
-    backend = PwmOutputs(cfg) if args.gpio else None
+    backend = PwmOutputs(cfg, gpio_warnings=gpio_warnings_enabled(args.config)) if args.gpio else None
     context = backend if backend is not None else nullcontext()
     started = time.monotonic()
     deadline = started+args.seconds if args.seconds else None

@@ -101,6 +101,23 @@ class RuntimeUnitRenderTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 render(source, **self.inputs)
 
+    def test_main_refuses_checkout_without_src_layout(self):
+        import contextlib
+        import io
+        with tempfile.TemporaryDirectory() as directory:
+            for checkout, hint in ((str(ROOT), 'src/'), (directory, None)):
+                with self.subTest(checkout=checkout):
+                    stderr = io.StringIO()
+                    with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit):
+                        main(['--output-dir', str(Path(directory) / 'out'),
+                              '--checkout', checkout,
+                              '--python-venv', self.inputs['python_venv'],
+                              '--service-user', self.inputs['user']])
+                    self.assertIn('lacks player_service.py', stderr.getvalue())
+                    if hint:
+                        self.assertIn(hint, stderr.getvalue())
+                    self.assertFalse((Path(directory) / 'out').exists())
+
     def test_no_unit_conflicts_with_the_early_led(self):
         # Conflicts= between units of the same boot transaction makes systemd
         # drop the early LED start job, so the breathing LED never appears.
@@ -159,7 +176,7 @@ class RuntimeUnitRenderTests(unittest.TestCase):
             staged = root / 'staged'
             args = ['--repo-root', str(ROOT), '--output-dir', str(staged),
                     '--systemd-dir', str(systemd),
-                    '--checkout', self.inputs['checkout'],
+                    '--checkout', str(ROOT / 'src'),
                     '--python-venv', self.inputs['python_venv'],
                     '--service-user', self.inputs['user']]
             buffer = io.StringIO()
@@ -181,7 +198,7 @@ class RuntimeUnitRenderTests(unittest.TestCase):
             out = Path(directory) / 'staged'
             argv = ['--repo-root', str(ROOT), '--output-dir', str(out)]
             for name, value in (
-                ('--checkout', self.inputs['checkout']),
+                ('--checkout', str(ROOT / 'src')),
                 ('--python-venv', self.inputs['python_venv']),
                 ('--service-user', self.inputs['user']),
             ):

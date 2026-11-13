@@ -102,8 +102,10 @@ class Framebuffer:
         return self
 
 class SSD1327:
-    def __init__(self, config=DisplayConfig(), *, spi=None, gpio=None, sleep=time.sleep):
+    def __init__(self, config=DisplayConfig(), *, spi=None, gpio=None, sleep=time.sleep,
+                 gpio_warnings=False):
         self.config=config; self.spi=spi; self.gpio=gpio; self.sleep=sleep; self.opened=False
+        self.gpio_warnings=gpio_warnings
 
     def _cmd(self,*bs):
         self.gpio.output(self.config.dc_pin,self.gpio.LOW)
@@ -127,6 +129,8 @@ class SSD1327:
                 self.spi.open(self.config.bus,self.config.device)
             self.spi.max_speed_hz=self.config.spi_hz
             self.spi.mode=0
+            setwarnings=getattr(self.gpio,'setwarnings',None)
+            if setwarnings is not None: setwarnings(bool(self.gpio_warnings))
             self.gpio.setmode(self.gpio.BCM)
             self.gpio.setup(self.config.dc_pin,self.gpio.OUT,initial=self.gpio.LOW)
             self.gpio.setup(self.config.rst_pin,self.gpio.OUT,initial=self.gpio.HIGH)

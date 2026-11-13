@@ -357,6 +357,8 @@ def main(argv=None):
             display_pins = DisplayPins()  # offline preview without a configured device
         else:
             display_pins = load_display_pins(display_path)
+        from gpio_settings import gpio_warnings_enabled
+        gpio_warnings = gpio_warnings_enabled(display_path) if args.execute else False
     except (OSError, ValueError) as exc:
         p.error(f'invalid display configuration: {exc}')
     if args.ui_target_rpc and not (args.ui_events_socket and args.ui_modern):
@@ -383,7 +385,7 @@ def main(argv=None):
     display_config = DisplayConfig(bus=display_pins.spi_bus, device=display_pins.spi_device,
                                    dc_pin=display_pins.dc_pin, rst_pin=display_pins.rst_pin,
                                    spi_hz=args.spi_hz, contrast=args.contrast)
-    driver=SSD1327(display_config) if args.execute else None
+    driver=SSD1327(display_config, gpio_warnings=gpio_warnings) if args.execute else None
     splash=load_splash(args.splash)
     ambient=OLEDContrastControl(ambient_config) if args.ambient_auto else None
     last_contrast=args.contrast

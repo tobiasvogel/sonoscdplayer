@@ -161,6 +161,20 @@ def render_early_unit(root, player_config):
     return replace_directive(text, 'ExecStart', f'{match.group(1)} --config {player_config}')
 
 
+def check_checkout(checkout):
+    """Refuse a --checkout that is not the src directory of a checkout.
+
+    Services start with WorkingDirectory=<checkout> and `python -m
+    integrations...`; a wrong directory only fails at runtime otherwise.
+    """
+    root = Path(checkout)
+    missing = [name for name in ('player_service.py', 'integrations')
+               if not (root / name).exists()]
+    if missing:
+        hint = ' (did you mean its src/ subdirectory?)' if (root / 'src' / 'player_service.py').exists() else ''
+        raise ValueError(f'--checkout {checkout} lacks {", ".join(missing)}{hint}')
+
+
 def existing_dropins(systemd_dir, names):
     """Read-only inventory of units with .conf drop-ins."""
     found = []
@@ -190,6 +204,10 @@ def main(argv=None):
     p.add_argument('--systemd-dir', type=Path, default=Path('/etc/systemd/system'),
                    help='Read-only check for installed drop-ins overriding rendered units')
     args = p.parse_args(argv)
+    try:
+        check_checkout(args.checkout)
+    except ValueError as exc:
+        p.error(str(exc))
     units = render(args.repo_root / 'systemd',
                    checkout=args.checkout, python_venv=args.python_venv,
                    user=args.service_user, power_actions=args.power_actions,

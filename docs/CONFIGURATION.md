@@ -38,9 +38,11 @@ For each file the tool uses the file of the same name in `--from-dir` if present
 | Player service and player tools | `player.toml` |
 | LED service, early boot power LED | `player.toml` (`[led_outputs]`) |
 | OLED service, splash and shutdown-screen builds | `player.toml` (`[display]`), `ui.toml` |
-| Button/encoder service | `interface.toml` |
+| Button/encoder service | `interface.toml`; `player.toml` (`[gpio]`) |
 | Experimental shutdown screen installer | `player.toml` (`[service]`) |
 | `tools/config_swap.py` | `player.toml` (default `--config`) |
+
+`[gpio] warnings` in `player.toml` (default `false`) switches the RPi.GPIO library warnings on for all services that use GPIO pins; warnings such as "This channel is already in use" are expected during the hand-over from the early boot LED and are only useful for diagnostics.
 
 Every tool still accepts an explicit path (`--config`, `--display-config`, `--ui-config`, `DISPLAY_CONFIG`) for testing, but installed services use the standard location.
 

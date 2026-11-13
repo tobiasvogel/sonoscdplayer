@@ -34,6 +34,12 @@ experimental_safe_screen = false
 # dc_pin = 22
 # rst_pin = 27
 
+[gpio]
+# Show RPi.GPIO library warnings such as "This channel is already in use".
+# Applies to LEDs, early boot LED, OLED control pins and button inputs.
+# Such warnings are expected during service hand-overs; enable for diagnostics only.
+warnings = false
+
 [led_outputs]
 power_pin = 12
 connection_pin = 13
