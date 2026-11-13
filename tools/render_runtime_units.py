@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render four standalone SonosCDPlayer runtime units for a local deployment.
+"""Render standalone SonosCDPlayer units for a local deployment.
 
 The versioned files under systemd/ are templates with @SONOSCDPLAYER_*@
 placeholders; they contain no installation paths or account names. All units
@@ -28,6 +28,7 @@ UNITS = (
     'sonoscdplayer-oled.service',
     'sonoscdplayer-buttons.service',
 )
+EARLY_UNIT = 'sonoscdplayer-early-power-led.service'
 POLKIT_RULE = '50-sonoscdplayer-power.rules'
 PLACEHOLDER = re.compile(r'@SONOSCDPLAYER_[A-Z_]+@')
 USER_NAME = re.compile(r'[a-z_][a-z0-9_-]{0,31}')
@@ -143,11 +144,31 @@ def render(source_dir, *, checkout, python_venv, user, power_actions=True,
             )
         ))
         rendered[name] = require_rendered(name, text)
+    rendered[EARLY_UNIT] = require_rendered(EARLY_UNIT, render_early_unit(root, player_config))
     if power_actions:
         rule = (root / 'polkit' / POLKIT_RULE).read_text(encoding='utf-8')
         rendered[POLKIT_RULE] = require_rendered(
             POLKIT_RULE, rule.replace('@SONOSCDPLAYER_USER@', user))
     return rendered
+
+
+def render_early_unit(root, player_config):
+    """Provide the configured power LED pin mapping to the early boot service."""
+    text = strip_template_comments((Path(root) / EARLY_UNIT).read_text(encoding='utf-8'))
+    match = re.search(r'^ExecStart=(.*)$', text, re.MULTILINE)
+    if match is None or '--config' in match.group(1):
+        raise ValueError('Early LED unit must have one ExecStart= without --config')
+    return replace_directive(text, 'ExecStart', f'{match.group(1)} --config {player_config}')
+
+
+def existing_dropins(systemd_dir, names):
+    """Read-only inventory of units with .conf drop-ins."""
+    found = []
+    for name in names:
+        directory = Path(systemd_dir) / f'{name}.d'
+        if directory.is_dir() and any(directory.glob('*.conf')):
+            found.append(name)
+    return found
 
 
 def main(argv=None):
@@ -166,6 +187,8 @@ def main(argv=None):
                    default=True, help='button presses wake an idle optical drive')
     p.add_argument('--connect-gestures', action=argparse.BooleanOptionalAction,
                    default=True, help='CONNECT short/long gestures and speaker_select')
+    p.add_argument('--systemd-dir', type=Path, default=Path('/etc/systemd/system'),
+                   help='Read-only check for installed drop-ins overriding rendered units')
     args = p.parse_args(argv)
     units = render(args.repo_root / 'systemd',
                    checkout=args.checkout, python_venv=args.python_venv,
@@ -177,6 +200,9 @@ def main(argv=None):
         out = args.output_dir / name
         out.write_text(text, encoding='utf-8')
         print(f'Rendered {out}')
+    for name in existing_dropins(args.systemd_dir, units):
+        print(f'WARNING: {args.systemd_dir}/{name}.d contains drop-ins; review them '
+              'before installing, since they may override the rendered unit.')
     print(f'Configuration is read from {config_paths.config_dir()}')
     print('Preparation only. No systemd configuration was installed or changed.')
 

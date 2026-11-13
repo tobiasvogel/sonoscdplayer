@@ -84,6 +84,9 @@ def _button_source(value, registers):
     return _pin(value)
 
 
+REGISTER_KEYS = {'type', 'load_pin', 'clock_pin', 'data_pin', 'chips'}
+
+
 def _registers(raw):
     if not isinstance(raw, dict):
         raise ValueError('shift_registers must be a table')
@@ -93,6 +96,12 @@ def _registers(raw):
             raise ValueError(f'Invalid shift register identifier: {name!r}')
         if not isinstance(values, dict) or values.get('type') != '74hc165':
             raise ValueError(f'{name}: type must be 74hc165')
+        unknown = set(values) - REGISTER_KEYS
+        if unknown:
+            raise ValueError(f'{name}: unknown setting(s): {sorted(unknown)}')
+        for key in ('load_pin', 'clock_pin', 'data_pin'):
+            if key not in values:
+                raise ValueError(f'{name}: missing {key}')
         chips = values.get('chips', 1)
         if type(chips) is not int or not 1 <= chips <= 8:
             raise ValueError(f'{name}: chips must be between 1 and 8')

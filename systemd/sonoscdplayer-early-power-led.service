@@ -1,5 +1,5 @@
 [Unit]
-Description=SonosCDPlayer early boot power LED (GPIO12)
+Description=SonosCDPlayer early boot power LED (configured power LED pin)
 DefaultDependencies=no
 After=local-fs.target systemd-udev-trigger.service
 Before=basic.target

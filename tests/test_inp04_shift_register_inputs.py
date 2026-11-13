@@ -59,6 +59,18 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(cfg.shift_registers, {})
         self.assertEqual(cfg.buttons['stop'].pin, 18)
 
+    def test_missing_or_unknown_register_keys(self):
+        for missing in ('load_pin', 'clock_pin', 'data_pin'):
+            block = '\n'.join(
+                line for line in REGISTERS.splitlines()
+                if not line.startswith(missing + ' =')
+            )
+            with self.subTest(missing=missing):
+                with self.assertRaisesRegex(ValueError, f'sr0: missing {missing}'):
+                    config_from('stop = "sr0:2"', register_block=block)
+        with self.assertRaisesRegex(ValueError, "unknown setting.*'chip'"):
+            config_from('stop = "sr0:2"', register_block=REGISTERS + 'chip = 2\n')
+
     def test_invalid_register_channel_and_collision(self):
         cases = [
             ('stop = "sr0:8"', REGISTERS),

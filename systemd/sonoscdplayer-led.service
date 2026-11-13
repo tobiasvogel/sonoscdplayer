@@ -2,7 +2,9 @@
 [Unit]
 Description=SonosCDPlayer regular PWM LED frontend (GPIO12/13)
 After=sonoscdplayer-early-power-led.service
-Conflicts=sonoscdplayer-early-power-led.service
+# No Conflicts= on the early LED: both units are started in the same boot
+# transaction, and systemd would then drop the early LED job entirely.
+# ExecStartPre= hands the pin over explicitly instead.
 PartOf=sonoscdplayer.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
@@ -11,6 +13,9 @@ StartLimitBurst=5
 Type=simple
 User=@SONOSCDPLAYER_USER@
 WorkingDirectory=@SONOSCDPLAYER_SRC@
+# Stop the early boot breathing LED (root, '+') and wait until it has released
+# the pin; '-' tolerates an early LED unit that is not installed.
+ExecStartPre=-+/usr/bin/systemctl stop sonoscdplayer-early-power-led.service
 ExecStart=/usr/bin/python3 -u -m integrations.outputs.led_pwm --config @SONOSCDPLAYER_PLAYER_CONFIG@ --socket /run/sonoscdplayer/control.sock --gpio --execute --seconds 0
 Restart=on-failure
 RestartSec=2s
