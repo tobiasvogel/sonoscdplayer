@@ -61,7 +61,7 @@ class DisplayPinConfigTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     DisplayPins(dc_pin=dc, rst_pin=rst)
 
-    def test_missing_header_build_explains_generator(self):
+    def test_build_requires_explicit_local_display_config(self):
         with tempfile.TemporaryDirectory() as directory:
             result = subprocess.run(
                 ['sh', str(ROOT / 'tools/build_shutdown_renderer.sh')],
@@ -69,7 +69,42 @@ class DisplayPinConfigTests(unittest.TestCase):
                 capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 2, result.stderr)
-            self.assertIn('generate_ssd1327_display_header.py', result.stderr)
+            self.assertIn('DISPLAY_CONFIG', result.stderr)
+
+    def test_build_replaces_stale_header_from_local_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            config = build / 'local.toml'
+            header = build / 'ssd1327_display_config.h'
+            config.write_text('[display]\ndc_pin = 22\nrst_pin = 27\n',
+                              encoding='utf-8')
+            header.write_text('#define SONOSCDPLAYER_OLED_DC_PIN 25u\n',
+                              encoding='ascii')
+            import os
+            result = subprocess.run(
+                ['sh', str(ROOT / 'tools/build_shutdown_renderer.sh')],
+                env={**os.environ, 'BUILD_DIR': directory,
+                     'DISPLAY_CONFIG': str(config)},
+                capture_output=True, text=True, timeout=40,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            generated = header.read_text(encoding='ascii')
+            self.assertIn('SONOSCDPLAYER_OLED_DC_PIN 22u', generated)
+            self.assertIn('SONOSCDPLAYER_OLED_RST_PIN 27u', generated)
+            self.assertNotIn('SONOSCDPLAYER_OLED_DC_PIN 25u', generated)
+
+    def test_missing_config_does_not_reuse_stale_header(self):
+        with tempfile.TemporaryDirectory() as directory:
+            header = Path(directory) / 'ssd1327_display_config.h'
+            header.write_text('#define SONOSCDPLAYER_OLED_DC_PIN 25u\n',
+                              encoding='ascii')
+            result = subprocess.run(
+                ['sh', str(ROOT / 'tools/build_shutdown_renderer.sh')],
+                env={'PATH': '/usr/bin:/bin', 'BUILD_DIR': directory},
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn('DISPLAY_CONFIG', result.stderr)
 
     def test_generator_cli_writes_expected_pin_constants(self):
         with tempfile.TemporaryDirectory() as directory:
