@@ -1,7 +1,10 @@
 #@ Template only: render with tools/render_runtime_units.py before installing.
 [Unit]
 Description=SonosCDPlayer OLED status frontend
-After=local-fs.target
+# Stop order is reversed: on shutdown/reboot the OLED stops before the player,
+# so it never shows "player unavailable" and its last frame stays until the
+# shutdown screen takes over.
+After=local-fs.target sonoscdplayer-player.service
 PartOf=sonoscdplayer.target
 StartLimitIntervalSec=60
 StartLimitBurst=5

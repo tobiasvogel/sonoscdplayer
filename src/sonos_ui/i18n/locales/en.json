@@ -81,6 +81,7 @@
   "network.status": "Network status",
   "network.settings": "Network settings",
   "network.setup_hotspot": "Preparing setup hotspot",
+  "system.starting": "Starting",
   "system.please_wait": "Please wait",
   "system.shutting_down": "Shutting down",
   "system.restarting": "Restarting",

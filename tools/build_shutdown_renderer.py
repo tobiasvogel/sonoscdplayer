@@ -5,8 +5,8 @@ The late-shutdown executable does not need Python, Pillow, or filesystem images.
 Each frame combines the icon from the artwork PNG (upper part) with the
 localized status text, rendered here at build time in the UI language from
 ui.toml. Changing the language therefore requires rebuilding the shutdown
-programs. The text font (Encode Sans Semi Condensed, SIL OFL 1.1) ships in
-src/fonts and is only needed at build time.
+programs. Layout and font live in src/system_screen.py (shared with the OLED
+start screen); the C programs need neither Python nor the font.
 """
 import argparse
 from pathlib import Path
@@ -15,25 +15,11 @@ from PIL import Image, ImageOps, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
-TEXT_FONT = ROOT / 'src' / 'fonts' / 'EncodeSansSemiCondensed-Medium.ttf'
+import system_screen  # noqa: E402
+from system_screen import (  # noqa: E402,F401  (re-exported for tests)
+    ICON_BOTTOM, TEXT_FONT, TEXT_MARGIN, layout_text)
 
-SCREEN = 128
-ICON_BOTTOM = 72        # artwork rows above this hold the icon, below the old text
-TEXT_TOP = 76
-TEXT_BOTTOM = 122
-TEXT_MARGIN = 8         # free columns left and right of every text line
-TEXT_SIZES = (12, 11, 10)
-LINE_GAP = 3
-MAX_LINES = 2
-
-# Frame name -> (translation key, append progress ellipsis)
-FRAME_TEXT = {
-    'wait': ('system.shutting_down', True),
-    'transition': ('system.shutting_down', True),
-    'reboot': ('system.restarting', True),
-    'final': ('system.please_wait', False),
-    'safe': ('system.safe_to_unplug', False),
-}
+FRAME_NAMES = ('wait', 'transition', 'reboot', 'final', 'safe')
 
 
 def _pack(image: Image.Image) -> bytes:
@@ -43,72 +29,13 @@ def _pack(image: Image.Image) -> bytes:
                  for i in range(0, len(data), 2))
 
 
-def _load_artwork(path: Path) -> Image.Image:
-    with Image.open(path) as source:
-        source.load()
-        if not 0 < source.width <= 4096 or not 0 < source.height <= 4096:
-            raise ValueError('invalid source image dimensions')
-        rgba = source.convert('RGBA')
-    backdrop = Image.new('RGBA', rgba.size, (0, 0, 0, 255))
-    mono = Image.alpha_composite(backdrop, rgba).convert('L')
-    fitted = ImageOps.contain(mono, (SCREEN, SCREEN), method=Image.Resampling.LANCZOS)
-    canvas = Image.new('L', (SCREEN, SCREEN), 0)
-    canvas.paste(fitted, ((SCREEN - fitted.width) // 2, (SCREEN - fitted.height) // 2))
-    return canvas
-
-
-def _wrap(text, fnt, width):
-    lines, current = [], ''
-    for word in text.split():
-        candidate = word if not current else current + ' ' + word
-        if fnt.getlength(candidate) <= width:
-            current = candidate
-            continue
-        if current:
-            lines.append(current)
-        current = word
-    if current:
-        lines.append(current)
-    return lines
-
-
-def layout_text(text):
-    """Return (font, lines) that fit the text area with side margins."""
-    width = SCREEN - 2 * TEXT_MARGIN
-    for size in TEXT_SIZES:
-        fnt = ImageFont.truetype(str(TEXT_FONT), size)
-        lines = _wrap(text, fnt, width)
-        if len(lines) > MAX_LINES:
-            continue
-        if any(fnt.getbbox(line)[2] - fnt.getbbox(line)[0] > width for line in lines):
-            continue
-        return fnt, lines
-    raise ValueError('shutdown text does not fit the display: ' + text)
-
-
 def compose_frame(artwork: Path, text: str) -> bytes:
     """Icon from the artwork PNG plus centered localized text, packed."""
-    image = _load_artwork(artwork)
-    ImageDraw.Draw(image).rectangle((0, ICON_BOTTOM, SCREEN - 1, SCREEN - 1), fill=0)
-    fnt, lines = layout_text(text)
-    draw = ImageDraw.Draw(image)
-    ascent, descent = fnt.getmetrics()
-    line_height = ascent + descent
-    block = len(lines) * line_height + (len(lines) - 1) * LINE_GAP
-    y = TEXT_TOP + max(0, (TEXT_BOTTOM - TEXT_TOP - block) // 2)
-    for line in lines:
-        left, _, right, _ = draw.textbbox((0, 0), line, font=fnt)
-        x = (SCREEN - (right - left)) // 2 - left
-        draw.text((x, y), line, font=fnt, fill=255)
-        y += line_height + LINE_GAP
-    return _pack(image)
+    return _pack(system_screen.compose_image(artwork, text))
 
 
 def frame_text(name: str, language: str) -> str:
-    from sonos_ui.i18n import Translator
-    key, progress = FRAME_TEXT[name]
-    text = Translator(language).tr(key)
-    return text + '\u2026' if progress else text
+    return system_screen.screen_text(name, language)
 
 
 def configured_language() -> str:

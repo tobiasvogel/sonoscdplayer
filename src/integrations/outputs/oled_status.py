@@ -96,6 +96,17 @@ def load_splash(path):
         return None
 
 
+def start_splash(path, language):
+    """Localized start screen for the standard artwork; custom PNGs as-is."""
+    try:
+        if Path(path).resolve() == DEFAULT_LOGO.resolve():
+            from system_screen import screen_image
+            return image_to_frame(screen_image('start', language))
+    except (OSError, ValueError, KeyError):
+        pass  # missing font/artwork: fall back to the plain PNG below
+    return load_splash(path)
+
+
 def short_text(value, max_chars=20):
     return str(value or '')[:max_chars]
 
@@ -403,7 +414,7 @@ def main(argv=None):
                                    dc_pin=display_pins.dc_pin, rst_pin=display_pins.rst_pin,
                                    spi_hz=args.spi_hz, contrast=args.contrast)
     driver=SSD1327(display_config, gpio_warnings=gpio_warnings) if args.execute else None
-    splash=load_splash(args.splash)
+    splash=start_splash(args.splash, language)
     ambient=OLEDContrastControl(ambient_config) if args.ambient_auto else None
     last_contrast=args.contrast
     recovery = None

@@ -47,7 +47,9 @@ def build(frame,*,hz=2_000_000,contrast=128,chunk=128,pins=None):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('png',type=Path)
+    p.add_argument('png',type=Path,nargs='?',default=None,
+                   help='custom PNG used as-is (default: localized standard start screen, '
+                        'language from ui.toml)')
     p.add_argument('-o','--output',type=Path,default=Path('ssd1327.splash'))
     p.add_argument('--spi-hz',type=int,default=2_000_000)
     p.add_argument('--contrast',type=int,default=128)
@@ -55,9 +57,15 @@ def main():
                    help='TOML with optional [display] SPI/DC/RESET pins '
                         '(default: player.toml in the standard config directory)')
     a=p.parse_args()
-    with Image.open(a.png) as im:
-        im.load()
-        framebuffer=to_frame(im)
+    if a.png is None:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+        from system_screen import screen_image
+        from sonos_ui.ui_config import load_ui_config
+        framebuffer=to_frame(screen_image('start', load_ui_config().language))
+    else:
+        with Image.open(a.png) as im:
+            im.load()
+            framebuffer=to_frame(im)
     if a.display_config is None:
         from src import config_paths
         a.display_config = config_paths.player_config()
