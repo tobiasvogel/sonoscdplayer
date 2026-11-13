@@ -21,6 +21,9 @@ from .network_status import NetworkStatus, read_network_status
 
 
 POWER_ITEMS = ('back', 'poweroff', 'reboot')
+# After a player-acknowledged "Auswahl übernehmen" the confirmation stays
+# visible this long, then the menu closes to the overview.
+ACCEPTED_CLOSE_SECONDS = 1.5
 
 
 class InteractiveMenu:
@@ -53,6 +56,10 @@ class InteractiveMenu:
         self.power_notice = ''
         self._power_busy = False
         self._power_result = None
+        # Menu position to restore when the power menu is closed with "back";
+        # None means the overview (no menu was open).
+        self._power_return = None
+        self._close_menu_at = None
         self.connect_notices = ConnectNoticeView()
         self._connect_renderer = NoticeRenderer()
         self._notice_previous_active = None
@@ -198,10 +205,38 @@ class InteractiveMenu:
         self.power_notice = self.power_notice if self._power_busy else ''
         return True
 
-    def _close_power(self):
-        self.power_menu = False
-        self.active = False
+    def _open_power(self):
+        """Overlay the power menu and remember where the user was."""
+        if self.active:
+            # The language picker is not restored: it reopens on the saved
+            # language anyway, so return to its "language" entry instead.
+            section, focus = (('settings', 0) if self.language_picker
+                              else (self.section, self.menu_focus))
+            self._power_return = (section, focus)
+        else:
+            self._power_return = None
+        self.power_menu = True
+        self.language_picker = False
+        self.power_focus = 0  # "Zurück" is always the default
         self.power_notice = ''
+        self.active = True
+        return True
+
+    def _close_power(self):
+        """Return to the menu that was open before (unapplied checkboxes kept)."""
+        self.power_menu = False
+        self.power_notice = ''
+        restore = self._power_return
+        self._power_return = None
+        if restore is None:
+            self.active = False
+            return True
+        self.section, self.menu_focus = restore
+        self.active = True
+        if self.section == 'network_status':
+            self._next_network_refresh = 0.0
+        elif self.section == 'targets':
+            self._next_refresh = 0.0
         return True
 
     def _start_discovery(self, now):
@@ -295,10 +330,24 @@ class InteractiveMenu:
                 # Only the player ACK commits the new local applied target.
                 self.state = replace(self.state, applied=self._pending_selection,
                                      notice=result[1])
+                # Success closes the menu after a short confirmation; a power
+                # menu opened meanwhile then returns to the overview.
+                if self.power_menu:
+                    if self._power_return is not None and self._power_return[0] == 'targets':
+                        self._power_return = None
+                elif self.active and self.section == 'targets':
+                    self._close_menu_at = now + ACCEPTED_CLOSE_SECONDS
             else:
                 self.state = replace(self.state, notice=result[1])
             self._pending_selection = None
             changed = True
+        if self._close_menu_at is not None and now >= self._close_menu_at:
+            self._close_menu_at = None
+            if (self.active and self.section == 'targets' and not self.power_menu
+                    and self._notice_previous_active is None):
+                self.active = False
+                self.state = replace(self.state, notice='', focus=0)
+                changed = True
         if self._notice_previous_active is not None and self.connect_notices.current(now=now) is None:
             self._restore_after_notice()
             changed = True
@@ -330,14 +379,9 @@ class InteractiveMenu:
         if self._power_action is not None and (name, event) == ('power', 'short'):
             if self.power_menu:
                 return self._power_event(name, event)
-            # Short power press opens the power menu from anywhere, closing any
-            # other menu state; a pending target request keeps running unseen.
-            self.power_menu = True
-            self.language_picker = False
-            self.power_focus = 0  # "Zurück" is always the default
-            self.power_notice = ''
-            self.active = True
-            return True
+            # Short power press opens the power menu from anywhere as an overlay;
+            # a pending target request keeps running unseen.
+            return self._open_power()
         if self.power_menu:
             return self._power_event(name, event)
         if name == 'power':
@@ -377,6 +421,7 @@ class InteractiveMenu:
                   ('encoder_sw','pressed'): 'confirm'}.get((name,event))
         if action is None:
             return False
+        self._close_menu_at = None  # user is still working in the list
         self.state = self.state.action(action)
         if action == 'confirm' and self.state.notice == 'status.apply_requested':
             self._send_target()

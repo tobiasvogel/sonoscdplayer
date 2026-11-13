@@ -239,14 +239,32 @@ class MenuTests(unittest.TestCase):
         self.assertEqual(m.power_notice, 'status.power_failed')
         self.assertTrue(m.event('encoder', 'right'))
 
-    def test_power_menu_replaces_other_menu_states(self):
+    def test_power_menu_overlays_and_returns_to_previous_menu(self):
         m = self.make()
-        m.event('encoder_sw', 'pressed', now=0)       # target menu
+        m.event('encoder_sw', 'pressed', now=0)       # main menu
+        m.event('encoder', 'right', now=0)            # focus "network"
+        m.event('power', 'short')
+        self.assertTrue(m.power_menu)
+        m.event('power', 'short')                     # second short press = back
+        self.assertTrue(m.active and not m.power_menu)
+        self.assertEqual((m.section, m.menu_focus), ('main', 1))
+
+    def test_language_picker_returns_to_its_menu_entry(self):
+        m = self.make()
+        m.event('encoder_sw', 'pressed', now=0)
+        m.section, m.menu_focus = 'settings', 0
         m.language_picker = True
         m.event('power', 'short')
         self.assertTrue(m.power_menu and not m.language_picker)
+        m.event('encoder_sw', 'pressed')              # "back"
+        self.assertFalse(m.language_picker)
+        self.assertEqual((m.section, m.menu_focus), ('settings', 0))
+
+    def test_overview_stays_overview_after_power_menu(self):
+        m = self.make()
         m.event('power', 'short')
-        self.assertFalse(m.active)
+        m.event('encoder_sw', 'pressed')
+        self.assertFalse(m.active or m.power_menu)
 
     def test_target_menu_still_works_afterwards(self):
         m = self.make()

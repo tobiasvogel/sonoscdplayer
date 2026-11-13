@@ -131,7 +131,10 @@ class NavigationTests(unittest.TestCase):
         self.assertTrue(menu.event('power', 'short', now=2))
         self.assertTrue(menu.power_menu)
         self.assertTrue(menu.event('encoder_sw', 'pressed', now=3))
-        self.assertFalse(menu.active)
+        # "Back" returns to the network status that was open before.
+        self.assertFalse(menu.power_menu)
+        self.assertTrue(menu.active)
+        self.assertEqual(menu.section, 'network_status')
 
     def test_network_settings_is_preview_only(self):
         menu = self.make_menu()

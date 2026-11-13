@@ -53,6 +53,55 @@ class ApplyFeedbackTests(unittest.TestCase):
         self.assertEqual(menu.state.applied, frozenset({'A','B'}))
         self.assertEqual(menu.state.notice, 'status.target_accepted')
 
+    def test_accepted_selection_closes_menu_after_confirmation(self):
+        from sonos_ui.interactive_menu import ACCEPTED_CLOSE_SECONDS
+        menu = self.new_menu(solo=lambda uid: True)
+        self.apply(menu)                                  # poll(8) receives the ACK
+        self.assertTrue(menu.active)
+        self.assertEqual(menu.state.notice, 'status.target_accepted')
+        menu.poll(8 + ACCEPTED_CLOSE_SECONDS - 0.1)
+        self.assertTrue(menu.active, 'confirmation stays visible briefly')
+        menu.poll(8 + ACCEPTED_CLOSE_SECONDS)
+        self.assertFalse(menu.active)
+        self.assertEqual(menu.state.applied, frozenset({'A'}))
+
+    def test_rejected_selection_keeps_menu_open(self):
+        menu = self.new_menu(solo=lambda uid: False)
+        self.apply(menu)
+        menu.poll(100)
+        self.assertTrue(menu.active)
+        self.assertEqual(menu.state.notice, 'status.target_rejected')
+
+    def test_power_menu_keeps_unapplied_checkboxes(self):
+        menu = self.new_menu(solo=lambda uid: True)
+        menu._power_action = lambda _choice: True
+        menu.section = 'targets'
+        self.assertTrue(menu.event('encoder_sw', 'pressed', 1))   # tick first speaker
+        draft = menu.state.draft
+        self.assertTrue(draft)
+        self.assertTrue(menu.event('power', 'short', 2))
+        self.assertTrue(menu.event('power', 'short', 3))          # back
+        self.assertTrue(menu.active and not menu.power_menu)
+        self.assertEqual(menu.section, 'targets')
+        self.assertEqual(menu.state.draft, draft)
+
+    def test_accept_while_power_menu_open_returns_to_overview(self):
+        from sonos_ui.interactive_menu import ACCEPTED_CLOSE_SECONDS
+        menu = self.new_menu(solo=lambda uid: True)
+        menu._power_action = lambda _choice: True
+        self.assertTrue(menu.event('encoder_sw', 'pressed', 1))
+        for i in range(2):
+            self.assertTrue(menu.event('encoder', 'right', 2 + i))
+        self.assertTrue(menu.event('encoder_sw', 'pressed', 5))   # apply
+        self.assertTrue(menu.event('power', 'short', 6))
+        menu._target_worker.join(timeout=2)
+        menu.poll(7)
+        self.assertEqual(menu.state.applied, frozenset({'A'}))
+        menu.poll(7 + ACCEPTED_CLOSE_SECONDS)
+        self.assertTrue(menu.power_menu, 'power menu is not closed underneath')
+        self.assertTrue(menu.event('power', 'short', 20))
+        self.assertFalse(menu.active)
+
     def test_rejected_rpc_keeps_last_acknowledged_target(self):
         menu = self.new_menu(solo=lambda uid: False)
         menu.state = menu.state.__class__(
