@@ -25,7 +25,13 @@ fi
 CC="${CC:-cc}"
 BACKEND="${BACKEND:-ssd1327}"
 [ "$BACKEND" = ssd1327 ] || { echo "Unsupported backend: $BACKEND" >&2; exit 2; }
+# An explicit local TOML is mandatory; never reuse stale device-specific headers.
+: "${DISPLAY_CONFIG:?Set DISPLAY_CONFIG to the local player TOML containing [display]}"
+[ -f "$DISPLAY_CONFIG" ] || { echo "DISPLAY_CONFIG file not found: $DISPLAY_CONFIG" >&2; exit 2; }
 mkdir -p "$BUILD_DIR"
+python3 "$ROOT/tools/generate_ssd1327_display_header.py" \
+    --config "$DISPLAY_CONFIG" \
+    --output "$BUILD_DIR/ssd1327_display_config.h"
 python3 "$ROOT/tools/build_shutdown_renderer.py" \
     --backend "$BACKEND" \
     --wait "$ROOT/src/data/shutdown_screen.png" \
