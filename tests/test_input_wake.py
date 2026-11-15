@@ -307,12 +307,13 @@ class GPIOWakeMappingTests(unittest.TestCase):
             )
         )
 
-    def test_volume_buttons_never_wake_spindle(self):
+    def test_volume_buttons_publish_async_wake_on_press_only(self):
         for name in ('volume_up', 'volume_dn'):
             for safe_executor in (False, True):
-                for event in ('pressed', 'released'):
-                    self.assertFalse(should_publish_drive_activity(
-                        name, event, safe_executor=safe_executor))
+                self.assertTrue(should_publish_drive_activity(
+                    name, 'pressed', safe_executor=safe_executor))
+                self.assertFalse(should_publish_drive_activity(
+                    name, 'released', safe_executor=safe_executor))
 
     def test_every_configured_gpio_button_is_covered(self):
         from pathlib import Path
@@ -331,7 +332,7 @@ class GPIOWakeMappingTests(unittest.TestCase):
             with self.subTest(button=name):
                 expected = name not in {
                     "playpause", "stop", "skip",
-                    "previous", "eject", "volume_up", "volume_dn",
+                    "previous", "eject",
                 }
                 self.assertEqual(
                     should_publish_drive_activity(

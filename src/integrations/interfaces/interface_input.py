@@ -227,15 +227,13 @@ def should_publish_drive_activity(name, event, *, safe_executor):
         event == 'pressed'
         or (name == 'encoder' and event in ('left', 'right'))
     )
-    # Volume controls act on Sonos, not the optical drive. Waking a spun-down
-    # spindle would block the serialized player worker and delay volume RPCs.
-    if name in ('volume_up', 'volume_dn'):
-        return False
     if not physical:
         return False
     command = map_event(name, event)
 
-    # Every physical control counts as activity, including EJECT.
+    # Every physical press, including VOL+/VOL-, counts as drive activity.
+    # The async publisher never waits in the GPIO loop; the volume executor
+    # independently drops repeats while a player request is in flight.
     # EJECT authorization remains guarded separately by INP-03.
     # Safe executor performs synchronous wake before every mapped
     # transport action. Other physical inputs use the async publisher.
