@@ -61,18 +61,16 @@ class NoticeModelTests(unittest.TestCase):
                              (128, 128))
             self.assertIsNone(icon_file("info", icon_root=directory))
 
-    def test_normalized_info_icons_preferred_over_legacy_whitespace(self):
+    def test_only_normalized_info_icon_names_are_accepted(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             for suffix, grayscale in (("bw_small", True),
                                       ("color_small", False)):
-                legacy = root / ("info_ " + suffix + ".png")
+                old = root / ("info_ " + suffix + ".png")
                 modern = root / ("info_" + suffix + ".png")
-                legacy.write_bytes(b"legacy")
-                self.assertEqual(icon_file("info", grayscale, root), legacy)
+                old.write_bytes(b"legacy")
+                self.assertIsNone(icon_file("info", grayscale, root))
                 modern.write_bytes(b"normalized")
-                self.assertEqual(icon_file("info", grayscale, root), modern)
-                legacy.unlink()
                 self.assertEqual(icon_file("info", grayscale, root), modern)
                 modern.unlink()
                 self.assertIsNone(icon_file("info", grayscale, root))

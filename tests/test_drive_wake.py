@@ -16,11 +16,9 @@ from drive_wake_validation import verify_woken_disc, wait_for_woken_disc
 from drive_idle_policy import IdleDrivePolicy
 from integrations.outputs.oled_status import (
     drive_fault_details,
-    drive_fault_frame,
-    drive_wait_frame,
+    drive_notice_frame,
     modern_status_frame,
     selected_status_frame,
-    status_frame,
     drive_waking,
     drive_fault,
     request_status,
@@ -528,7 +526,7 @@ def fault_state(**extra):
 
 class OledTests(unittest.TestCase):
     def frame(self, state=None):
-        return bytes(drive_fault_frame(state).data)
+        return bytes(drive_notice_frame(state).data)
 
     def test_four_messages_are_distinct(self):
         frames = {
@@ -548,7 +546,7 @@ class OledTests(unittest.TestCase):
                  'drive_power': {'idle_wake_fault_latched': True,
                                  'idle_wake_retry_in_seconds': 17}}
         expected = self.frame(state)
-        self.assertEqual(bytes(status_frame(state).data), expected)
+        self.assertEqual(bytes(drive_notice_frame(state).data), expected)
         self.assertEqual(bytes(modern_status_frame(state).data), expected)
         self.assertEqual(bytes(selected_status_frame(state, ui_modern=True).data), expected)
 

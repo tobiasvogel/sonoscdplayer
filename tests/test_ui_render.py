@@ -38,22 +38,25 @@ class ModernOLEDTests(unittest.TestCase):
         self.assertIsInstance(frame, Framebuffer)
         self.assertEqual(len(frame.data), 8192)
 
-    def test_unexpected_mode_falls_back_without_repeating_exception(self):
-        payload=state('FUTURE_PLAYER_STATE', None, 0)
-        with patch.object(oled_status, 'status_frame', return_value=Framebuffer()) as fallback:
-            frame=oled_status.safe_modern_status_frame(payload,language='de')
-        self.assertIsInstance(frame, Framebuffer)
-        fallback.assert_called_once_with(error='invalid player status',language='de')
+    def test_unexpected_mode_renders_modern_error_notice(self):
+        payload = state('FUTURE_PLAYER_STATE', None, 0)
+        expected = oled_status.notice_frame('status.invalid_player_status',
+                                            severity='error', language='de')
+        frame = oled_status.safe_modern_status_frame(payload, language='de')
+        self.assertEqual(bytes(frame.data), bytes(expected.data))
 
     def test_invalid_cached_track_information_has_safe_fallback(self):
         payload=state('STOPPED', None, 12)
         frame=oled_status.safe_modern_status_frame(payload, language='en')
         self.assertIsInstance(frame, Framebuffer)
 
-    def test_modern_offline_reuses_existing_error_screen(self):
-        with patch.object(oled_status, 'status_frame', return_value=Framebuffer()) as existing:
-            oled_status.modern_status_frame(error='socket refused')
-        existing.assert_called_once_with(error='socket refused',language='de')
+    def test_modern_offline_is_localized_notice(self):
+        for language in ('de', 'en'):
+            expected = oled_status.notice_frame('status.player_offline',
+                                                severity='error', language=language)
+            frame = oled_status.modern_status_frame(
+                error='socket refused', language=language)
+            self.assertEqual(bytes(frame.data), bytes(expected.data))
 
     def test_bad_schema_is_rejected_without_invented_metadata(self):
         with self.assertRaises(ValueError):
