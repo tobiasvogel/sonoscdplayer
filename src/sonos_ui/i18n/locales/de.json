@@ -101,7 +101,7 @@
   "status.drive_wake_fault": "Laufwerkfehler\nEJECT funktioniert\nUSB-Strom prüfen",
   "status.drive_wake_retry": "Laufwerkfehler\nErneut in {seconds} s\nEJECT funktioniert",
   "status.drive_wake_retry_ready": "Laufwerkfehler\nTaste: erneut starten\nEJECT funktioniert",
-  "status.drive_wake_exhausted": "Laufwerkfehler\nVersuche aufgebraucht\nDienst neu starten",
+  "status.drive_wake_exhausted": "Versuche aufgebraucht\nEJECT funktioniert\nDienst neu starten",
   "status.player_offline": "Player nicht erreichbar\nBitte warten …",
   "status.invalid_player_status": "Ungültiger Player-Status"
 }
