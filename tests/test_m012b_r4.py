@@ -1,7 +1,6 @@
-"""M0.12b-r4 capability-probe / strategy-separation regressions."""
 import unittest
 from drive_power import DrivePowerManager
-from tests.test_m012b_r3 import FakeRun, PAGE, CHANGEABLE
+from test_m012b_r3 import FakeRun, PAGE, CHANGEABLE
 
 
 def cfg(strategy='auto', overrides=None):

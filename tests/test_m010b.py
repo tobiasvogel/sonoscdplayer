@@ -1,4 +1,3 @@
-"""M0.10b orphan cancellation, no concurrent disc reread."""
 import http.client
 import socket
 import struct
@@ -7,7 +6,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from track_ring_http import Stream, Server
 
 

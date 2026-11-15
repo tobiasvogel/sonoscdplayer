@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 from unittest.mock import patch, MagicMock
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from src.integrations.interfaces.command_bridge import Bridge, Command, map_event, send_command
 
 UID = 'RINCON_TEST_123'

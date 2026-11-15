@@ -3,7 +3,7 @@ import sys
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'src'))
 from player_switch import ownership_snapshot, stopped_snapshot, switch_owned
 
 UID = 'TEST_TARGET_UID'

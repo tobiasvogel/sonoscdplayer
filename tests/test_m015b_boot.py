@@ -6,7 +6,7 @@ from PIL import Image
 from src.integrations.outputs.ssd1327 import SSD1327, DisplayConfig
 from src import frontends
 
-ROOT=Path(__file__).resolve().parents[2]
+ROOT=Path(__file__).resolve().parents[1]
 
 def load(name,path):
     spec=importlib.util.spec_from_file_location(name,ROOT/path)

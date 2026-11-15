@@ -5,7 +5,7 @@ import threading
 import unittest
 from types import SimpleNamespace
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'src'))
 from sonos_parallel_test import check_target, wait_reader
 
 TARGET_UID = 'TEST_TARGET_UID'

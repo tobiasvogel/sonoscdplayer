@@ -3,7 +3,7 @@ import sys
 import unittest
 from unittest.mock import Mock
 from types import SimpleNamespace
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'src'))
 from player_play import make_url, prepare_selection, confirmed_mode
 from player_state import Mode, PlayerState, TransitionError
 

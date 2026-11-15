@@ -3,7 +3,7 @@ import unittest
 from contextlib import redirect_stdout
 from src.integrations.outputs.ssd1327 import SSD1327, Framebuffer, DisplayConfig
 from src.integrations.outputs.oled_contrast import main, parse_levels
-from tests.test_m014a import FakeGPIO, FakeSPI
+from test_m014a import FakeGPIO, FakeSPI
 
 class TestManualContrast(unittest.TestCase):
     def test_valid_range(self):

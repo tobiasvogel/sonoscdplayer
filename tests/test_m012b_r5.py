@@ -1,4 +1,3 @@
-"""M0.12b-r5: partial mode-page output and reader/keepalive coordination."""
 import multiprocessing
 import tempfile
 import unittest
@@ -6,7 +5,7 @@ from unittest.mock import patch
 from drive_access import drive_lock
 from drive_power import DrivePowerManager
 from player_controller import ProcessServer
-from tests.test_m012b_r3 import PAGE, FakeRun
+from test_m012b_r3 import PAGE, FakeRun
 
 
 class TestR5(unittest.TestCase):
