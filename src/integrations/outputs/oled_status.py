@@ -13,7 +13,7 @@ import signal
 from pathlib import Path
 import socket
 import time
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageOps
 from .ssd1327 import SSD1327, DisplayConfig, Framebuffer
 from .display_pins import load_display_pins, DisplayPins
 from .oled_ambient import OLEDAmbientConfig, OLEDContrastControl
@@ -107,11 +107,6 @@ def start_splash(path, language):
     return load_splash(path)
 
 
-def short_text(value, max_chars=20):
-    return str(value or '')[:max_chars]
-
-
-
 def drive_waking(state):
     """Only a confirmed active drive wake gets the waiting notice."""
     return (
@@ -130,19 +125,6 @@ def drive_fault(state):
     )
 
 
-def drive_wait_frame():
-    """Read-only OLED notice; never sends a drive command."""
-    img = Image.new('L', (128, 128), 0)
-    draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default()
-    draw.text((5, 4), 'SONOS CD PLAYER', font=font, fill=255)
-    draw.line((4, 19, 123, 19), fill=88)
-    draw.text((13, 45), 'PLEASE WAIT', font=font, fill=255)
-    draw.text((9, 66), 'Starting CD drive', font=font, fill=180)
-    draw.line((4, 121, 123, 121), fill=66)
-    return image_to_frame(img)
-
-
 def drive_fault_details(state):
     """(seconds until a retry, retries exhausted) from a confirmed latched fault."""
     power = state.get('drive_power') if isinstance(state, dict) else None
@@ -154,97 +136,60 @@ def drive_fault_details(state):
     return retry, power.get('idle_wake_retries_exhausted') is True
 
 
-def drive_fault_frame(state=None):
-    """Persistent read-only warning; never retries drive wake itself.
-
-    A key press retries the wake once the cooldown is over; EJECT always works.
-    """
-    retry, exhausted = drive_fault_details(state)
-    if exhausted:
-        lines = ('Retries used up', 'EJECT still works', 'Restart service')
-    elif retry is None:
-        lines = ('Wake failed', 'EJECT still works', 'Check USB power')
-    elif retry > 0:
-        lines = ('Wake failed', f'Retry in {retry} s', 'EJECT still works')
-    else:
-        lines = ('Wake failed', 'Press key: retry', 'EJECT still works')
-    img = Image.new('L', (128, 128), 0)
-    draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default()
-    draw.text((5, 4), 'SONOS CD PLAYER', font=font, fill=255)
-    draw.line((4, 19, 123, 19), fill=88)
-    draw.text((9, 40), 'CD DRIVE ERROR', font=font, fill=255)
-    for row, text in enumerate(lines):
-        draw.text((8, 62 + row * 18), text, font=font, fill=(210, 180, 150)[row])
-    draw.line((4, 121, 123, 121), fill=66)
-    return image_to_frame(img)
+def notice_frame(key, *, severity='info', params=None, language='de'):
+    """One Modern Hi-Fi rendering pipeline for transient and persistent notices."""
+    from sonos_ui.notice import Notice
+    from sonos_ui.notice_render import NoticeRenderer
+    notice = Notice(key, severity=severity, params=params or {})
+    return image_to_frame(NoticeRenderer().render(
+        notice, language=language, grayscale=True))
 
 
-def status_frame(state=None, error=None, *, language='en'):
-    """Legacy OLED status, localized without changing status protocol fields."""
-    from sonos_ui.i18n import Translator
-    tr=Translator(language).tr
-    if error is None and drive_fault(state):
-        return drive_fault_frame(state)
-    if error is None and drive_waking(state):
-        return drive_wait_frame()
-    img=Image.new('L',(128,128),0)
-    draw=ImageDraw.Draw(img)
-    f=ImageFont.load_default()
-    draw.text((5,4),tr('legacy.header'),font=f,fill=255)
-    draw.line((4,19,123,19),fill=88)
-    if error is not None:
-        draw.text((6,32),tr('legacy.offline'),font=f,fill=245)
-        draw.text((6,53),tr('legacy.no_local_status'),font=f,fill=155)
-        draw.text((6,78),tr('legacy.waiting'),font=f,fill=155)
-    else:
-        player=(state or {}).get('player') or {}
-        sonos=(state or {}).get('sonos') or {}
-        stream=(state or {}).get('stream') or {}
-        mode=player.get('mode')
-        mode_key='legacy.mode.'+mode if isinstance(mode,str) and mode in (
-            'STOPPED','PLAYING','PAUSED','STARTING','ERROR') else 'legacy.mode.UNKNOWN'
-        draw.text((6,29),short_text(tr(mode_key),17),font=f,fill=255)
-        track=player.get('track')
-        count=player.get('track_count')
-        track=str(track) if isinstance(track,int) and track>0 else '--'
-        count=str(count) if isinstance(count,int) and count>0 else '--'
-        draw.text((6,52),tr('legacy.track',track=track,count=count),font=f,fill=215)
-        # Cached transport is NOT an independent reachability check.
-        transport=short_text(sonos.get('transport') or tr('legacy.transport_unknown'),16)
-        draw.text((6,75),tr('legacy.sonos',transport=transport),font=f,fill=154)
-        stream_state=tr('legacy.stream_active') if stream.get('active') else tr('legacy.stream_idle')
-        draw.text((6,98),tr('legacy.stream',state=stream_state),font=f,fill=154)
-    draw.line((4,121,123,121),fill=66)
-    return image_to_frame(img)
+def drive_notice_frame(state, *, language='de'):
+    """Represent verified drive state without changing or retrying drive actions."""
+    if drive_fault(state):
+        retry, exhausted = drive_fault_details(state)
+        if exhausted:
+            return notice_frame('status.drive_wake_exhausted',
+                                severity='error', language=language)
+        if retry is None:
+            return notice_frame('status.drive_wake_fault',
+                                severity='error', language=language)
+        if retry > 0:
+            return notice_frame('status.drive_wake_retry',
+                                severity='error', params={'seconds': retry},
+                                language=language)
+        return notice_frame('status.drive_wake_retry_ready',
+                            severity='error', language=language)
+    if drive_waking(state):
+        return notice_frame('status.drive_waking', language=language)
+    return None
 
 
 def modern_status_frame(state=None, error=None, *, cover_mode='auto', language='de'):
-    """Opt-in 128x128 Modern Hi-Fi frame, reusing the existing OLED lifecycle.
-
-    This adapter is intentionally read-only. No discovery, GPIO listening,
-    player writes or speculative album/cover/target metadata.
-    """
+    """Render the player or a localized Modern Hi-Fi status notice."""
     if error is not None or state is None:
-        return status_frame(error=error or 'No local status',language=language)
-    if drive_fault(state):
-        return drive_fault_frame(state)
-    if drive_waking(state):
-        return drive_wait_frame()
+        return notice_frame('status.player_offline', severity='error',
+                            language=language)
+    notice = drive_notice_frame(state, language=language)
+    if notice is not None:
+        return notice
     from sonos_ui.player_adapter import project_status
     from sonos_ui.render import Renderer
     display = project_status(state)
-    image = Renderer(cover_mode=cover_mode,language=language).render(display, grayscale=True)
+    image = Renderer(cover_mode=cover_mode, language=language).render(
+        display, grayscale=True)
     return image_to_frame(image)
 
 
 def safe_modern_status_frame(state, *, cover_mode='auto', language='de'):
-    """Never crash the display worker on malformed/cached player status."""
+    """Use the notice renderer, never a recursive legacy fallback, on bad data."""
     try:
-        return modern_status_frame(state, cover_mode=cover_mode, language=language)
+        return modern_status_frame(
+            state, cover_mode=cover_mode, language=language)
     except (ValueError, TypeError, KeyError):
-        return status_frame(error='invalid player status', language=language)
-
+        return notice_frame('status.invalid_player_status',
+                            severity='error', language=language)
 
 
 # While a scrolling text overflows its viewport, redraw this often so the
@@ -266,27 +211,20 @@ def menu_overlay_active(menu):
 
 def selected_status_frame(state, *, menu=None, ui_modern=False,
                           cover_mode='auto', language='de', cached=False):
-    """Prioritize confirmed drive notices over interactive menu and status.
+    """All runtime views use Modern Hi-Fi, including drive and error notices.
 
-    The power menu is the one exception: it must stay visible, or its input
-    would act on a screen the user cannot see.
+    Retain the historical ui_modern/cached arguments for compatible callers,
+    but neither option can re-enable a Legacy rendering branch.
     """
-    if menu is not None and (getattr(menu, 'power_menu', False) is True
-                             or isinstance(getattr(menu, 'shutdown_screen', None), str)):
+    if menu is not None and getattr(menu, 'power_menu', False) is True:
         return menu.frame(image_to_frame)
-    if drive_fault(state):
-        return drive_fault_frame(state)
-    if drive_waking(state):
-        return drive_wait_frame()
+    drive_frame = drive_notice_frame(state, language=language)
+    if drive_frame is not None:
+        return drive_frame
     if menu is not None and (menu.active or menu_overlay_active(menu)):
         return menu.frame(image_to_frame)
-    if ui_modern:
-        if cached:
-            return modern_status_frame(
-                state, cover_mode=cover_mode, language=language)
-        return safe_modern_status_frame(
-            state, cover_mode=cover_mode, language=language)
-    return status_frame(state, language=language)
+    return safe_modern_status_frame(
+        state, cover_mode=cover_mode, language=language)
 
 
 class StatusHold:
@@ -550,7 +488,7 @@ def main(argv=None):
                                 language=(menu.language if menu is not None else language))
                             label={'screen':'status_cached','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
                         except (ValueError, TypeError, KeyError):
-                            frame=status_frame(error='invalid cached status',
+                            frame=notice_frame('status.invalid_player_status', severity='error',
                                                language=(menu.language if menu is not None else language))
                             label={'screen':'status_invalid','hardware':args.execute}
                     else:
@@ -558,7 +496,7 @@ def main(argv=None):
                         # down, so an open menu must stay visible instead of being
                         # replaced by the error screen (it is the Wi-Fi fallback).
                         frame=(menu.frame(image_to_frame) if menu is not None and menu.active
-                               else status_frame(error='unavailable or invalid status',
+                               else notice_frame('status.player_offline', severity='error',
                                                  language=(menu.language if menu is not None else language)))
                         label={'screen':'status_unavailable','error':type(exc).__name__,'hardware':args.execute}
                 current=bytes(frame.data)
