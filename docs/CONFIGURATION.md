@@ -52,6 +52,16 @@ If a required file is missing, the service stops with an error naming the expect
 - The early boot power LED falls back to BCM12 so that boot is never blocked.
 - The OLED renderer without `--execute` (offline preview) uses the default display pins.
 
+## Remembered state
+
+The configuration files are only read, never written by the services. What is chosen during operation is remembered separately in `/var/lib/sonoscdplayer/` (created by systemd through `StateDirectory=` in the player unit):
+
+| File | Content |
+| --- | --- |
+| `target.json` | The last confirmed speaker selection (coordinator and group members) |
+
+After a restart the player restores this selection without contacting any speaker and never starts playback on its own. PLAY checks the speakers as usual; if one is not available, an error is shown and the selection is kept. Choosing other speakers replaces the file; deleting it forgets the selection. Outside systemd the directory can be set with `player_service.py --state-dir`.
+
 ## systemd units
 
 The unit files in [`systemd/`](../systemd/) are templates. Render them with [`tools/render_runtime_units.py`](../tools/render_runtime_units.py); the rendered units pass the standard configuration paths explicitly:

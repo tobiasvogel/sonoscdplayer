@@ -13,6 +13,9 @@ WorkingDirectory=@SONOSCDPLAYER_SRC@
 # systemd owns and cleans the private socket directory after a crash/stop.
 RuntimeDirectory=sonoscdplayer
 RuntimeDirectoryMode=0700
+# Remembered speaker selection (target.json); passed to the player as $STATE_DIRECTORY.
+StateDirectory=sonoscdplayer
+StateDirectoryMode=0700
 UMask=0077
 # The installed SoCo dependency lives in the project venv, not system Python.
 ExecStart=@SONOSCDPLAYER_PYTHON@ -u player_service.py --config @SONOSCDPLAYER_PLAYER_CONFIG@ --socket /run/sonoscdplayer/control.sock

@@ -175,5 +175,121 @@ class GroupPlaySelectedTests(unittest.TestCase):
         self.assertEqual(accepted_notice(menu,0),('status.target_accepted','success'))
 
 
+
+class RememberedTargetTests(unittest.TestCase):
+    """TGT-01: the selection survives a restart but never acts on its own."""
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        from target_store import TargetStore
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.state_dir = Path(self.directory.name) / 'state'
+        self.logs = []
+        self.store = TargetStore(self.state_dir, log=self.logs.append)
+        self.controller = FakeController()
+
+    def selection(self, verify=lambda uid: None):
+        return SelectedTarget(verify=verify, find_many=lambda uids: {uid: NS(uid=uid) for uid in uids},
+                              store=self.store)
+
+    def request(self, selection, command, **kwargs):
+        return handle_command(self.controller, {'command': command, **kwargs}, selection)
+
+    def test_selection_is_restored_after_restart_without_contacting_sonos(self):
+        from unittest import mock
+        with mock.patch('player_target_selection.check_member'):
+            first = self.selection()
+            self.assertTrue(self.request(first, 'set-target', uid='RINCON_A',
+                                         members=['RINCON_C', 'RINCON_B'])['ok'])
+        contacted = []
+        restarted = self.selection(verify=contacted.append)
+        self.assertTrue(restarted.restore())
+        self.assertEqual(restarted.uid_for_explicit_action(), 'RINCON_A')
+        self.assertEqual(restarted.members_for_explicit_action(), ('RINCON_B', 'RINCON_C'))
+        self.assertEqual(contacted, [])
+        self.assertEqual(self.controller.calls, [])
+
+    def test_restored_selection_is_used_only_by_explicit_play(self):
+        self.store.save('RINCON_A', ())
+        selection = self.selection()
+        selection.restore()
+        plays = []
+        self.controller.play = lambda uid, members=(): plays.append((uid, members))
+        self.assertEqual(plays, [])
+        self.assertTrue(self.request(selection, 'play-selected')['ok'])
+        self.assertEqual(plays, [('RINCON_A', ())])
+
+    def test_failed_play_keeps_the_remembered_selection(self):
+        self.store.save('RINCON_A', ())
+        selection = self.selection()
+        selection.restore()
+        def unreachable(uid, members=()):
+            raise RuntimeError('target not found')
+        self.controller.play = unreachable
+        self.assertFalse(self.request(selection, 'play-selected')['ok'])
+        self.assertEqual(selection.uid_for_explicit_action(), 'RINCON_A')
+        self.assertEqual(self.store.load(), ('RINCON_A', ()))
+
+    def test_clear_forgets_the_selection(self):
+        selection = self.selection()
+        self.request(selection, 'set-target', uid='RINCON_A')
+        self.assertTrue(self.request(selection, 'clear-target')['ok'])
+        self.assertIsNone(self.store.load())
+        self.assertFalse(self.selection().restore())
+
+    def test_rejected_selection_does_not_overwrite_the_file(self):
+        selection = self.selection()
+        self.request(selection, 'set-target', uid='RINCON_A')
+        selection._verify = lambda uid: (_ for _ in ()).throw(RuntimeError('grouped'))
+        self.assertFalse(self.request(selection, 'set-target', uid='RINCON_B')['ok'])
+        self.assertEqual(self.store.load(), ('RINCON_A', ()))
+
+    def test_file_is_private_and_contains_no_extra_data(self):
+        import json
+        self.store.save('RINCON_A', ('RINCON_B',))
+        self.assertEqual(self.store.path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(json.loads(self.store.path.read_text()),
+                         {'version': 1, 'coordinator': 'RINCON_A', 'members': ['RINCON_B']})
+        self.assertEqual(list(self.state_dir.iterdir()), [self.store.path])
+
+    def test_invalid_or_foreign_files_mean_nothing_selected(self):
+        self.state_dir.mkdir()
+        for content in ('{', '[]', '{"version": 2, "coordinator": "RINCON_A"}',
+                        '{"version": 1, "coordinator": "bad uid!"}',
+                        '{"version": 1, "coordinator": "RINCON_A", "members": ["RINCON_A"]}'):
+            with self.subTest(content=content):
+                self.store.path.write_text(content)
+                self.assertIsNone(self.store.load())
+                self.assertFalse(self.selection().restore())
+        self.store.path.unlink()
+        self.store.path.symlink_to(self.state_dir / 'elsewhere.json')
+        (self.state_dir / 'elsewhere.json').write_text('{"version": 1, "coordinator": "RINCON_A"}')
+        self.assertIsNone(self.store.load())
+
+    def test_unwritable_state_directory_only_loses_persistence(self):
+        self.state_dir.parent.joinpath('blocker').write_text('')
+        store = type(self.store)(self.state_dir.parent / 'blocker', log=self.logs.append)
+        selection = SelectedTarget(verify=lambda uid: None, store=store)
+        self.assertTrue(self.request(selection, 'set-target', uid='RINCON_A')['ok'])
+        self.assertEqual(selection.uid_for_explicit_action(), 'RINCON_A')
+        self.assertTrue(any('not saved' in line for line in self.logs))
+
+    def test_state_directory_follows_systemd(self):
+        from unittest import mock
+        from pathlib import Path
+        from target_store import default_state_dir
+        with mock.patch.dict('os.environ', {'STATE_DIRECTORY': '/var/lib/example'}):
+            self.assertEqual(default_state_dir(), Path('/var/lib/example'))
+        with mock.patch.dict('os.environ', {}, clear=True):
+            self.assertEqual(default_state_dir(), Path('/var/lib/sonoscdplayer'))
+
+    def test_player_unit_provides_the_state_directory(self):
+        from pathlib import Path
+        unit = (Path(__file__).resolve().parents[1] / 'systemd/sonoscdplayer-player.service').read_text()
+        self.assertIn('StateDirectory=sonoscdplayer', unit)
+        self.assertIn('StateDirectoryMode=0700', unit)
+
 if __name__ == '__main__':
     unittest.main()

@@ -1,6 +1,8 @@
-"""Volatile, single-target selection for the existing player service.
+"""Target selection for the existing player service.
 
 Selection is NOT ownership and grants no transport command by itself.
+With a TargetStore the last selection survives restarts (D-003); a restored
+selection is not checked against Sonos until PLAY (D-017, D-203).
 All methods are invoked by the player service's serialized control worker.
 """
 from player_state import Mode
@@ -22,11 +24,20 @@ def verify_solo_stopped(uid):
 
 
 class SelectedTarget:
-    def __init__(self, verify=verify_solo_stopped, find_many=find_players):
+    def __init__(self, verify=verify_solo_stopped, find_many=find_players, store=None):
         self._uid = None
         self._members = ()
         self._verify = verify
         self._find_many = find_many
+        self._store = store
+
+    def restore(self):
+        """Load the remembered selection without contacting any speaker."""
+        stored = self._store.load() if self._store is not None else None
+        if stored is None:
+            return False
+        self._uid, self._members = stored
+        return True
 
     def summary(self):
         # Do not disclose a private Sonos UID through status/read-only RPC.
@@ -53,9 +64,13 @@ class SelectedTarget:
                 check_member(discovered[member_uid], member_uid)
         self._uid = uid
         self._members = selected_members
+        if self._store is not None:
+            self._store.save(uid, selected_members)
 
     def clear(self, controller):
         if controller.state.mode != Mode.STOPPED or controller.owned_url:
             raise ValueError('cannot clear target during active ownership')
         self._uid = None
         self._members = ()
+        if self._store is not None:
+            self._store.clear()

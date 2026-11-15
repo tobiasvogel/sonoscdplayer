@@ -1,4 +1,6 @@
 """Player service: control socket, status schema, pause/resume, startup and fail-closed exit (offline)."""
+import contextlib
+import io
 import json
 import os
 import socket
@@ -76,6 +78,26 @@ class ServiceTests(unittest.TestCase):
                 s.sendall(b'X'*300 + b'\n')
                 self.assertFalse(json.loads(s.recv(4096))['ok'])
             self.assertGreater(c.refreshes, 0)
+
+    def test_serve_restores_the_remembered_target(self):
+        from target_store import TargetStore
+        with tempfile.TemporaryDirectory() as td:
+            store = TargetStore(Path(td) / 'state', log=lambda message: None)
+            store.save('RINCON_A', ())
+            path = str(Path(td) / 'control.sock')
+            c = DummyController()
+            thread = threading.Thread(target=serve, args=(c, path),
+                                      kwargs={'poll_seconds': 0.01, 'target_store': store}, daemon=True)
+            with contextlib.redirect_stdout(io.StringIO()):
+                thread.start()
+                for _ in range(100):
+                    if os.path.exists(path):
+                        break
+                    time.sleep(0.01)
+                reply = request(path, 'get-target')
+            self.assertTrue(reply['target_selection']['selected'])
+            self.assertNotIn('RINCON_A', json.dumps(reply))
+            self.assertEqual(c.calls, [])
 
     def test_slow_play_receives_reply_beyond_old_five_second_limit(self):
         class SlowController(DummyController):

@@ -34,6 +34,7 @@ from drive_wake_validation import wait_for_woken_disc
 from drive_identity import usb_identity, recovered_device
 from player_controller import Controller, ProcessServer, routed_source_ip
 from player_target_selection import SelectedTarget
+from target_store import TargetStore, default_state_dir
 from volume_control import VolumeControl, parse_volume_command
 from sonos_group import normalize_members
 from player_play import make_url, prepare_selection
@@ -397,7 +398,7 @@ def eject_and_recover(controller, monitor, power):
     return result
 
 
-def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None):
+def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, target_store=None):
     path = Path(socket_path).expanduser().absolute()
     if not path.parent.is_dir():
         raise ValueError('socket parent directory does not exist')
@@ -411,7 +412,9 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
         os.umask(original_umask)
     bound_inode = os.lstat(path).st_ino
     publisher = StatusPublisher(controller, power)
-    selection = SelectedTarget()
+    selection = SelectedTarget(store=target_store)
+    if selection.restore():
+        print('[target] remembered speaker selection restored; no Sonos action until PLAY', flush=True)
     volume = VolumeControl()
     if hasattr(controller, 'status_hook'):
         controller.status_hook = lambda: publisher.publish(controller, power)
@@ -636,6 +639,9 @@ def run(argv=None):
     ap.add_argument('--port', type=int, default=8765)
     ap.add_argument('--config', default=str(config_paths.player_config()))
     ap.add_argument('--socket', default='/tmp/sonoscdplayer-control.sock')
+    ap.add_argument('--state-dir', default=str(default_state_dir()),
+                    help='where the last speaker selection is remembered '
+                         '(default: $STATE_DIRECTORY or /var/lib/sonoscdplayer)')
     ns = ap.parse_args(argv)
     if ns.device != 'auto' and not re.fullmatch(r'/dev/sr\d+', ns.device):
         ap.error('invalid device')
@@ -695,7 +701,8 @@ def run(argv=None):
         if monitor is not None:
             monitor.loaded_toc = toc  # verified startup TOC, never stale
         serve(ctrl, ns.socket, power=power, drive_id=identity,
-              drive_toc=toc, disc_monitor=monitor)
+              drive_toc=toc, disc_monitor=monitor,
+              target_store=TargetStore(ns.state_dir))
     except KeyboardInterrupt:
         print('\n[M0.12b-r7] shutdown requested', flush=True)
     except Exception as exc:
