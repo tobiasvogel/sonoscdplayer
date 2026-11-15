@@ -246,5 +246,44 @@ class FrameDelayTests(unittest.TestCase):
             self.assertEqual(oled_status.frame_delay(0.05), 0.05)
 
 
+
+class MenuRowSizeTests(unittest.TestCase):
+    """All encoder menus use the same rows as the power menu (11 px text)."""
+
+    def highlight_rows(self, image):
+        gray = image.convert('L')
+        rows = []
+        for y in range(24, 100):  # below the heading and the speaker count line
+            value = gray.getpixel((7, y))  # inside the highlight, left of any marker
+            if value > 40:
+                rows.append(y)
+        return (min(rows), max(rows)) if rows else None
+
+    def test_power_main_and_speaker_menus_share_geometry(self):
+        from types import SimpleNamespace as NS
+        from sonos_ui.multi_render import MultiRenderer
+        from sonos_ui.navigation_pages import NavigationRenderer, MAIN_ITEMS
+        from sonos_ui.multi_target import MultiSelection, from_devices
+        from sonos_ui.render import MENU_ROW_TOP, MENU_ROW_HEIGHT
+        device = NS(uid='A', player_name='Hobbyraum')
+        device.group = NS(coordinator=device, members=[device])
+        renderer = MultiRenderer(language='de')
+        images = {
+            'power': renderer.render_power(0),
+            'main': NavigationRenderer().page('menu.main', MAIN_ITEMS, 0, language='de'),
+            'targets': renderer.render_multi(MultiSelection().update(from_devices([device]))),
+        }
+        for name, image in images.items():
+            with self.subTest(menu=name):
+                self.assertEqual(self.highlight_rows(image),
+                                 (MENU_ROW_TOP, MENU_ROW_TOP + MENU_ROW_HEIGHT))
+
+    def test_three_rows_visible_and_focus_always_shown(self):
+        from sonos_ui.render import Renderer
+        r = Renderer()
+        self.assertEqual(list(r.menu_window(4, 0)), [0, 1, 2])
+        self.assertEqual(list(r.menu_window(4, 3)), [1, 2, 3])
+        self.assertEqual(list(r.menu_window(2, 1)), [0, 1])
+
 if __name__ == '__main__':
     unittest.main()

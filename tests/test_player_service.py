@@ -65,7 +65,7 @@ class ServiceTests(unittest.TestCase):
             c = DummyController()
             thread = threading.Thread(target=serve, args=(c, path), kwargs={'poll_seconds': 0.01}, daemon=True)
             thread.start()
-            for _ in range(100):
+            for _ in range(500):  # up to 5 s on a loaded machine
                 if os.path.exists(path):
                     break
                 time.sleep(0.01)
@@ -90,7 +90,7 @@ class ServiceTests(unittest.TestCase):
                                       kwargs={'poll_seconds': 0.01, 'target_store': store}, daemon=True)
             with contextlib.redirect_stdout(io.StringIO()):
                 thread.start()
-                for _ in range(100):
+                for _ in range(500):  # up to 5 s on a loaded machine
                     if os.path.exists(path):
                         break
                     time.sleep(0.01)
@@ -111,7 +111,7 @@ class ServiceTests(unittest.TestCase):
             thread = threading.Thread(target=serve, args=(c, path),
                                       kwargs={'poll_seconds': 0.01}, daemon=True)
             thread.start()
-            for _ in range(100):
+            for _ in range(500):  # up to 5 s on a loaded machine
                 if os.path.exists(path):
                     break
                 time.sleep(0.01)

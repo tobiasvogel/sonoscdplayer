@@ -31,6 +31,9 @@ SCAN_RESULT_SECONDS = 2.0
 # settings menu forces a new discovery.
 EMPTY_SCAN_RETRY_SECONDS = 30.0
 CURRENT_TARGET_RETRY_SECONDS = 5.0
+# A power-off requested by the button service is not acknowledged to the UI;
+# if the system is still running after this long, show the normal UI again.
+LONG_PRESS_SCREEN_SECONDS = 90.0
 # INP-02: how long an acknowledged volume level stays visible.
 VOLUME_OVERLAY_SECONDS = 2.0
 
@@ -65,6 +68,11 @@ class InteractiveMenu:
         self.power_notice = ''
         self._power_busy = False
         self._power_result = None
+        # 'transition' (power-off) or 'reboot' once a shutdown was requested:
+        # the full localized system screen replaces everything until the end.
+        self.shutdown_screen = None
+        self._shutdown_frame = None
+        self._shutdown_deadline = None
         # Menu position to restore when the power menu is closed with "back";
         # None means the overview (no menu was open).
         self._power_return = None
@@ -233,6 +241,7 @@ class InteractiveMenu:
                 return self._close_power()
             self._power_busy = True
             self.power_notice = 'status.power_' + choice
+            self._show_shutdown_screen('reboot' if choice == 'reboot' else 'transition')
             def work():
                 try:
                     ok = self._power_action(choice) is True
@@ -347,10 +356,16 @@ class InteractiveMenu:
             self._power_result = None
             network_result = self._network_pending
             self._network_pending = None
+        if self._shutdown_deadline is not None and now >= self._shutdown_deadline:
+            self.shutdown_screen = None
+            self._shutdown_deadline = None
+            self.active = False
+            changed = True
         if power_result is False:
             # The system did not accept the request: the menu stays open and usable.
             self._power_busy = False
             self.power_notice = 'status.power_failed'
+            self.shutdown_screen = None
             changed = True
         if network_result is not None:
             self.network_snapshot = network_result
@@ -447,8 +462,21 @@ class InteractiveMenu:
         now = time.monotonic() if now is None else now
         return self._volume_level is not None and now < self._volume_until
 
+    def _show_shutdown_screen(self, screen, deadline=None):
+        self.shutdown_screen = screen
+        self._shutdown_frame = None
+        self._shutdown_deadline = deadline
+        self.active = True  # keep it on screen even when the player is gone
+
     def event(self, name, event, now=None):
         now = time.monotonic() if now is None else now
+        if self.shutdown_screen is not None:
+            return False  # shutting down or restarting: nothing else to do
+        if (name, event) == ('power', 'long'):
+            # The button service has already requested the power-off.
+            self.power_menu = False
+            self._show_shutdown_screen('transition', now + LONG_PRESS_SCREEN_SECONDS)
+            return True
         if (name, event) == ('volume', 'no_target'):
             if self._power_busy or self.power_menu:
                 return False
@@ -547,6 +575,11 @@ class InteractiveMenu:
         return True
 
     def frame(self, image_to_frame):
+        if self.shutdown_screen is not None:
+            if self._shutdown_frame is None:
+                from system_screen import screen_image
+                self._shutdown_frame = image_to_frame(screen_image(self.shutdown_screen, self.language))
+            return self._shutdown_frame
         active_notice = (self.connect_notices.current(now=time.monotonic())
                          if self._notice_previous_active is not None else None)
         if active_notice is not None:
@@ -563,16 +596,9 @@ class InteractiveMenu:
             im=Image.new('RGB',(128,128),t.background)
             self.renderer.shell(im,self.renderer.tr('menu.language'))
             # 128px OLED: keep focused language visible even with many files.
-            top=max(0,min(max(0,len(self.languages)-4),self.language_focus-1))
-            for row_index, index in enumerate(range(top,min(top+4,len(self.languages)))):
-                lang=self.languages[index]
-                y=22+row_index*22
-                if index==self.language_focus:
-                    ImageDraw.Draw(im).rounded_rectangle((4,y,123,y+19),radius=3,fill=t.accent)
-                col=t.selection_text if index==self.language_focus else t.primary
-                label=self.renderer.translator.language_name(lang)
-                self.renderer.text(im,(10,y+3),label,fill=col,size=11,width=110,height=15,
-                                   scroll=index==self.language_focus)
+            for slot, index in enumerate(self.renderer.menu_window(len(self.languages), self.language_focus)):
+                label=self.renderer.translator.language_name(self.languages[index])
+                self.renderer.menu_row(im, slot, label, selected=index==self.language_focus)
             self.renderer.bottom(im,status=self.renderer.tr('status.local_only'),
                                  footer=self.renderer.tr('footer.confirm'))
             return image_to_frame(im)

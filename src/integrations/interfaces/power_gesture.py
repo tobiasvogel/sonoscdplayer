@@ -46,7 +46,8 @@ class PowerCoordinator:
     """Glue between button events and the two power paths.
 
     short press -> ``publish('power', 'short')`` so the UI process opens its menu
-    long press  -> ``shutdown()`` directly, independent of the UI process
+    long press  -> ``shutdown()`` directly, independent of the UI process; when
+                   it returns True, ``publish('power', 'long')`` for the display
 
     Both callables must not block; ``shutdown`` is expected to hand the work to a
     thread. Only the ``power`` button is looked at.
@@ -66,5 +67,6 @@ class PowerCoordinator:
             self._publish('power', 'short')
 
     def tick(self, now_ms):
-        if self.gesture.tick(now_ms) == 'long':
-            self._shutdown()
+        if self.gesture.tick(now_ms) == 'long' and self._shutdown() is True:
+            # Let the display show "shutting down" right away.
+            self._publish('power', 'long')

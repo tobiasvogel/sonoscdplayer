@@ -14,7 +14,7 @@ import threading
 
 ALLOWED = frozenset({
     ('encoder', 'left'), ('encoder', 'right'),
-    ('encoder_sw', 'pressed'), ('power', 'short'),
+    ('encoder_sw', 'pressed'), ('power', 'short'), ('power', 'long'),
     ('speaker_select', 'pressed'),
     ('connect', 'status'), ('connect', 'settings'), ('connect', 'settings_hint'),
     ('connect', 'setup_requested'),

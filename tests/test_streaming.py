@@ -143,14 +143,10 @@ class TestReplayHTTP(unittest.TestCase):
                 stream.start()
                 try:
                     for idx in range(2):
-                        conn = http.client.HTTPConnection('127.0.0.1', srv.server_port, timeout=8)
-                        conn.request('GET', '/track/1.wav')
-                        response = conn.getresponse()
-                        self.assertEqual(response.status, 200 if idx == 0 else expected_second)
-                        body = response.read()
+                        status, body = get(srv.server_port)
+                        self.assertEqual(status, 200 if idx == 0 else expected_second)
                         if idx == 0 or expected_second == 200:
                             self.assertEqual(body[44:], b'B'*count)
-                        conn.close()
                     stream.thread.join(5)
                     srv.stream.thread.join(5)
                     self.assertIsNone(stream.error)
@@ -223,13 +219,20 @@ class PrebufferWaitTests(unittest.TestCase):
                 Stream(3000000, 1048576, ['unused'], initial_prebuffer_ms=ms)
 
 
-def get(port):
-    conn = http.client.HTTPConnection('127.0.0.1', port, timeout=8)
-    conn.request('GET', '/track/1.wav')
-    res = conn.getresponse()
-    status, data = res.status, res.read()
-    conn.close()
-    return status, data
+def get(port, *, wait_out_409=True):
+    """GET the track; by default wait out the documented 409 (M0.10b) that
+    answers while the previous CD reader is still exiting, which takes a
+    moment longer on a loaded machine."""
+    deadline = time.monotonic() + 5
+    while True:
+        conn = http.client.HTTPConnection('127.0.0.1', port, timeout=8)
+        conn.request('GET', '/track/1.wav')
+        res = conn.getresponse()
+        status, data = res.status, res.read()
+        conn.close()
+        if status != 409 or not wait_out_409 or time.monotonic() > deadline:
+            return status, data
+        time.sleep(0.05)
 
 
 class ReplayTests(unittest.TestCase):
@@ -242,14 +245,7 @@ class ReplayTests(unittest.TestCase):
         th.start(); stream.start()
         try:
             for _ in range(3):
-                # 409 is the documented answer while the previous reader is
-                # still exiting (M0.10b); under load that can take a moment.
-                deadline = time.monotonic() + 5
-                while True:
-                    status, content = get(server.server_port)
-                    if status != 409 or time.monotonic() > deadline:
-                        break
-                    time.sleep(0.05)
+                status, content = get(server.server_port)
                 self.assertEqual(status, 200)
                 self.assertEqual(content[44:], b'Z'*count)
             self.assertEqual(server._generation, 3)
@@ -269,7 +265,7 @@ class ReplayTests(unittest.TestCase):
             self.assertEqual(get(server.server_port)[0], 200)
             # Keep a valid cursor alive even though the beginning expired.
             held = stream.ring.register(stream.ring.stats['oldest_offset'])
-            self.assertEqual(get(server.server_port)[0], 409)
+            self.assertEqual(get(server.server_port, wait_out_409=False)[0], 409)
             self.assertEqual(server._generation, 1)
             stream.ring.unregister(held)
             self.assertEqual(get(server.server_port)[0], 200)

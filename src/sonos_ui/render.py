@@ -18,6 +18,13 @@ HEADER=(0,14)
 CONTENT=(15,98)
 STATUS=(99,112)
 DIVIDER_Y=113
+# Menu lists (power, main/settings/network, speakers, languages): one look,
+# three rows of 11 px text; long entries scroll when focused.
+MENU_ROW_TOP=27
+MENU_ROW_STEP=22
+MENU_ROW_HEIGHT=19
+MENU_TEXT_SIZE=11
+MENU_VISIBLE_ROWS=3
 FOOTER=(115,127)
 
 
@@ -77,6 +84,26 @@ class Renderer:
             d.rounded_rectangle((x,y,x+side-1,y+side-1),radius=3,fill=self.theme.surface,outline=self.theme.muted)
             d.ellipse((x+8,y+8,x+side-9,y+side-9),outline=self.theme.secondary,width=2)
             d.ellipse((x+16,y+16,x+19,y+19),fill=self.theme.secondary)
+
+    def menu_window(self,count,focus):
+        """Indexes of the visible rows; the focused row stays visible."""
+        first=max(0,min(max(0,count-MENU_VISIBLE_ROWS),focus-1))
+        return range(first,min(count,first+MENU_VISIBLE_ROWS))
+
+    def menu_row(self,canvas,slot,label,*,selected,marker=None):
+        """Draw one menu row in visible position ``slot`` (0..2)."""
+        t=self.theme
+        y=MENU_ROW_TOP+slot*MENU_ROW_STEP
+        if selected:
+            ImageDraw.Draw(canvas).rounded_rectangle((4,y,123,y+MENU_ROW_HEIGHT),radius=3,fill=t.accent)
+        col=t.selection_text if selected else t.primary
+        if marker is None:
+            self.text(canvas,(10,y+3),label,fill=col,size=MENU_TEXT_SIZE,bold=selected,
+                      width=110,height=15,scroll=selected)
+        else:
+            self.text(canvas,(8,y+3),marker,fill=col,size=MENU_TEXT_SIZE,width=14,height=15)
+            self.text(canvas,(26,y+3),label,fill=col,size=MENU_TEXT_SIZE,bold=selected,
+                      width=96,height=15,scroll=selected)
 
     def shell(self,canvas,heading):
         d=ImageDraw.Draw(canvas)

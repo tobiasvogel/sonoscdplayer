@@ -70,6 +70,14 @@ class CoordinatorTests(unittest.TestCase):
         self.c.event('power', 'released', 6000)
         self.assertEqual((self.published, self.shutdowns), ([], [1]))
 
+    def test_requested_long_press_tells_the_display(self):
+        c = PowerCoordinator(3000, publish=lambda *a: self.published.append(a),
+                             shutdown=lambda: True)
+        c.event('power', 'pressed', 0)
+        for t in range(0, 6000, 100):
+            c.tick(t)
+        self.assertEqual(self.published, [('power', 'long')])
+
     def test_other_buttons_are_ignored(self):
         for name in ('stop', 'eject', 'encoder_sw'):
             self.c.event(name, 'pressed', 0)
@@ -151,6 +159,13 @@ class ShutdownCallbackTests(unittest.TestCase):
             def request(self, action):
                 raise AssertionError('must not run')
         interface_input.make_power_shutdown(False, requester=Boom(), start=lambda t: t())()
+
+    def test_shutdown_callback_reports_whether_it_requested(self):
+        class Req:
+            def request(self, action):
+                pass
+        self.assertIs(interface_input.make_power_shutdown(True, requester=Req(), start=lambda t: None)(), True)
+        self.assertIs(interface_input.make_power_shutdown(False, requester=Req(), start=lambda t: None)(), False)
 
     def test_enabled_long_press_requests_poweroff_off_thread(self):
         seen = []
@@ -290,10 +305,11 @@ class MenuTests(unittest.TestCase):
 
 
 class WiringTests(unittest.TestCase):
-    def test_ui_bridge_carries_only_the_short_press(self):
-        self.assertEqual(ui_event_bridge.decode_event(
-            ui_event_bridge.encode_event('power', 'short')), ('power', 'short'))
-        for event in ('pressed', 'released', 'long'):
+    def test_ui_bridge_carries_only_short_and_long_press(self):
+        for event in ('short', 'long'):
+            self.assertEqual(ui_event_bridge.decode_event(
+                ui_event_bridge.encode_event('power', event)), ('power', event))
+        for event in ('pressed', 'released'):
             self.assertIsNone(ui_event_bridge.encode_event('power', event))
 
     def test_interface_config_hold_time(self):
@@ -340,6 +356,75 @@ class WiringTests(unittest.TestCase):
         finally:
             signal.signal(signal.SIGTERM, previous)
 
+
+
+class ShutdownScreenTests(unittest.TestCase):
+    """The display shows the shutdown/restart screen at once, not after seconds."""
+
+    def make(self, result=True):
+        self.release = threading.Event()
+        def action(choice):
+            self.release.wait(2)
+            return result
+        return InteractiveMenu(discover=lambda *, timeout: None, power_action=action, language='de')
+
+    def choose(self, menu, steps):
+        menu.event('power', 'short')
+        for _ in range(steps):
+            menu.event('encoder', 'right')
+        menu.event('encoder_sw', 'pressed')
+
+    def test_menu_choice_shows_the_matching_screen_immediately(self):
+        import sys
+        sys.path.insert(0, str(ROOT / 'src'))
+        from integrations.outputs.oled_status import image_to_frame
+        from system_screen import screen_image
+        for steps, screen in ((1, 'transition'), (2, 'reboot')):
+            with self.subTest(screen=screen):
+                m = self.make()
+                self.choose(m, steps)
+                self.assertEqual(m.shutdown_screen, screen)
+                self.assertEqual(bytes(m.frame(image_to_frame).data),
+                                 bytes(image_to_frame(screen_image(screen, 'de')).data))
+                self.assertFalse(m.event('encoder', 'right'))
+                self.release.set()
+
+    def test_refused_request_returns_to_the_menu(self):
+        m = self.make(result=False)
+        self.choose(m, 1)
+        self.release.set()
+        deadline = time.monotonic() + 2
+        while m.shutdown_screen is not None and time.monotonic() < deadline:
+            m.poll(now=0)
+            time.sleep(0.01)
+        self.assertIsNone(m.shutdown_screen)
+        self.assertTrue(m.power_menu)
+        self.assertEqual(m.power_notice, 'status.power_failed')
+
+    def test_long_press_shows_the_screen_and_gives_up_if_nothing_happens(self):
+        import sys
+        sys.path.insert(0, str(ROOT / 'src'))
+        from sonos_ui import interactive_menu
+        m = InteractiveMenu(discover=lambda *, timeout: None)
+        self.assertTrue(m.event('power', 'long', now=100.0))
+        self.assertEqual(m.shutdown_screen, 'transition')
+        self.assertTrue(m.active)
+        m.poll(now=100.0 + interactive_menu.LONG_PRESS_SCREEN_SECONDS - 1)
+        self.assertEqual(m.shutdown_screen, 'transition')
+        m.poll(now=100.0 + interactive_menu.LONG_PRESS_SCREEN_SECONDS + 1)
+        self.assertIsNone(m.shutdown_screen)
+        self.assertFalse(m.active)
+
+    def test_status_loop_prefers_the_shutdown_screen(self):
+        import sys
+        sys.path.insert(0, str(ROOT / 'src'))
+        from integrations.outputs.oled_status import image_to_frame, selected_status_frame
+        from system_screen import screen_image
+        m = InteractiveMenu(discover=lambda *, timeout: None, language='en')
+        m.event('power', 'long', now=0.0)
+        frame = selected_status_frame({'schema_version': 1, 'player': {'mode': 'PLAYING'}},
+                                      menu=m, ui_modern=True)
+        self.assertEqual(bytes(frame.data), bytes(image_to_frame(screen_image('transition', 'en')).data))
 
 if __name__ == '__main__':
     unittest.main()

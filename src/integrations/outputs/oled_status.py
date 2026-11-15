@@ -271,7 +271,8 @@ def selected_status_frame(state, *, menu=None, ui_modern=False,
     The power menu is the one exception: it must stay visible, or its input
     would act on a screen the user cannot see.
     """
-    if menu is not None and getattr(menu, 'power_menu', False) is True:
+    if menu is not None and (getattr(menu, 'power_menu', False) is True
+                             or isinstance(getattr(menu, 'shutdown_screen', None), str)):
         return menu.frame(image_to_frame)
     if drive_fault(state):
         return drive_fault_frame(state)

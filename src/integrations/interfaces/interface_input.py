@@ -287,9 +287,10 @@ def make_power_shutdown(enabled, requester=None, start=None):
     def shutdown():
         if not enabled:
             print('power button held: shutdown preview only (--power-actions not set)', flush=True)
-            return
+            return False
         print('power button held: requesting poweroff', flush=True)
         start(lambda: requester.request('poweroff'))
+        return True
     return shutdown
 
 

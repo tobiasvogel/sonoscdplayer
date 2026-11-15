@@ -1,5 +1,5 @@
 """OLED-only navigation pages; no network, GPIO or player side effects."""
-from PIL import Image, ImageDraw
+from PIL import Image
 from .render import Renderer
 from .theme import ssd1327_gray
 
@@ -15,19 +15,10 @@ class NavigationRenderer(Renderer):
         t = self.theme
         image = Image.new("RGB", (128, 128), t.background)
         self.shell(image, tr(heading))
-        d = ImageDraw.Draw(image)
-        first = max(0, min(max(0, len(items) - 4), focus - 1))
-        for index in range(first, min(len(items), first + 4)):
-            y = 23 + (index - first) * 20
-            active = index == focus
-            if active:
-                d.rounded_rectangle((4, y, 123, y + 18), radius=3, fill=t.accent)
-            ink = t.selection_text if active else t.primary
+        for slot, index in enumerate(self.menu_window(len(items), focus)):
             marker = "<" if items[index] == "menu.back" else ">"
-            self.text(image, (8, y + 2), marker, fill=ink, size=9,
-                      width=12, height=14)
-            self.text(image, (22, y + 2), tr(items[index]), fill=ink,
-                      size=10, bold=active, width=100, height=14, scroll=active)
+            self.menu_row(image, slot, tr(items[index]), selected=index == focus,
+                          marker=marker)
         self.bottom(image, status=tr("status.local_only"),
                     footer=tr("footer.select"))
         return ssd1327_gray(image)
