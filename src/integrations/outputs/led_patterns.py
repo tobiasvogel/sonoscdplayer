@@ -51,9 +51,9 @@ def intensity(pattern: Pattern, elapsed_ms: float, config: PatternConfig = Patte
         return float(config.brightness) if any(i*(config.flash_on_ms+config.flash_gap_ms) <= phase < i*(config.flash_on_ms+config.flash_gap_ms)+config.flash_on_ms for i in range(count)) else 0.0
     raise ValueError('unsupported pattern')
 
-_ERROR_REASONS = frozenset({'critical_device_fault','drive_fault','player_error_unclassified','target_unreachable','unsafe_sonos_topology','stream_ownership_lost'})
-_PRIORITY = {'critical_device_fault': 5, 'drive_fault':4, 'player_error_unclassified':3,
-             'stream_ownership_lost':5, 'unsafe_sonos_topology':4, 'target_unreachable':3}
+# Only power-LED faults are held; the network LED follows its observation directly.
+_ERROR_REASONS = frozenset({'critical_device_fault','drive_fault','player_error_unclassified'})
+_PRIORITY = {'critical_device_fault': 5, 'drive_fault':4, 'player_error_unclassified':3}
 
 class ErrorHold:
     """Per-LED minimum error visibility, explicit timestamps, no background thread.

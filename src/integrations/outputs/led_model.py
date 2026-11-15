@@ -1,8 +1,9 @@
 """M0.13a: pure, fail-safe LED view model (NO GPIO, network or Sonos calls).
 
-Connection indicator never infers reachability from `owned`, `PLAYING` or a
-cached target UID. `reachability` must be an *explicit, fresh observation*
-from a future read-only discovery/health adapter. Until then UNKNOWN is shown.
+The connection LED shows the Raspberry Pi's own network connection (OUT-03,
+D-222), not the state of any Sonos speaker: the player runs headless, and the
+LED is how one sees that it is on the network. The observation comes from the
+read-only NetworkManager status; Ethernet has precedence over WLAN.
 """
 from __future__ import annotations
 
@@ -22,14 +23,23 @@ class Pattern(str, Enum):
     TRIPLE_FLASH = 'triple_flash'
 
 
-class Connection(str, Enum):
-    UNKNOWN = 'unknown'
-    UNSELECTED = 'unselected'
-    CONNECTING = 'connecting'
-    REACHABLE = 'reachable'
-    UNREACHABLE = 'unreachable'
-    UNSAFE_TOPOLOGY = 'unsafe_topology'
-    OWNERSHIP_LOST = 'ownership_lost'
+class Network(str, Enum):
+    UNKNOWN = 'unknown'            # status not readable (e.g. no NetworkManager)
+    CONNECTED = 'connected'        # LAN or WLAN connected
+    CONNECTING = 'connecting'      # a connection is being established
+    DISCONNECTED = 'disconnected'  # no network connection
+    HOTSPOT = 'hotspot'            # setup hotspot active (reserved)
+
+
+def classify_network(status) -> Network:
+    """Reduce a NetworkStatus-like snapshot (available, preferred, ethernet, wifi)."""
+    if not getattr(status, 'available', False):
+        return Network.UNKNOWN
+    if getattr(status, 'preferred', 'none') in ('ethernet', 'wifi'):
+        return Network.CONNECTED
+    if 'connecting' in (getattr(status, 'ethernet', None), getattr(status, 'wifi', None)):
+        return Network.CONNECTING
+    return Network.DISCONNECTED
 
 
 
@@ -58,7 +68,7 @@ def derive_led_state(
     status: Mapping[str, object],
     *,
     operating: bool = True,
-    connection: Connection = Connection.UNKNOWN,
+    network: Network = Network.UNKNOWN,
     power_fault: 'PowerFault' = None,
     shutting_down: bool = False,
 ) -> LedState:
@@ -67,8 +77,8 @@ def derive_led_state(
     `operating=False` means the output adapter is shutting down; a missing CD
     (NO_DISC) is still an *operational*, ready appliance.
 
-    Connection is a separate externally established observation; `owned=True`
-    is NOT proof of network reachability. No live checks happen here.
+    `network` is the separately observed network connection of the Pi; it is
+    independent of the player mode and of any Sonos state. No live checks here.
     """
     if not isinstance(status, Mapping) or status.get('schema_version') != 1:
         raise ValueError('expected structured status schema_version=1')
@@ -80,8 +90,8 @@ def derive_led_state(
         raise ValueError('unknown player mode')
     if not isinstance(operating, bool):
         raise ValueError('operating must be boolean')
-    if not isinstance(connection, Connection):
-        raise ValueError('connection must be an explicit Connection observation')
+    if not isinstance(network, Network):
+        raise ValueError('network must be an explicit Network observation')
 
     if power_fault is not None and not isinstance(power_fault, PowerFault):
         raise ValueError('power_fault must be an explicit PowerFault observation')
@@ -104,13 +114,11 @@ def derive_led_state(
         # PLAYING/PAUSED do not change operational power indication.
         power = Led(Pattern.STEADY, 'operational')
 
-    connections = {
-        Connection.UNKNOWN: Led(Pattern.OFF, 'reachability_unknown'),
-        Connection.UNSELECTED: Led(Pattern.OFF, 'no_target_selected'),
-        Connection.CONNECTING: Led(Pattern.BREATHE, 'connection_in_progress'),
-        Connection.REACHABLE: Led(Pattern.STEADY, 'target_reachable'),
-        Connection.UNREACHABLE: Led(Pattern.SLOW_BLINK, 'target_unreachable'),
-        Connection.UNSAFE_TOPOLOGY: Led(Pattern.DOUBLE_FLASH, 'unsafe_sonos_topology'),
-        Connection.OWNERSHIP_LOST: Led(Pattern.TRIPLE_FLASH, 'stream_ownership_lost'),
-    }
-    return LedState(power, connections[connection])
+    connection = {
+        Network.UNKNOWN: Led(Pattern.OFF, 'network_unknown'),
+        Network.CONNECTED: Led(Pattern.STEADY, 'network_connected'),
+        Network.CONNECTING: Led(Pattern.BREATHE, 'network_connecting'),
+        Network.DISCONNECTED: Led(Pattern.SLOW_BLINK, 'network_disconnected'),
+        Network.HOTSPOT: Led(Pattern.FAST_BLINK, 'setup_hotspot'),
+    }[network]
+    return LedState(power, connection)

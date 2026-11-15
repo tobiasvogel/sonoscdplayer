@@ -17,7 +17,7 @@ from .ambient_brightness import AmbientConfig, read_lux, lux_to_brightness, Brig
 from dataclasses import dataclass
 from pathlib import Path
 
-from .led_model import Connection, LedState, Led, Pattern, derive_led_state
+from .led_model import LedState, Led, Network, Pattern, classify_network, derive_led_state
 from .led_patterns import PatternConfig, ErrorHold, intensity
 
 
@@ -179,6 +179,15 @@ class LedRenderer:
         return tuple(result)
 
 
+NETWORK_POLL_SECONDS = 5.0
+
+
+def read_network() -> Network:
+    """Read-only NetworkManager snapshot reduced to the connection-LED state."""
+    from sonos_ui.network_status import read_network_status
+    return classify_network(read_network_status())
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Read-only LED PWM monitor (configurable BCM12/13 mapping). Dry-run by default.')
     parser.add_argument('--config', default=str(config_paths.player_config()))
@@ -189,8 +198,9 @@ def main(argv=None):
     parser.add_argument('--ambient-probe', action='store_true', help='read sensor once, no GPIO/Player')
     parser.add_argument('--self-test', action='store_true', help='run pin/pattern checks without service or Sonos')
     parser.add_argument('--verbose', action='store_true', help='print status source and PWM values even with GPIO')
-    parser.add_argument('--connection', choices=[c.value for c in Connection], default='unknown',
-                        help='diagnostic observation ONLY; does not query Sonos reachability')
+    parser.add_argument('--network', choices=['auto'] + [n.value for n in Network], default='auto',
+                        help='connection LED: auto reads the network state from NetworkManager '
+                             '(read-only, every %g s); other values simulate it' % NETWORK_POLL_SECONDS)
     args = parser.parse_args(argv)
     if args.execute != args.gpio:
         parser.error('real GPIO output requires BOTH --gpio and --execute')
@@ -211,6 +221,13 @@ def main(argv=None):
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='ambient-lux') if cfg.ambient.enabled and not args.self_test else None
     sensor_future = None
     next_sensor_poll = 0.0
+    # The network state comes from nmcli (subprocess, up to 2 s): poll it in its
+    # own worker so it never delays PWM or status polling.
+    network_executor = (ThreadPoolExecutor(max_workers=1, thread_name_prefix='network')
+                        if args.network == 'auto' and not args.self_test else None)
+    network_future = None
+    next_network_poll = 0.0
+    network = Network.UNKNOWN if args.network == 'auto' else Network(args.network)
     last_lux = None
     last_lux_at = None
     last_sensor_error = None
@@ -245,6 +262,16 @@ def main(argv=None):
                     state = LedState(Led(power_pattern, 'self_test'), Led(connection_pattern, 'self_test'))
                     source = 'self_test_stage_' + str(stage + 1)
                 else:
+                    if network_executor is not None:
+                        if network_future is not None and network_future.done():
+                            try:
+                                network = network_future.result()
+                            except Exception:
+                                network = Network.UNKNOWN
+                            network_future = None
+                        if network_future is None and now >= next_network_poll:
+                            network_future = network_executor.submit(read_network)
+                            next_network_poll = now + NETWORK_POLL_SECONDS
                     if now >= next_poll:
                         try:
                             last_status = read_status(args.socket)
@@ -264,15 +291,15 @@ def main(argv=None):
                         # Make socket failure visible instead of silently masking
                         # caller-selected connection simulations.
                         state = derive_led_state({'schema_version': 1, 'player': {'mode': 'ERROR'}},
-                                                 connection=Connection(args.connection))
+                                                 network=network)
                         source = 'status_unavailable: ' + str(last_error)
                     else:
                         try:
-                            state = derive_led_state(last_status, connection=Connection(args.connection))
+                            state = derive_led_state(last_status, network=network)
                             source = 'player_status'
                         except ValueError as exc:
                             state = derive_led_state({'schema_version': 1, 'player': {'mode': 'ERROR'}},
-                                                     connection=Connection(args.connection))
+                                                     network=network)
                             source = 'status_invalid: ' + str(exc)
                 if executor is not None:
                     if sensor_future is not None and sensor_future.done():
@@ -312,6 +339,8 @@ def main(argv=None):
     finally:
         if executor is not None:
             executor.shutdown(wait=False, cancel_futures=True)
+        if network_executor is not None:
+            network_executor.shutdown(wait=False, cancel_futures=True)
     return 0
 
 

@@ -3,7 +3,7 @@
 No GPIO, network requests, control socket commands, or background processes.
 """
 import json
-from .led_model import Connection, PowerFault, derive_led_state
+from .led_model import Network, PowerFault, derive_led_state
 from .led_patterns import PatternConfig, intensity
 
 
@@ -18,11 +18,11 @@ def main():
     for fault in PowerFault:
         led = derive_led_state({'schema_version': 1, 'player': {'mode': 'STOPPED'}}, power_fault=fault).power
         print(json.dumps({'power_fault': fault.value, 'pattern': led.pattern.value, 'reason': led.reason}))
-    print('Explicit connectivity observations (future read-only adapter):')
-    for connection in Connection:
+    print('Network connection of the Pi (connection LED):')
+    for network in Network:
         leds = derive_led_state({'schema_version': 1, 'player': {'mode': 'STOPPED'}},
-                                connection=connection)
-        print(json.dumps({'observation': connection.value,
+                                network=network)
+        print(json.dumps({'network': network.value,
                           'connection_led': leds.connection.pattern.value}))
 
 

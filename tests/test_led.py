@@ -11,8 +11,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from integrations.outputs.led_model import (
-    Connection,
+    Network,
     Pattern,
+    classify_network,
     derive_led_state,
     PowerFault,
 )
@@ -48,27 +49,43 @@ class LedModelTests(unittest.TestCase):
         self.assertEqual(derive_led_state(snapshot('ERROR')).power.pattern, Pattern.BLINK)
 
     def test_off_is_explicit_not_no_disc(self):
-        result = derive_led_state(snapshot('NO_DISC'), operating=False, connection=Connection.REACHABLE)
+        result = derive_led_state(snapshot('NO_DISC'), operating=False, network=Network.CONNECTED)
         self.assertEqual(result.power.pattern, Pattern.OFF)
         self.assertEqual(result.connection.pattern, Pattern.OFF)
 
-    def test_no_implicit_reachability_from_owned_or_transport(self):
+    def test_connection_led_ignores_sonos_state(self):
+        # Sonos ownership or transport never lights the network LED (D-222).
         result = derive_led_state(snapshot('PLAYING', owned=True, transport='PLAYING', target_uid='FAKE_TEST_UID'))
         self.assertEqual(result.connection.pattern, Pattern.OFF)
-        self.assertEqual(result.connection.reason, 'reachability_unknown')
+        self.assertEqual(result.connection.reason, 'network_unknown')
 
-    def test_explicit_connection_states(self):
-        expected = {Connection.UNKNOWN: Pattern.OFF, Connection.UNSELECTED: Pattern.OFF,
-                    Connection.CONNECTING: Pattern.BREATHE, Connection.REACHABLE: Pattern.STEADY,
-                    Connection.UNREACHABLE: Pattern.SLOW_BLINK}
+    def test_network_states(self):
+        expected = {Network.UNKNOWN: Pattern.OFF, Network.CONNECTED: Pattern.STEADY,
+                    Network.CONNECTING: Pattern.BREATHE, Network.DISCONNECTED: Pattern.SLOW_BLINK,
+                    Network.HOTSPOT: Pattern.FAST_BLINK}
+        self.assertEqual(set(expected), set(Network))
         for observation, pattern in expected.items():
             with self.subTest(observation=observation):
-                self.assertEqual(derive_led_state(snapshot(), connection=observation).connection.pattern, pattern)
+                self.assertEqual(derive_led_state(snapshot(), network=observation).connection.pattern, pattern)
 
-    def test_connection_independent_of_player_mode(self):
-        for mode in ('STOPPED', 'STARTING', 'PLAYING', 'PAUSED', 'ERROR'):
+    def test_network_independent_of_player_mode(self):
+        for mode in ('NO_DISC', 'STOPPED', 'STARTING', 'PLAYING', 'PAUSED', 'ERROR'):
             with self.subTest(mode=mode):
-                self.assertEqual(derive_led_state(snapshot(mode), connection=Connection.REACHABLE).connection.pattern, Pattern.STEADY)
+                self.assertEqual(derive_led_state(snapshot(mode), network=Network.CONNECTED).connection.pattern, Pattern.STEADY)
+
+    def test_classify_network_status(self):
+        from sonos_ui.network_status import NetworkStatus, parse_device_status
+        cases = (
+            (NetworkStatus(), Network.UNKNOWN),                                   # nmcli failed
+            (parse_device_status('eth0:ethernet:connected\nwlan0:wifi:disconnected'), Network.CONNECTED),
+            (parse_device_status('eth0:ethernet:unavailable\nwlan0:wifi:connected'), Network.CONNECTED),
+            (parse_device_status('eth0:ethernet:unavailable\nwlan0:wifi:connecting'), Network.CONNECTING),
+            (parse_device_status('eth0:ethernet:disconnected\nwlan0:wifi:disconnected'), Network.DISCONNECTED),
+            (parse_device_status('lo:loopback:unmanaged'), Network.UNKNOWN),       # no LAN/WLAN device
+        )
+        for status, expected in cases:
+            with self.subTest(status=status):
+                self.assertEqual(classify_network(status), expected)
 
     def test_unknown_mode_fails_closed(self):
         with self.assertRaises(ValueError):
@@ -80,9 +97,9 @@ class LedModelTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             derive_led_state(bad)
 
-    def test_invalid_connection_observation_rejected(self):
+    def test_invalid_network_observation_rejected(self):
         with self.assertRaises(ValueError):
-            derive_led_state(snapshot(), connection='reachable')
+            derive_led_state(snapshot(), network='connected')
 
     def test_input_is_not_mutated(self):
         original = snapshot('PLAYING')
@@ -113,15 +130,12 @@ class LedPatternTests(unittest.TestCase):
         self.assertEqual(derive_led_state(status('ERROR')).power.reason, 'player_error_unclassified')
     def test_critical_priority(self):
         self.assertEqual(derive_led_state(status('ERROR'), power_fault=PowerFault.CRITICAL, shutting_down=True).power.pattern, Pattern.TRIPLE_FLASH)
-    def test_connection_faults(self):
-        self.assertEqual(derive_led_state(status(), connection=Connection.UNSAFE_TOPOLOGY).connection.pattern, Pattern.DOUBLE_FLASH)
-        self.assertEqual(derive_led_state(status(), connection=Connection.OWNERSHIP_LOST).connection.pattern, Pattern.TRIPLE_FLASH)
-        self.assertEqual(derive_led_state(status(), connection=Connection.UNREACHABLE).connection.pattern, Pattern.SLOW_BLINK)
     def test_both_independent(self):
-        state=derive_led_state(status('PLAYING'), connection=Connection.OWNERSHIP_LOST)
+        state=derive_led_state(status('PLAYING'), network=Network.DISCONNECTED)
         self.assertEqual(state.power.pattern,Pattern.STEADY)
+        self.assertEqual(state.connection.pattern,Pattern.SLOW_BLINK)
     def test_off_overrides_errors(self):
-        state=derive_led_state(status('ERROR'), operating=False, power_fault=PowerFault.CRITICAL, connection=Connection.OWNERSHIP_LOST)
+        state=derive_led_state(status('ERROR'), operating=False, power_fault=PowerFault.CRITICAL, network=Network.DISCONNECTED)
         self.assertEqual((state.power.pattern,state.connection.pattern),(Pattern.OFF,Pattern.OFF))
     def test_flash_samples(self):
         cfg=PatternConfig(brightness=.7)
@@ -147,17 +161,23 @@ class LedPatternTests(unittest.TestCase):
             with self.assertRaises(ValueError): intensity(Pattern.STEADY,bad)
     def test_hold_and_expiry(self):
         hold=ErrorHold(PatternConfig(error_hold_ms=3000))
-        bad=derive_led_state(status(),connection=Connection.UNREACHABLE)
-        good=derive_led_state(status(),connection=Connection.REACHABLE)
+        bad=derive_led_state(status('ERROR'))
+        good=derive_led_state(status())
         hold.update(bad,0)
-        self.assertEqual(hold.update(good,2999).connection.pattern,Pattern.SLOW_BLINK)
-        self.assertEqual(hold.update(good,3000).connection.pattern,Pattern.STEADY)
+        self.assertEqual(hold.update(good,2999).power.pattern,Pattern.BLINK)
+        self.assertEqual(hold.update(good,3000).power.pattern,Pattern.STEADY)
     def test_priority_preempts(self):
         hold=ErrorHold()
-        hold.update(derive_led_state(status(),connection=Connection.UNREACHABLE),0)
-        high=derive_led_state(status(),connection=Connection.OWNERSHIP_LOST)
-        self.assertEqual(hold.update(high,100).connection.pattern,Pattern.TRIPLE_FLASH)
-        self.assertEqual(hold.update(derive_led_state(status(),connection=Connection.REACHABLE),3010).connection.pattern,Pattern.TRIPLE_FLASH)
+        hold.update(derive_led_state(status('ERROR')),0)
+        high=derive_led_state(status(),power_fault=PowerFault.CRITICAL)
+        self.assertEqual(hold.update(high,100).power.pattern,Pattern.TRIPLE_FLASH)
+        self.assertEqual(hold.update(derive_led_state(status()),3010).power.pattern,Pattern.TRIPLE_FLASH)
+
+    def test_network_led_is_not_held(self):
+        hold=ErrorHold()
+        hold.update(derive_led_state(status(),network=Network.DISCONNECTED),0)
+        self.assertEqual(hold.update(derive_led_state(status(),network=Network.CONNECTED),10).connection.pattern,
+                         Pattern.STEADY)
     def test_shutdown_clears_hold(self):
         hold=ErrorHold()
         hold.update(derive_led_state(status('ERROR')),0)
@@ -231,7 +251,7 @@ class LedPwmConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError): p.write(-1,0)
     def test_breathe_over_time(self):
         render=LedRenderer(OutputConfig())
-        state=derive_led_state({'schema_version':1,'player':{'mode':'STARTING'}},connection=Connection.CONNECTING)
+        state=derive_led_state({'schema_version':1,'player':{'mode':'STARTING'}},network=Network.CONNECTING)
         a=render.tick(state,1000); b=render.tick(state,1500)
         self.assertGreater(b[0],a[0])
         self.assertGreater(b[1],a[1])
@@ -277,16 +297,42 @@ class TestDiagnostics(unittest.TestCase):
         self.assertEqual(lines[0]['power_pattern'], 'steady')
         self.assertEqual(lines[0]['connection_pattern'], 'off')
 
-    def test_connection_override_remains_visible_when_socket_missing(self):
+    def test_network_led_stays_visible_when_player_socket_missing(self):
         out=io.StringIO()
         with patch.object(led_pwm, 'load_config', return_value=led_pwm.OutputConfig(tick_ms=10)), \
              patch.object(led_pwm, 'read_status', side_effect=FileNotFoundError('missing socket')), \
              contextlib.redirect_stdout(out):
-            self.assertEqual(led_pwm.main(['--connection','ownership_lost','--seconds','0.05']), 0)
+            self.assertEqual(led_pwm.main(['--network','disconnected','--seconds','0.05']), 0)
         first=json.loads(out.getvalue().splitlines()[0])
         self.assertIn('status_unavailable',first['source'])
         self.assertEqual(first['power_pattern'],'blink')
-        self.assertEqual(first['connection_pattern'],'triple_flash')
+        self.assertEqual(first['connection_pattern'],'slow_blink')
+
+    def test_service_reads_the_network_state_in_the_background(self):
+        out=io.StringIO()
+        calls=[]
+        def network():
+            calls.append(1)
+            return led_pwm.Network.CONNECTED
+        with patch.object(led_pwm, 'load_config', return_value=led_pwm.OutputConfig(tick_ms=10)), \
+             patch.object(led_pwm, 'read_status', return_value={'schema_version':1,'player':{'mode':'STOPPED'}}), \
+             patch.object(led_pwm, 'read_network', side_effect=network), \
+             contextlib.redirect_stdout(out):
+            self.assertEqual(led_pwm.main(['--seconds','0.3']), 0)
+        patterns=[json.loads(line)['connection_pattern'] for line in out.getvalue().splitlines()]
+        self.assertEqual(patterns[0],'off')            # unknown until the first reading
+        self.assertEqual(patterns[-1],'steady')
+        self.assertEqual(len(calls),1)                 # every NETWORK_POLL_SECONDS, not every tick
+
+    def test_failing_network_reader_shows_unknown(self):
+        out=io.StringIO()
+        with patch.object(led_pwm, 'load_config', return_value=led_pwm.OutputConfig(tick_ms=10)), \
+             patch.object(led_pwm, 'read_status', return_value={'schema_version':1,'player':{'mode':'STOPPED'}}), \
+             patch.object(led_pwm, 'read_network', side_effect=OSError('no nmcli')), \
+             contextlib.redirect_stdout(out):
+            self.assertEqual(led_pwm.main(['--seconds','0.2']), 0)
+        patterns={json.loads(line)['connection_pattern'] for line in out.getvalue().splitlines()}
+        self.assertEqual(patterns,{'off'})
 
     def test_renderer_steady_distinct_from_double_flash(self):
         cfg=led_pwm.OutputConfig()

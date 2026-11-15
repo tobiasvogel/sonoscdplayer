@@ -202,6 +202,7 @@ Additional documentation is available in the [`docs/`](docs/) directory.
 | [Display languages and translations](docs/I18N.md) | Language selection and adding translations |
 | [Power button](docs/POWER_BUTTON.md) | Power controls, permissions, and activation |
 | [Shutdown and restart screens](docs/SHUTDOWN_SCREENS.md) | OLED screens while shutting down or restarting, installation, optional exitrd |
+| [Status LEDs](docs/STATUS_LEDS.md) | Meaning of the power and connection (network) LEDs |
 
 Some features are optional or hardware-specific. Consult each guide for its requirements and limitations.
 
