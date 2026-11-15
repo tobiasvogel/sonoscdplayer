@@ -36,7 +36,7 @@ VOLUME_OVERLAY_SECONDS = 2.0
 
 
 class InteractiveMenu:
-    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None, network_reader=read_network_status, current_target=None):
+    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None, network_reader=read_network_status, current_target=None, on_language_change=None):
         self.state = MultiSelection()
         self.language = Translator(language).language
         self.languages = available_languages()
@@ -72,6 +72,8 @@ class InteractiveMenu:
         self._scan_requested = False
         # Player's remembered selection (e.g. after a restart) -> checkmarks.
         self._current_target = current_target
+        # Called with the new language code after a confirmed menu choice.
+        self._on_language_change = on_language_change
         self._current_loaded = current_target is None
         self._current_worker = None
         self._current_result = None
@@ -510,9 +512,15 @@ class InteractiveMenu:
             elif (name,event) == ('encoder','left'):
                 self.language_focus = max(0,self.language_focus-1)
             elif (name,event) == ('encoder_sw','pressed'):
+                changed_language = self.languages[self.language_focus] != self.language
                 self.language = self.languages[self.language_focus]
                 self.renderer = MultiRenderer(language=self.language)
                 self.language_picker = False
+                if changed_language and self._on_language_change is not None:
+                    try:
+                        self._on_language_change(self.language)
+                    except Exception:
+                        pass  # persistence is best effort; the menu keeps working
                 self.state = replace(self.state, notice='')
                 # Rebuild localized fallback names after a user language switch.
                 self._start_discovery(now)

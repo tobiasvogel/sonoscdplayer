@@ -84,7 +84,7 @@ class ExitrdOfflineTests(unittest.TestCase):
         language = configured_language()
         header = (Path(self.temp.name) / 'shutdown_frames.h').read_text()
         match = re.search(
-            r'static const uint8_t shutdown_frame_final\[8192\] = \{(.*?)\};',
+            r'static const uint8_t shutdown_frame_final_' + language + r'\[8192\] = \{(.*?)\};',
             header, flags=re.S)
         self.assertIsNotNone(match)
         packed = bytes(int(value, 16) for value in
@@ -358,7 +358,7 @@ class ExitrdUnverifiedSafeBuildTests(unittest.TestCase):
             binary = Path(directory) / 'shutdown'
             self.assertEqual(subprocess.run([str(binary), 'poweroff'],
                             capture_output=True, timeout=5).returncode, 2)
-            self.assertIn('shutdown_frame_safe[8192]',
+            self.assertIn('shutdown_frame_safe_de[8192]',
                           (Path(directory) / 'shutdown_frames.h').read_text())
 
     def test_normal_build_stays_unverified_safe_disabled(self):

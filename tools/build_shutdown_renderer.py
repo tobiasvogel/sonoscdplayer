@@ -9,6 +9,7 @@ programs. Layout and font live in src/system_screen.py (shared with the OLED
 start screen); the C programs need neither Python nor the font.
 """
 import argparse
+import re
 from pathlib import Path
 import sys
 from PIL import Image, ImageOps, ImageDraw, ImageFont
@@ -77,32 +78,69 @@ def diagnostic_frame() -> bytes:
                  for i in range(0, len(pixels), 2))
 
 
+def c_identifier(language: str) -> str:
+    return re.sub(r'[^A-Za-z0-9]', '_', language)
+
+
 def generate(wait: Path, final: Path, reboot: Path, transition: Path, output: Path, backend: str, safe: Path | None = None, diagnostic: bool = False, language: str | None = None) -> None:
+    """Write frames for every installed locale file plus a language table.
+
+    The C programs pick the set at runtime from the UI state file and fall
+    back to the default language (ui.toml, or --language). A new language is
+    picked up just by adding its locale file; nothing else lists languages.
+    """
     if backend != 'ssd1327':
         raise ValueError('unsupported backend: ' + backend)
-    if language is None:
-        language = configured_language()
+    from sonos_ui.i18n import available_languages
+    languages = available_languages()
+    default = language if language is not None else configured_language()
+    if default not in languages:
+        raise ValueError('default language has no locale file: ' + default)
     sources = {'wait': wait, 'final': final, 'reboot': reboot, 'transition': transition}
     if safe is not None:
         sources['safe'] = safe
-    frames = {name: compose_frame(path, frame_text(name, language))
-              for name, path in sources.items()}
-    if diagnostic:
-        frames['diagnostic'] = diagnostic_frame()
+    identifiers = {}
+    for lang in languages:
+        ident = c_identifier(lang)
+        if ident in identifiers.values():
+            raise ValueError('locale names collide in C: ' + lang)
+        identifiers[lang] = ident
     output.parent.mkdir(parents=True, exist_ok=True)
-    lines = ['/* Generated at build time; do not edit. GPL-2.0-only. */',
+    lines = ['/* Generated at build time from the screen artwork and locale files; do not edit. GPL-2.0-only. */',
              '#ifndef SONOSCDPLAYER_SHUTDOWN_FRAMES_H',
              '#define SONOSCDPLAYER_SHUTDOWN_FRAMES_H',
+             '#include <stddef.h>',
              '#include <stdint.h>',
              '#define SHUTDOWN_FRAME_WIDTH 128u',
              '#define SHUTDOWN_FRAME_HEIGHT 128u',
-             '#define SHUTDOWN_FRAME_FORMAT "gray4-packed"']
-    for name, data in frames.items():
-        lines.append(f'static const uint8_t shutdown_frame_{name}[{len(data)}] = {{')
+             '#define SHUTDOWN_FRAME_BYTES 8192u',
+             '#define SHUTDOWN_FRAME_FORMAT "gray4-packed"',
+             f'#define SHUTDOWN_DEFAULT_LANGUAGE "{default}"']
+
+    def emit(name, data):
+        lines.append(f'static const uint8_t {name}[{len(data)}] = {{')
         for offset in range(0, len(data), 16):
             lines.append('    ' + ', '.join(f'0x{b:02x}' for b in data[offset:offset + 16]) + ',')
         lines.append('};')
-    lines.append('#endif')
+
+    for lang in languages:
+        for name, path in sources.items():
+            emit(f'shutdown_frame_{name}_{identifiers[lang]}', compose_frame(path, frame_text(name, lang)))
+    if diagnostic:
+        emit('shutdown_frame_diagnostic', diagnostic_frame())
+    lines += ['struct shutdown_frame_set {',
+              '    const char *language;',
+              '    const uint8_t *wait, *final, *reboot, *transition, *safe;',
+              '};',
+              'static const struct shutdown_frame_set shutdown_frame_sets[] = {']
+    for lang in languages:
+        ident = identifiers[lang]
+        safe_ref = f'shutdown_frame_safe_{ident}' if safe is not None else 'NULL'
+        lines.append(f'    {{"{lang}", shutdown_frame_wait_{ident}, shutdown_frame_final_{ident}, '
+                     f'shutdown_frame_reboot_{ident}, shutdown_frame_transition_{ident}, {safe_ref}}},')
+    lines += ['};',
+              f'#define SHUTDOWN_FRAME_SET_COUNT {len(languages)}u',
+              '#endif']
     output.write_text('\n'.join(lines) + '\n', encoding='ascii')
 
 
@@ -117,7 +155,8 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--diagnostic', action='store_true', help='embed TEST frame in opt-in exitrd build')
     parser.add_argument('--language', default=None,
-                        help='UI language for the frame text (default: [ui] language from ui.toml)')
+                        help='fallback language when no language was chosen in the menu '
+                             '(default: [ui] language from ui.toml)')
     args = parser.parse_args()
     generate(args.wait, args.final, args.reboot, args.transition, args.output, args.backend, args.safe, args.diagnostic, args.language)
 

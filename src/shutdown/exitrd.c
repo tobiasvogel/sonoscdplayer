@@ -14,6 +14,10 @@
 #include <unistd.h>
 #include "display_backend.h"
 #include "shutdown_frames.h"
+#include "frame_language.h"
+
+/* Chosen before the old root is released (see main); default until then. */
+static const struct shutdown_frame_set *frames = &shutdown_frame_sets[0];
 
 #ifndef SONOSCD_EXITRD_SAFE_APPROVED
 #define SONOSCD_EXITRD_SAFE_APPROVED 0
@@ -316,8 +320,8 @@ static void show_post_unmount(void) {
     const size_t length = sizeof(shutdown_frame_diagnostic);
 #else
     /* Storage durability and OLED persistence are not hardware-verified. */
-    const uint8_t *frame = shutdown_frame_final;
-    const size_t length = sizeof(shutdown_frame_final);
+    const uint8_t *frame = frames->final;
+    const size_t length = SHUTDOWN_FRAME_BYTES;
 #endif
     if (!backend_matches(length) || shutdown_display_backend.show(frame, length) != 0)
         fputs("exitrd: final OLED frame unavailable\n", stderr);
@@ -349,9 +353,9 @@ static bool experimental_frame_allowed(const struct shutdown_evidence *e,
 
 static void show_experimental_frame(void) {
 #if SONOSCD_EXITRD_UNVERIFIED_SAFE
-    const uint8_t *frame = shutdown_frame_safe;
-    const size_t length = sizeof(shutdown_frame_safe);
-    if (!backend_matches(length) || shutdown_display_backend.show(frame, length) != 0)
+    const uint8_t *frame = frames->safe;
+    const size_t length = SHUTDOWN_FRAME_BYTES;
+    if (frame == NULL || !backend_matches(length) || shutdown_display_backend.show(frame, length) != 0)
         fputs("exitrd: experimental safe frame unavailable\n", stderr);
 #endif
 }
@@ -368,8 +372,9 @@ static int system_action(const char *verb, bool *poweroff) {
 
 int main(int argc, char **argv) {
     if (argc == 2 && strcmp(argv[1], "--check") == 0) {
-        printf("exitrd: offline check; backend=%s format=%s safe-approved=%d diagnostic=%d unverified-safe=%d delay-seconds=%d\n",
-               shutdown_display_backend.name, shutdown_display_backend.pixel_format,
+        frames = shutdown_frames_select(shutdown_state_dir());
+        printf("exitrd: offline check; language=%s backend=%s format=%s safe-approved=%d diagnostic=%d unverified-safe=%d delay-seconds=%d\n",
+               frames->language, shutdown_display_backend.name, shutdown_display_backend.pixel_format,
                SONOSCD_EXITRD_SAFE_APPROVED, SONOSCD_EXITRD_DIAGNOSTIC,
                SONOSCD_EXITRD_UNVERIFIED_SAFE,
                SONOSCD_EXITRD_UNVERIFIED_SAFE ? SONOSCD_EXITRD_EXPERIMENT_DELAY_SECONDS : 0);
@@ -406,6 +411,9 @@ int main(int argc, char **argv) {
         mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL) < 0 &&
         errno != EBUSY)
         perror("exitrd: proc mount");
+    /* Read the menu language from the old root while it is still mounted
+     * (read-only, closed again before the unmount). */
+    frames = shutdown_frames_select("/oldroot" SHUTDOWN_STATE_DIR);
     struct shutdown_evidence evidence = evidence_start();
     sync();
     if (release_oldroot() == 0) {

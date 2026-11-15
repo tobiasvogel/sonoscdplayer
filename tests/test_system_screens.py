@@ -62,7 +62,8 @@ class SystemScreenTests(unittest.TestCase):
             Path(directory, 'ui.toml').write_text('[ui]\nlanguage = "en"\n', encoding='utf-8')
             out = Path(directory) / 'splash.bin'
             example = ROOT / 'config/player.example.toml'
-            env = dict(os.environ, SONOSCDPLAYER_CONFIG_DIR=directory)
+            env = dict(os.environ, SONOSCDPLAYER_CONFIG_DIR=directory,
+                       STATE_DIRECTORY=str(Path(directory) / 'state'))  # no menu choice
             result = subprocess.run(
                 [sys.executable, str(ROOT / 'tools/build_ssd1327_splash.py'), '--output', str(out),
                  '--display-config', str(example)],
@@ -162,6 +163,114 @@ class LocalizedShutdownFrameTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             builder.layout_text('Donaudampfschifffahrtsgesellschaftskapitän')
 
+
+
+class MenuLanguageTests(unittest.TestCase):
+    """UI-LANG-01: the menu language is remembered and drives the shutdown frames."""
+
+    def test_ui_state_round_trip_and_fallbacks(self):
+        from ui_state import UiState
+        with tempfile.TemporaryDirectory() as directory:
+            logs = []
+            state = UiState(Path(directory) / 'state', log=logs.append)
+            self.assertIsNone(state.language(('de', 'en')))
+            self.assertTrue(state.save_language('en'))
+            self.assertEqual(state.language(('de', 'en')), 'en')
+            self.assertEqual(state.path.stat().st_mode & 0o777, 0o600)
+            self.assertIsNone(state.language(('de',)))  # locale file removed meanwhile
+            state.path.write_text('{"version": 2, "language": "en"}')
+            self.assertIsNone(state.language(('de', 'en')))
+            state.path.write_text('{')
+            self.assertIsNone(state.language(('de', 'en')))
+
+    def test_state_file_stays_readable_for_the_c_programs(self):
+        import json
+        from ui_state import UiState
+        with tempfile.TemporaryDirectory() as directory:
+            state = UiState(directory, log=lambda message: None)
+            state.save_language('en')
+            text = state.path.read_text()
+            self.assertEqual(json.loads(text), {'language': 'en', 'version': 1})
+            self.assertLess(len(text), 512)  # C reads at most 511 bytes
+
+    def test_menu_reports_a_confirmed_language_change_only(self):
+        from sonos_ui.interactive_menu import InteractiveMenu
+        from sonos_ui.multi_target import Topology
+        saved = []
+        menu = InteractiveMenu(discover=lambda **kw: Topology(()), language='de',
+                               on_language_change=saved.append)
+        menu.active = True
+        menu.section = "settings"
+        menu.language_picker = True
+        menu.language_focus = menu.languages.index('de')
+        menu.event('encoder_sw', 'pressed', now=0.0)
+        self.assertEqual(saved, [])  # unchanged language: nothing to store
+        menu.active = True
+        menu.section = "settings"
+        menu.language_picker = True
+        menu.language_focus = menu.languages.index('en')
+        menu.event('encoder_sw', 'pressed', now=0.0)
+        self.assertEqual(saved, ['en'])
+        self.assertEqual(menu.language, 'en')
+
+    def test_failing_persistence_does_not_break_the_menu(self):
+        from sonos_ui.interactive_menu import InteractiveMenu
+        from sonos_ui.multi_target import Topology
+        def broken(language):
+            raise OSError('read-only')
+        menu = InteractiveMenu(discover=lambda **kw: Topology(()), language='de',
+                               on_language_change=broken)
+        menu.active = True
+        menu.section = "settings"
+        menu.language_picker = True
+        menu.language_focus = menu.languages.index('en')
+        self.assertTrue(menu.event('encoder_sw', 'pressed', now=0.0))
+        self.assertEqual(menu.language, 'en')
+
+    def test_new_locale_file_is_built_into_the_shutdown_frames(self):
+        """Adding a locale file is enough; no language list to maintain (D-221)."""
+        from unittest import mock
+        import build_shutdown_renderer as builder
+        import sonos_ui.i18n as i18n
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory) / 'shutdown_frames.h'
+            data = ROOT / 'src/data'
+            with mock.patch.object(i18n, 'available_languages', return_value=('de', 'en', 'fr')):
+                builder.generate(data / 'shutdown_screen.png', data / 'pleasewait_screen.png',
+                                 data / 'reboot_screen.png', data / 'shutdown_screen.png',
+                                 out, 'ssd1327', language='de')
+            header = out.read_text()
+        self.assertIn('shutdown_frame_reboot_fr[8192]', header)
+        self.assertIn('{"fr", shutdown_frame_wait_fr,', header)
+        self.assertIn('SHUTDOWN_FRAME_SET_COUNT 3u', header)
+
+    def test_firmware_splash_prefers_the_menu_language(self):
+        import subprocess
+        from build_ssd1327_splash import build, to_frame
+        from integrations.outputs.display_pins import load_display_pins
+        from ui_state import UiState
+        example = ROOT / 'config/player.example.toml'
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, 'ui.toml').write_text('[ui]\nlanguage = "de"\n', encoding='utf-8')
+            UiState(Path(directory) / 'state', log=lambda m: None).save_language('en')
+            out = Path(directory) / 'splash.bin'
+            env = dict(os.environ, SONOSCDPLAYER_CONFIG_DIR=directory,
+                       STATE_DIRECTORY=str(Path(directory) / 'state'))
+            result = subprocess.run(
+                [sys.executable, str(ROOT / 'tools/build_ssd1327_splash.py'), '--output', str(out),
+                 '--display-config', str(example)],
+                env=env, capture_output=True, text=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(out.read_text(encoding='utf-8'),
+                             build(to_frame(system_screen.screen_image('start', 'en')),
+                                   pins=load_display_pins(example)))
+
+    def test_oled_and_player_share_the_state_directory(self):
+        for unit in ('sonoscdplayer-oled.service', 'sonoscdplayer-player.service'):
+            with self.subTest(unit=unit):
+                text = (ROOT / 'systemd' / unit).read_text()
+                self.assertIn('StateDirectory=sonoscdplayer', text)
+                self.assertIn('StateDirectoryMode=0700', text)
 
 if __name__ == '__main__':
     unittest.main()

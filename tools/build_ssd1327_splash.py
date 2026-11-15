@@ -48,8 +48,8 @@ def build(frame,*,hz=2_000_000,contrast=128,chunk=128,pins=None):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('png',type=Path,nargs='?',default=None,
-                   help='custom PNG used as-is (default: localized standard start screen, '
-                        'language from ui.toml)')
+                   help='custom PNG used as-is (default: localized standard start screen in '
+                        'the language chosen in the menu, else from ui.toml)')
     p.add_argument('-o','--output',type=Path,default=Path('ssd1327.splash'))
     p.add_argument('--spi-hz',type=int,default=2_000_000)
     p.add_argument('--contrast',type=int,default=128)
@@ -60,8 +60,13 @@ def main():
     if a.png is None:
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
         from system_screen import screen_image
+        from sonos_ui.i18n import available_languages
         from sonos_ui.ui_config import load_ui_config
-        framebuffer=to_frame(screen_image('start', load_ui_config().language))
+        from ui_state import UiState
+        # The firmware cannot read the menu language at boot: build it in.
+        language = (UiState(log=lambda message: None).language(available_languages())
+                    or load_ui_config().language)
+        framebuffer=to_frame(screen_image('start', language))
     else:
         with Image.open(a.png) as im:
             im.load()

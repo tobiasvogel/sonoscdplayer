@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include "display_backend.h"
 #include "shutdown_frames.h"
+#include "frame_language.h"
 
 static const char *phase_for_action(const char *verb) {
     if (strcmp(verb, "reboot") == 0)
@@ -29,18 +30,19 @@ int main(int argc, char **argv) {
     int exitrd_present = access("/run/initramfs/shutdown", X_OK) == 0;
     const char *phase = phase_for_action(argv[1]);
     if (argc == 3) {
-        printf("action=%s phase=%s exitrd_present=%d backend=%s safe-approved=0\n",
+        printf("action=%s phase=%s language=%s exitrd_present=%d backend=%s safe-approved=0\n",
                argv[1], phase ? phase : "none",
+               shutdown_frames_select(shutdown_state_dir())->language,
                exitrd_present, shutdown_display_backend.name);
         return 0;
     }
     if (!phase)
         return 0;
-    const uint8_t *frame = strcmp(phase, "reboot") == 0
-        ? shutdown_frame_reboot : shutdown_frame_final;
-    size_t size = sizeof(shutdown_frame_final);
-    if (sizeof(shutdown_frame_reboot) != size ||
-        shutdown_display_backend.width != SHUTDOWN_FRAME_WIDTH ||
+    /* The root filesystem is still mounted (read-only) at this point. */
+    const struct shutdown_frame_set *set = shutdown_frames_select(shutdown_state_dir());
+    const uint8_t *frame = strcmp(phase, "reboot") == 0 ? set->reboot : set->final;
+    size_t size = SHUTDOWN_FRAME_BYTES;
+    if (shutdown_display_backend.width != SHUTDOWN_FRAME_WIDTH ||
         shutdown_display_backend.height != SHUTDOWN_FRAME_HEIGHT ||
         shutdown_display_backend.frame_bytes != size ||
         strcmp(shutdown_display_backend.pixel_format, SHUTDOWN_FRAME_FORMAT) != 0)

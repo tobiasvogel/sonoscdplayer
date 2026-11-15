@@ -54,13 +54,33 @@ If a required file is missing, the service stops with an error naming the expect
 
 ## Remembered state
 
-The configuration files are only read, never written by the services. What is chosen during operation is remembered separately in `/var/lib/sonoscdplayer/` (created by systemd through `StateDirectory=` in the player unit):
+The configuration files are only read, never written by the services. What is chosen during operation is remembered separately in `/var/lib/sonoscdplayer/` (created by systemd through `StateDirectory=` in the player and OLED units):
 
 | File | Content |
 | --- | --- |
-| `target.json` | The last confirmed speaker selection (coordinator and group members) |
+| `target.json` | The last confirmed speaker selection (coordinator and group members), written by the player |
+| `ui.json` | The display language chosen in the menu, written by the OLED service; it takes precedence over `ui.toml` and is also read by the shutdown screens |
 
 After a restart the player restores this selection without contacting any speaker and never starts playback on its own. The display menu asks the player for it and shows the remembered speakers as checked. PLAY checks the speakers as usual; if one is not available, an error is shown and the selection is kept. Choosing other speakers replaces the file; deleting it forgets the selection. Outside systemd the directory can be set with `player_service.py --state-dir`.
+
+## Boot setup
+
+Before Linux starts, the Raspberry Pi firmware sets three pins and can draw the start screen on the OLED. Both are configured in `/boot/firmware/config.txt` by
+
+```sh
+sh tools/install_screens.sh            # --dry-run shows the planned changes, including a diff of config.txt
+```
+
+| config.txt line | From `player.toml` | Purpose |
+| --- | --- | --- |
+| `gpio=<power_pin>=op,dh` | `[led_outputs] power_pin` | Power LED on from the start |
+| `gpio=<connection_pin>=op,dl` | `[led_outputs] connection_pin` | Connection LED off |
+| `gpio=<rst_pin>=op,dh` | `[display] rst_pin` | OLED RESET released, so the boot splash can draw |
+| `splash_screen=ssd1327.bin` | – | Firmware boot splash (start screen) |
+
+The lines are kept in one marked block at the end of `config.txt` (under `[all]`), and a backup is written to `config.txt.sonoscdplayer.bak`. Identical lines set by hand elsewhere are moved into the block. If one of these pins or `splash_screen` is set differently, the script stops without changing anything. After changing the pins in `player.toml`, run the script again; changes take effect at the next start.
+
+The boot splash is built from `src/data/start_screen.png` with the localized text and assembled with `splash_assembler.py` from the Raspberry Pi [utils](https://github.com/raspberrypi/utils) (`splashasm` folder). The script looks for it in `~/src/utils/splashasm/` and `~/utils/splashasm/`; set `SPLASH_ASSEMBLER=/path/to/splash_assembler.py` otherwise. The firmware splash requires the beta bootloader (`raspi-config nonint do_beta_mode B1`, done by `scripts/setup.sh`).
 
 ## systemd units
 

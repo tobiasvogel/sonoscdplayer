@@ -330,6 +330,10 @@ def wait_for_player_ready(status_request, socket_path, *, max_wait_seconds=30.0,
 def main(argv=None):
     p=argparse.ArgumentParser(description='M0.14b read-only SSD1327 OLED status')
     p.add_argument('--gpio',action='store_true')
+    from state_files import default_state_dir
+    p.add_argument('--state-dir',type=Path,default=default_state_dir(),
+                   help='where the language chosen in the menu is remembered '
+                        '(default: $STATE_DIRECTORY or /var/lib/sonoscdplayer)')
     p.add_argument('--ui-config',type=Path,default=None,
                    help='read-only UI TOML (default: ui.toml in the standard config directory; '
                         'built-in defaults if absent)')
@@ -376,7 +380,11 @@ def main(argv=None):
     except (ValueError, OSError) as exc:
         p.error('invalid UI configuration: '+str(exc))
     cover_mode = args.cover if args.cover is not None else ui_config.cover_mode
-    language = ui_config.language
+    from sonos_ui.i18n import available_languages
+    from ui_state import UiState
+    ui_state = UiState(args.state_dir)
+    # A language chosen in the menu (state file) wins over ui.toml (D-216).
+    language = ui_state.language(available_languages()) or ui_config.language
     if args.gpio != args.execute: p.error('--gpio and --execute must be given together')
     try:
         import config_paths
@@ -467,7 +475,8 @@ def main(argv=None):
             power_action = PowerRequester().request
         menu = InteractiveMenu(language=language, target_rpc=sender,
                                group_target_rpc=group_sender, power_action=power_action,
-                               current_target=current_target)
+                               current_target=current_target,
+                               on_language_change=ui_state.save_language)
         receiver_context = EventReceiver(args.ui_events_socket)
     def stop_on_sigterm(_signum, _frame):
         # systemd's normal SIGTERM must run finally and release SPI/GPIO.
