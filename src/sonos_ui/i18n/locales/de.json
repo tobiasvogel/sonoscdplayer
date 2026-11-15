@@ -97,11 +97,11 @@
   "status.scan_done_one": "1 Lautsprecher gefunden",
   "status.scan_none": "Keine Lautsprecher gefunden",
   "status.volume_no_target": "Kein Wiedergabeziel ausgewählt",
-  "status.drive_waking": "CD-Laufwerk wird gestartet\\nBitte warten …",
-  "status.drive_wake_fault": "Laufwerksstart fehlgeschlagen\\nEJECT funktioniert\\nUSB-Stromversorgung prüfen",
-  "status.drive_wake_retry": "Laufwerksstart fehlgeschlagen\\nErneut in {seconds} s\\nEJECT funktioniert",
-  "status.drive_wake_retry_ready": "Laufwerksstart fehlgeschlagen\\nTaste: erneut versuchen\\nEJECT funktioniert",
-  "status.drive_wake_exhausted": "Laufwerksstart fehlgeschlagen\\nVersuche aufgebraucht\\nDienst neu starten",
-  "status.player_offline": "Player nicht erreichbar\\nBitte warten …",
+  "status.drive_waking": "CD-Laufwerk wird gestartet\nBitte warten …",
+  "status.drive_wake_fault": "Laufwerksstart fehlgeschlagen\nEJECT funktioniert\nUSB-Stromversorgung prüfen",
+  "status.drive_wake_retry": "Laufwerksstart fehlgeschlagen\nErneut in {seconds} s\nEJECT funktioniert",
+  "status.drive_wake_retry_ready": "Laufwerksstart fehlgeschlagen\nTaste: erneut versuchen\nEJECT funktioniert",
+  "status.drive_wake_exhausted": "Laufwerksstart fehlgeschlagen\nVersuche aufgebraucht\nDienst neu starten",
+  "status.player_offline": "Player nicht erreichbar\nBitte warten …",
   "status.invalid_player_status": "Ungültiger Player-Status"
 }
