@@ -321,6 +321,33 @@ class OledNoticeTests(unittest.TestCase):
 
 class OledNoticePriorityTests(unittest.TestCase):
 
+    def test_power_menu_precedes_latched_fault_and_wake(self):
+        from unittest.mock import Mock
+        from integrations.outputs.oled_status import selected_status_frame
+        sentinel = object()
+        menu = Mock()
+        menu.power_menu = True
+        menu.active = True
+        menu.frame.return_value = sentinel
+        state = {'drive_power': {'idle_waking': True,
+                                 'idle_wake_fault_latched': True}}
+        self.assertIs(selected_status_frame(state, menu=menu, ui_modern=True),
+                      sentinel)
+        menu.frame.assert_called_once()
+
+    def test_wake_notice_disappears_when_player_state_recovers(self):
+        from integrations.outputs.oled_status import selected_status_frame
+        waking = {'player': {'mode': 'STOPPED'},
+                  'drive_power': {'idle_waking': True}}
+        ready = {'schema_version': 1,
+                 'player': {'mode': 'STOPPED', 'track': None, 'track_count': 0},
+                 'drive_power': {'idle_waking': False}}
+        wake_frame = selected_status_frame(waking, ui_modern=True)
+        ready_frame = selected_status_frame(ready, ui_modern=True)
+        self.assertNotEqual(bytes(wake_frame.data), bytes(ready_frame.data))
+        self.assertEqual(len(ready_frame.data), 8192)
+
+
     def test_fault_precedes_waking_and_active_menu(self):
         from unittest.mock import Mock
         from integrations.outputs.oled_status import selected_status_frame
