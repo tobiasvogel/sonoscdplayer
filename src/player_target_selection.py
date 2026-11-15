@@ -40,8 +40,16 @@ class SelectedTarget:
         return True
 
     def summary(self):
-        # Do not disclose a private Sonos UID through status/read-only RPC.
+        # Status and set/clear replies carry no Sonos UID.
         return {'selected': self._uid is not None, 'ready_for_playback': False}
+
+    def speakers(self):
+        """All selected UIDs (coordinator first) for get-target only.
+
+        The control socket is local and private to the service account; the
+        OLED menu needs them to show the remembered selection as checkmarks.
+        """
+        return [] if self._uid is None else [self._uid, *self._members]
 
     def uid_for_explicit_action(self):
         return self._uid

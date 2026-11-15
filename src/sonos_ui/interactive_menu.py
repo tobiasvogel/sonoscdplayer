@@ -30,12 +30,13 @@ SCAN_RESULT_SECONDS = 2.0
 # empty or failed result is retried in the background. "Find speakers" in the
 # settings menu forces a new discovery.
 EMPTY_SCAN_RETRY_SECONDS = 30.0
+CURRENT_TARGET_RETRY_SECONDS = 5.0
 # INP-02: how long an acknowledged volume level stays visible.
 VOLUME_OVERLAY_SECONDS = 2.0
 
 
 class InteractiveMenu:
-    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None, network_reader=read_network_status):
+    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None, network_reader=read_network_status, current_target=None):
         self.state = MultiSelection()
         self.language = Translator(language).language
         self.languages = available_languages()
@@ -69,6 +70,12 @@ class InteractiveMenu:
         self._power_return = None
         self._discovery_started = False
         self._scan_requested = False
+        # Player's remembered selection (e.g. after a restart) -> checkmarks.
+        self._current_target = current_target
+        self._current_loaded = current_target is None
+        self._current_worker = None
+        self._current_result = None
+        self._next_current_try = 0.0
         self._volume_level = None
         self._volume_until = 0.0
         self.connect_notices = ConnectNoticeView()
@@ -365,6 +372,7 @@ class InteractiveMenu:
                                         duration_seconds=SCAN_RESULT_SECONDS)
                     self.connect_notices.clear(now=now)
                     self._show_notice(notice, now)
+        changed = self._poll_current_target(now) or changed
         with self._lock:
             result = self._target_result
             self._target_result = None
@@ -400,6 +408,38 @@ class InteractiveMenu:
             # Nothing found yet (e.g. network not ready at boot): retry quietly.
             self._start_discovery(now)
         return changed
+
+    def _poll_current_target(self, now):
+        """Ask the player once (retry every few s) which speakers it has selected."""
+        if self._current_loaded:
+            return False
+        with self._lock:
+            result = self._current_result
+            self._current_result = None
+        if result is not None:
+            if isinstance(result, frozenset):
+                self._current_loaded = True
+                # Never overwrite a selection the user has started or confirmed here.
+                if (result and not self.state.applied and not self.state.draft
+                        and not self._target_pending):
+                    self.state = replace(self.state, applied=result, draft=result)
+                    return True
+                return False
+            self._next_current_try = now + CURRENT_TARGET_RETRY_SECONDS
+        if (self._current_worker is None or not self._current_worker.is_alive()) \
+                and now >= self._next_current_try:
+            reader = self._current_target
+            def work():
+                try:
+                    value = frozenset(reader())
+                except Exception:
+                    value = False
+                with self._lock:
+                    self._current_result = value
+            self._next_current_try = now + CURRENT_TARGET_RETRY_SECONDS
+            self._current_worker = threading.Thread(target=work, name='ui-current-target', daemon=True)
+            self._current_worker.start()
+        return False
 
     def volume_overlay_active(self, now=None):
         now = time.monotonic() if now is None else now

@@ -43,11 +43,15 @@ class TargetSelectionRPCTests(unittest.TestCase):
         self.assertEqual(self.checked,['RINCON_123'])
         self.assertEqual(self.controller.calls,[])
 
-    def test_get_target_exposes_no_uid(self):
-        self.request('set-target',uid='RINCON_123')
-        reply=self.request('get-target')
-        self.assertEqual(reply['target_selection'],{'selected':True,'ready_for_playback':False})
+    def test_only_get_target_reports_the_selected_speakers(self):
+        reply=self.request('set-target',uid='RINCON_123')
         self.assertNotIn('RINCON_123',str(reply))
+        reply=self.request('get-target')
+        self.assertEqual(reply['target_selection'],
+                         {'selected':True,'ready_for_playback':False,'speakers':['RINCON_123']})
+        self.assertNotIn('RINCON_123',str(self.request('status')))
+        self.request('clear-target')
+        self.assertEqual(self.request('get-target')['target_selection']['speakers'],[])
 
     def test_clear_target_no_audio_operation(self):
         self.request('set-target',uid='RINCON_123')
@@ -290,6 +294,98 @@ class RememberedTargetTests(unittest.TestCase):
         unit = (Path(__file__).resolve().parents[1] / 'systemd/sonoscdplayer-player.service').read_text()
         self.assertIn('StateDirectory=sonoscdplayer', unit)
         self.assertIn('StateDirectoryMode=0700', unit)
+
+
+class RememberedTargetMenuTests(unittest.TestCase):
+    """After a restart the menu shows the player's remembered speakers as checked."""
+
+    def topology(self):
+        devices = []
+        for uid, name in (('RINCON_A', 'Hobbyraum'), ('RINCON_B', 'Küche'), ('RINCON_C', 'Wohnzimmer')):
+            device = NS(uid=uid, player_name=name)
+            device.group = NS(coordinator=device, members=[device])
+            devices.append(device)
+        return from_devices(devices)
+
+    def menu(self, current):
+        return InteractiveMenu(discover=lambda **kw: self.topology(), target_rpc=lambda uid: True,
+                               group_target_rpc=lambda uid, members: True, current_target=current)
+
+    def settle(self, menu, now=0.0):
+        import time as _time
+        for step in range(200):
+            menu.poll(now=now + step * 0.01)
+            if menu._current_loaded and menu.state.topology.targets:
+                return
+            _time.sleep(0.005)
+        self.fail('menu did not settle')
+
+    def test_remembered_group_is_checked(self):
+        menu = self.menu(lambda: frozenset({'RINCON_A', 'RINCON_C'}))
+        self.settle(menu)
+        self.assertEqual(menu.state.applied, frozenset({'RINCON_A', 'RINCON_C'}))
+        self.assertEqual(menu.state.draft, frozenset({'RINCON_A', 'RINCON_C'}))
+
+    def test_player_without_selection_leaves_menu_empty(self):
+        menu = self.menu(lambda: frozenset())
+        self.settle(menu)
+        self.assertEqual(menu.state.applied, frozenset())
+
+    def test_unreachable_player_is_retried_later(self):
+        calls = []
+        def reader():
+            calls.append(1)
+            if len(calls) == 1:
+                raise ConnectionRefusedError('player not up yet')
+            return frozenset({'RINCON_B'})
+        menu = self.menu(reader)
+        import time as _time
+        for step in range(100):
+            menu.poll(now=step * 0.01)
+            _time.sleep(0.005)
+        self.assertFalse(menu._current_loaded)
+        for step in range(200):
+            menu.poll(now=10 + step * 0.01)
+            if menu._current_loaded:
+                break
+            _time.sleep(0.005)
+        self.assertEqual(menu.state.applied, frozenset({'RINCON_B'}))
+        self.assertEqual(len(calls), 2)
+
+    def test_local_choice_is_never_overwritten(self):
+        import threading
+        release = threading.Event()
+        def slow():
+            release.wait(2)
+            return frozenset({'RINCON_A'})
+        menu = self.menu(slow)
+        menu.poll(now=0.0)
+        menu.state = replace(menu.state, draft=frozenset({'RINCON_B'}))
+        release.set()
+        self.settle(menu, now=1.0)
+        self.assertEqual(menu.state.draft, frozenset({'RINCON_B'}))
+        self.assertEqual(menu.state.applied, frozenset())
+
+    def test_read_target_client_over_socket(self):
+        import json, socket, tempfile, threading
+        from pathlib import Path
+        from sonos_ui.target_rpc_client import read_target
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / 'control.sock')
+            server = socket.socket(socket.AF_UNIX)
+            server.bind(path); server.listen(1)
+            def answer():
+                conn, _ = server.accept()
+                with conn:
+                    self.assertEqual(json.loads(conn.recv(4096)), {'command': 'get-target'})
+                    conn.sendall(json.dumps({'ok': True, 'target_selection': {
+                        'selected': True, 'ready_for_playback': False,
+                        'speakers': ['RINCON_A', 'RINCON_C']}}).encode() + b'\n')
+            thread = threading.Thread(target=answer, daemon=True); thread.start()
+            try:
+                self.assertEqual(read_target(socket_path=path), frozenset({'RINCON_A', 'RINCON_C'}))
+            finally:
+                thread.join(2); server.close()
 
 if __name__ == '__main__':
     unittest.main()

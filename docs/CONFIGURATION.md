@@ -60,7 +60,7 @@ The configuration files are only read, never written by the services. What is ch
 | --- | --- |
 | `target.json` | The last confirmed speaker selection (coordinator and group members) |
 
-After a restart the player restores this selection without contacting any speaker and never starts playback on its own. PLAY checks the speakers as usual; if one is not available, an error is shown and the selection is kept. Choosing other speakers replaces the file; deleting it forgets the selection. Outside systemd the directory can be set with `player_service.py --state-dir`.
+After a restart the player restores this selection without contacting any speaker and never starts playback on its own. The display menu asks the player for it and shows the remembered speakers as checked. PLAY checks the speakers as usual; if one is not available, an error is shown and the selection is kept. Choosing other speakers replaces the file; deleting it forgets the selection. Outside systemd the directory can be set with `player_service.py --state-dir`.
 
 ## systemd units
 

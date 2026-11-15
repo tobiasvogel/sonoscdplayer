@@ -110,6 +110,8 @@ def handle_command(controller, request, selection=None, eject=None, volume=None)
                 selection.clear(controller)
             reply = response(controller, ok=True)
             reply['target_selection'] = selection.summary()
+            if command == 'get-target':
+                reply['target_selection']['speakers'] = selection.speakers()
             return reply
         if command in ('inspect-group-recovery', 'resolve-group-recovery'):
             if command == 'inspect-group-recovery':

@@ -96,7 +96,8 @@ class ServiceTests(unittest.TestCase):
                     time.sleep(0.01)
                 reply = request(path, 'get-target')
             self.assertTrue(reply['target_selection']['selected'])
-            self.assertNotIn('RINCON_A', json.dumps(reply))
+            self.assertEqual(reply['target_selection']['speakers'], ['RINCON_A'])
+            self.assertNotIn('RINCON_A', json.dumps(request(path, 'status')))
             self.assertEqual(c.calls, [])
 
     def test_slow_play_receives_reply_beyond_old_five_second_limit(self):
