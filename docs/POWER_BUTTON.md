@@ -77,11 +77,11 @@ Both the menu and the long-press path request an orderly shutdown through system
 
 The Power button **does not directly disconnect electrical power**. A long press requests shutdown; successful completion still depends on the operating system.
 
-### Optional shutdown screen
+### Shutdown screens
 
-An optional **"Safe to unplug"** OLED screen can be displayed near the end of the shutdown sequence. It is a separate feature and is not needed for the Power button itself.
+The OLED can show "Wird heruntergefahren…", "Wird neu gestartet…" and "Bitte warten" while the system shuts down or restarts, and optionally an experimental "Kann jetzt ausgeschaltet werden" screen at the very end. These are separate features and are not needed for the Power button itself.
 
-See [Optional OLED shutdown screen](EXPERIMENTAL_SHUTDOWN.md) for its requirements, installation, and behaviour.
+See [Shutdown and restart screens](SHUTDOWN_SCREENS.md) for their requirements, installation, and behaviour.
 
 ## Notes
 

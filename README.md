@@ -201,7 +201,7 @@ Additional documentation is available in the [`docs/`](docs/) directory.
 | [Configuration updates](docs/CONFIG_UPDATE.md) | TOML configuration checks, replacement, and rollback |
 | [Display languages and translations](docs/I18N.md) | Language selection and adding translations |
 | [Power button](docs/POWER_BUTTON.md) | Power controls, permissions, and activation |
-| [Optional OLED shutdown screen](docs/EXPERIMENTAL_SHUTDOWN.md) | Late-shutdown display and installation |
+| [Shutdown and restart screens](docs/SHUTDOWN_SCREENS.md) | OLED screens while shutting down or restarting, installation, optional exitrd |
 
 Some features are optional or hardware-specific. Consult each guide for its requirements and limitations.
 
