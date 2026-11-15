@@ -1,7 +1,7 @@
-"""M0.14b: opt-in, read-only SSD1327 player display.
+"""Read-only SSD1327 OLED service with Modern Hi-Fi runtime rendering.
 
-No Sonos transport commands. No startup of player service. The user's PNG is
-loaded once, optionally; if absent a plain status screen is shown.
+No Sonos transport commands or player-service startup. Optional PNG and
+system-start screens are independent of the state-driven runtime notices.
 """
 from __future__ import annotations
 import argparse
@@ -279,7 +279,7 @@ def main(argv=None):
     p.add_argument('--cover',choices=('auto','on','off'),default=None,
                    help='Modern Hi-Fi cover layout: auto (off for 128x128), on, off')
     p.add_argument('--ui-modern',action='store_true',
-                   help='opt-in Modern Hi-Fi read-only player status rendering')
+                   help='compatibility flag: runtime rendering is always Modern Hi-Fi')
     p.add_argument('--execute',action='store_true')
     p.add_argument('--ui-target-rpc',action='store_true',
                    help='experimental: explicitly enable set-target on menu confirmation')
@@ -293,7 +293,7 @@ def main(argv=None):
     p.add_argument('--preserve-display-on-exit',action='store_true',
                    help='On renderer exit, release SPI/GPIO without DISPLAY OFF; '
                         'requires an explicitly coordinated display handover')
-    p.add_argument('--splash-seconds',type=float,default=None,help='Legacy fixed splash duration; default waits for a valid player status')
+    p.add_argument('--splash-seconds',type=float,default=None,help='fixed splash duration; default waits for a valid player status')
     p.add_argument('--splash-ready-timeout',type=float,default=30.0,help='Maximum wait for player status, then show SERVICE OFFLINE')
     p.add_argument('--seconds',type=float,default=30)
     p.add_argument('--refresh-ms',type=int,default=500)
