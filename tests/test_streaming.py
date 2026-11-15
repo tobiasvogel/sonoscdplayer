@@ -242,7 +242,14 @@ class ReplayTests(unittest.TestCase):
         th.start(); stream.start()
         try:
             for _ in range(3):
-                status, content = get(server.server_port)
+                # 409 is the documented answer while the previous reader is
+                # still exiting (M0.10b); under load that can take a moment.
+                deadline = time.monotonic() + 5
+                while True:
+                    status, content = get(server.server_port)
+                    if status != 409 or time.monotonic() > deadline:
+                        break
+                    time.sleep(0.05)
                 self.assertEqual(status, 200)
                 self.assertEqual(content[44:], b'Z'*count)
             self.assertEqual(server._generation, 3)

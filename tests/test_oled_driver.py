@@ -236,7 +236,9 @@ class DisplayPinConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             result = subprocess.run(
                 ['sh', str(ROOT / 'tools/build_shutdown_renderer.sh')],
-                env={'PATH': '/usr/bin:/bin', 'BUILD_DIR': directory},
+                env={'PATH': '/usr/bin:/bin', 'BUILD_DIR': directory,
+                     # never fall back to an installed /etc/sonoscdplayer
+                     'SONOSCDPLAYER_CONFIG_DIR': str(Path(directory) / 'no-config')},
                 capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 2, result.stderr)
@@ -271,7 +273,9 @@ class DisplayPinConfigTests(unittest.TestCase):
                               encoding='ascii')
             result = subprocess.run(
                 ['sh', str(ROOT / 'tools/build_shutdown_renderer.sh')],
-                env={'PATH': '/usr/bin:/bin', 'BUILD_DIR': directory},
+                env={'PATH': '/usr/bin:/bin', 'BUILD_DIR': directory,
+                     # never fall back to an installed /etc/sonoscdplayer
+                     'SONOSCDPLAYER_CONFIG_DIR': str(Path(directory) / 'no-config')},
                 capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 2, result.stderr)
