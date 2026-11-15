@@ -12,15 +12,14 @@ from PIL import Image
 from integrations.outputs.oled_status import (
     image_to_frame,
     load_splash,
-    status_frame,
     request_status,
     main,
     StatusHold,
     wait_for_player_ready,
     drive_fault,
     drive_waking,
-    drive_fault_frame,
-    drive_wait_frame,
+    drive_notice_frame,
+    notice_frame,
     modern_status_frame,
     preserve_display_for_shutdown,
     safe_modern_status_frame,
@@ -58,10 +57,10 @@ class OLEDStatusTests(unittest.TestCase):
             self.assertIsNotNone(load_splash(path))
     def test_status_modes(self):
         st={'player':{'mode':'PAUSED','track':2,'track_count':15},'sonos':{'transport':'PAUSED_PLAYBACK'},'stream':{'active':True}}
-        self.assertNotEqual(status_frame(st).data,status_frame(error='offline').data)
-        self.assertEqual(len(status_frame(st).data),8192)
+        self.assertNotEqual(safe_modern_status_frame(st).data,modern_status_frame(error='offline').data)
+        self.assertEqual(len(safe_modern_status_frame(st).data),8192)
     def test_default_status_safe(self):
-        self.assertEqual(len(status_frame({}).data),8192)
+        self.assertEqual(len(safe_modern_status_frame({}).data),8192)
     def test_no_write_commands(self):
         class FakeSocket:
             def __init__(self): self.sent=[]
@@ -284,38 +283,24 @@ class MenuWhileServiceOfflineTests(unittest.TestCase):
 
 class OledNoticeTests(unittest.TestCase):
 
-    def test_wait_notice_in_legacy_and_modern(self):
-        state = {
-            'player': {'mode': 'STOPPED'},
-            'drive_power': {'idle_waking': True},
-        }
-        expected = bytes(drive_wait_frame().data)
-
+    def test_wait_notice_uses_modern_localized_renderer(self):
+        state = {'player': {'mode': 'STOPPED'}, 'drive_power': {'idle_waking': True}}
         self.assertTrue(drive_waking(state))
-        self.assertEqual(
-            bytes(status_frame(state).data), expected
-        )
-        self.assertEqual(
-            bytes(modern_status_frame(state).data), expected
-        )
+        for language in ('de', 'en'):
+            expected = bytes(notice_frame('status.drive_waking', language=language).data)
+            self.assertEqual(bytes(drive_notice_frame(state, language=language).data), expected)
+            self.assertEqual(bytes(modern_status_frame(state, language=language).data), expected)
+        self.assertNotEqual(bytes(modern_status_frame(state, language='de').data),
+                            bytes(modern_status_frame(state, language='en').data))
 
     def test_latched_fault_has_priority(self):
-        state = {
-            'player': {'mode': 'STOPPED'},
-            'drive_power': {
-                'idle_waking': True,
-                'idle_wake_fault_latched': True,
-            },
-        }
-        expected = bytes(drive_fault_frame().data)
-
+        state = {'player': {'mode': 'STOPPED'},
+                 'drive_power': {'idle_waking': True,
+                                 'idle_wake_fault_latched': True}}
+        expected = bytes(notice_frame('status.drive_wake_fault', severity='error').data)
         self.assertTrue(drive_fault(state))
-        self.assertEqual(
-            bytes(status_frame(state).data), expected
-        )
-        self.assertEqual(
-            bytes(modern_status_frame(state).data), expected
-        )
+        self.assertEqual(bytes(drive_notice_frame(state).data), expected)
+        self.assertEqual(bytes(modern_status_frame(state).data), expected)
 
     def test_stale_or_missing_flags_do_not_trigger(self):
         for state in (
@@ -349,7 +334,7 @@ class OledNoticePriorityTests(unittest.TestCase):
                 'idle_wake_fault_latched': True,
             }
         }
-        expected = bytes(drive_fault_frame().data)
+        expected = bytes(drive_notice_frame(state).data)
 
         for modern in (False, True):
             for cached in (False, True):
@@ -367,7 +352,7 @@ class OledNoticePriorityTests(unittest.TestCase):
         menu = Mock()
         menu.active = True
         state = {'drive_power': {'idle_waking': True}}
-        expected = bytes(drive_wait_frame().data)
+        expected = bytes(drive_notice_frame(state).data)
 
         for modern in (False, True):
             for cached in (False, True):
@@ -393,33 +378,21 @@ class OledNoticePriorityTests(unittest.TestCase):
         self.assertIs(result, sentinel)
         menu.frame.assert_called_once()
 
-    def test_cached_rendering_keeps_existing_fallback_split(self):
+    def test_cached_and_live_use_one_safe_modern_pipeline(self):
         from unittest import mock
         from integrations.outputs import oled_status
-
         state = {'drive_power': {}}
-        normal = object()
-        cached = object()
-
+        frame = object()
         with mock.patch.object(
             oled_status, 'safe_modern_status_frame',
-            return_value=normal,
-        ) as safe, mock.patch.object(
-            oled_status, 'modern_status_frame',
-            return_value=cached,
-        ) as direct:
-            self.assertIs(
-                oled_status.selected_status_frame(
-                    state, ui_modern=True, cached=False),
-                normal,
-            )
-            self.assertIs(
-                oled_status.selected_status_frame(
-                    state, ui_modern=True, cached=True),
-                cached,
-            )
-            safe.assert_called_once()
-            direct.assert_called_once()
+            return_value=frame,
+        ) as safe:
+            for cached in (False, True):
+                self.assertIs(
+                    oled_status.selected_status_frame(
+                        state, ui_modern=True, cached=cached), frame)
+            self.assertEqual(safe.call_count, 2)
+
 
 
 class FakeServer:
