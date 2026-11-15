@@ -84,7 +84,7 @@ class LocalizationTests(unittest.TestCase):
 
     def test_new_locale_file_is_available_without_python_registration(self):
         from sonos_ui.i18n import translator
-        from integrations.outputs.oled_status import status_frame
+        from integrations.outputs.oled_status import notice_frame
         from unittest.mock import patch as mock_patch
         with tempfile.TemporaryDirectory() as tmp:
             directory=Path(tmp)
@@ -117,7 +117,7 @@ class LocalizationTests(unittest.TestCase):
                     self.assertEqual(menu.renderer.tr('menu.back'),'Atrás')
                     self.assertEqual(Renderer(language='es').tr('status.marked_short',count=2),
                                      '2 marcados')
-                    self.assertEqual(len(status_frame(error='offline',language='es').data),8192)
+                    self.assertEqual(len(notice_frame('status.player_offline',severity='error',language='es').data),8192)
                 finally:
                     translator.available_languages.cache_clear()
                     translator.catalog.cache_clear()
