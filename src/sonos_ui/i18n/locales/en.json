@@ -101,7 +101,7 @@
   "status.drive_wake_fault": "Drive wake failed\nEJECT still works\nCheck USB power",
   "status.drive_wake_retry": "Drive wake failed\nRetry in {seconds} s\nEJECT still works",
   "status.drive_wake_retry_ready": "Drive wake failed\nPress key to retry\nEJECT still works",
-  "status.drive_wake_exhausted": "Drive wake failed\nRetries exhausted\nRestart service",
+  "status.drive_wake_exhausted": "Retries exhausted\nEJECT still works\nRestart service",
   "status.player_offline": "Player unavailable\nPlease wait …",
   "status.invalid_player_status": "Invalid player status"
 }
