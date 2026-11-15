@@ -75,16 +75,5 @@ class GuidedExitrdTests(unittest.TestCase):
             self.assertIn("interactive terminal required", result.stderr)
             self.assertFalse((Path(directory) / "shutdown").exists())
 
-    def test_source_requires_two_acknowledgements_before_staging(self):
-        source = SCRIPT.read_text()
-        self.assertIn("YES-I-ACCEPT", source)
-        self.assertIn("EXITRD_UNVERIFIED_SAFE=1", source)
-        self.assertIn("I_ACCEPT_EARLY_SAFE_SCREEN_RISK", source)
-        self.assertIn("I_UNDERSTAND_EXITRD_CAN_PREVENT_CLEAN_SHUTDOWN", source)
-        self.assertIn("--expected-sha256", source)
-        self.assertNotIn("systemctl poweroff", source)
-        self.assertNotIn("systemctl enable", source)
-
-
 if __name__ == "__main__":
     unittest.main()

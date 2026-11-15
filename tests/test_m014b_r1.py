@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from src.integrations.outputs.oled_status import StatusHold, request_status
+from integrations.outputs.oled_status import StatusHold, request_status
 from drive_power import load_config
 
 class M014BR1Tests(unittest.TestCase):

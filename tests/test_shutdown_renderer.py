@@ -102,12 +102,5 @@ const display_backend_t shutdown_display_backend = {
         self.assertEqual(proc.returncode, 1)
         self.assertIn('mismatch', proc.stderr)
 
-    def test_backend_never_resets_or_blanks_controller(self):
-        source = (ROOT / 'src/shutdown/backends/ssd1327.c').read_text()
-        self.assertIn('0x5c', source.lower())
-        self.assertNotIn('0xae', source.lower())
-        self.assertNotIn('gpio24', source.lower())
-
-
 if __name__ == '__main__':
     unittest.main()

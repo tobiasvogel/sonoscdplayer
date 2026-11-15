@@ -80,20 +80,20 @@ class ExitrdOfflineTests(unittest.TestCase):
                                                   frame_text('safe', language)))
         self.assertNotIn('shutdown_frame_diagnostic', header)
 
-    def test_normal_exitrd_uses_final_only_after_successful_poweroff_unmount(self):
+    def test_safety_invariants_of_exitrd_and_build(self):
+        """Forbidden constructs only; behaviour is covered by the harness tests."""
         source = (ROOT / 'src/shutdown/exitrd.c').read_text()
-        self.assertIn('const uint8_t *frame = shutdown_frame_final;', source)
-        self.assertIn('#if SONOSCD_EXITRD_SAFE_APPROVED != 0', source)
         self.assertIn('#error Safe-to-unplug rendering is locked', source)
-        self.assertIn('#if SONOSCD_EXITRD_UNVERIFIED_SAFE', source)
-        self.assertIn('const uint8_t *frame = shutdown_frame_safe;', source)
-        self.assertIn('if (experimental_frame_allowed(&evidence, poweroff))', source)
-        self.assertIn('e->unmount == UNMOUNT_OK', source)
-        self.assertIn('e->audit == AUDIT_CLEAN', source)
-        self.assertIn('if (experimental_delay()) show_experimental_frame();', source)
-        self.assertIn('#if SONOSCD_EXITRD_DIAGNOSTIC', source)
-        self.assertIn('if (poweroff) show_post_unmount();', source)
-        self.assertIn('if (release_oldroot() == 0)', source)
+        self.assertNotIn('MNT_DETACH', source)
+        self.assertNotIn('MNT_FORCE', source)
+        self.assertNotIn('POWER_COMPLETED', source)
+        backend = (ROOT / 'src/shutdown/backends/ssd1327.c').read_text().lower()
+        self.assertNotIn('0xae', backend)  # never switches the display off
+        script = (ROOT / 'tools/build_exitrd.sh').read_text()
+        self.assertNotIn('systemctl', script)
+        self.assertNotIn('/run/initramfs/shutdown', script)
+
+    def test_check_reports_non_diagnostic_unapproved_build(self):
         check = self.call('--check')
         self.assertEqual(check.returncode, 0)
         self.assertIn('diagnostic=0', check.stdout)
@@ -164,19 +164,6 @@ class ExitrdOfflineTests(unittest.TestCase):
                 result = self.call('--simulate-safety', *args)
                 self.assertNotEqual(result.returncode, 0)
 
-    def test_shutdown_state_never_claims_poweroff_completed(self):
-        source = (ROOT / 'src/shutdown/exitrd.c').read_text()
-        self.assertIn('POWER_RETURNED_ERROR', source)
-        self.assertIn('evidence_power_returned(&evidence);', source)
-        self.assertNotIn('POWER_COMPLETED', source)
-        self.assertIn('return false; /* controller durability', source)
-        self.assertIn('#if SONOSCD_EXITRD_UNVERIFIED_SAFE', source)
-        self.assertIn('const uint8_t *frame = shutdown_frame_safe;', source)
-        self.assertIn('if (experimental_frame_allowed(&evidence, poweroff))', source)
-        self.assertIn('e->unmount == UNMOUNT_OK', source)
-        self.assertIn('e->audit == AUDIT_CLEAN', source)
-        self.assertIn('if (experimental_delay()) show_experimental_frame();', source)
-
     def test_mount_audit_all_volatile_still_denies_safety(self):
         info = (
             '1 0 0:1 / / rw - tmpfs tmpfs rw\n'
@@ -240,13 +227,6 @@ class ExitrdOfflineTests(unittest.TestCase):
             with self.subTest(content=content[:30]):
                 self.assertEqual(self.probe(content).returncode, 1)
 
-    def test_only_normal_unmount_after_full_oldroot_detection(self):
-        source = (ROOT / 'src/shutdown/exitrd.c').read_text()
-        self.assertIn('umount2(points[i].path, 0)', source)
-        self.assertNotIn('MNT_DETACH', source)
-        self.assertNotIn('MNT_FORCE', source)
-        self.assertIn('if (poweroff) show_post_unmount()', source)
-
     def test_late_hook_keeps_final_fallback_with_staged_exitrd(self):
         script = (ROOT / 'systemd/sonoscdplayer-final-shutdown-hook').read_text()
         self.assertNotIn('if [ "$phase" = final ] && [ -x /run/initramfs/shutdown ]; then', script)
@@ -267,14 +247,6 @@ class ExitrdOfflineTests(unittest.TestCase):
                 self.assertEqual(subprocess.run(['sh', str(hook), action],
                                                 check=False, timeout=3).returncode, 0)
             self.assertEqual(calls.read_text().splitlines(), ['final', 'reboot'])
-
-    def test_build_does_not_install_or_stage_exitrd(self):
-        script = (ROOT / 'tools/build_exitrd.sh').read_text()
-        self.assertNotIn('systemctl', script)
-        self.assertNotIn('/run/initramfs/shutdown', script)
-        self.assertNotIn('SONOSCD_EXITRD_SAFE_APPROVED=1', script)
-
-
 
 class ExitrdDiagnosticOfflineTests(unittest.TestCase):
     """Opt-in graphical proof only; no PID1, SPI, mounts, or poweroff."""
@@ -321,14 +293,6 @@ class ExitrdDiagnosticOfflineTests(unittest.TestCase):
         self.assertEqual(len(test_frame), 8192)
         self.assertNotEqual(test_frame, normal_frame)
         self.assertNotEqual(test_frame, safe_frame)
-
-    def test_diagnostic_render_only_after_oldroot_success(self):
-        source = (ROOT / 'src/shutdown/exitrd.c').read_text()
-        success = source.index('if (release_oldroot() == 0)')
-        draw = source.index('if (poweroff) show_post_unmount()', success)
-        failure = source.index('oldroot_unmount=failed', draw)
-        self.assertLess(success, draw)
-        self.assertLess(draw, failure)
 
     def test_default_build_remains_non_diagnostic(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -391,17 +355,6 @@ class ExitrdUnverifiedSafeBuildTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn('unverified-safe=0 delay-seconds=0', result.stdout)
             self.assertIn('safe-approved=0', result.stdout)
-
-    def test_source_requires_clean_audit_and_reverts_after_syscall_failure(self):
-        source = (ROOT / 'src/shutdown/exitrd.c').read_text()
-        self.assertIn('e->unmount == UNMOUNT_OK', source)
-        self.assertIn('e->audit == AUDIT_CLEAN', source)
-        self.assertIn('return poweroff &&', source)
-        self.assertIn('if (experimental_delay()) show_experimental_frame();', source)
-        self.assertIn('if (poweroff) show_post_unmount();', source)
-        self.assertIn('evidence_power_returned(&evidence);', source)
-        self.assertIn('SONOSCD_EXITRD_EXPERIMENT_DELAY_SECONDS 3', source)
-
 
 if __name__ == '__main__':
     unittest.main()

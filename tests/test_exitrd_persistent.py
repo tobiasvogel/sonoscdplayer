@@ -127,20 +127,15 @@ class PersistentExitrdTests(unittest.TestCase):
                 installer.remove_owned_bytecode(installed)
             self.assertTrue(elsewhere.is_dir())
 
-    def test_management_requires_interactive_consent(self):
-        source = (ROOT / 'tools/manage_experimental_exitrd.sh').read_text()
-        self.assertIn('--install', source)
-        self.assertIn('--uninstall', source)
-        self.assertIn('YES-I-ACCEPT', source)
-        self.assertIn('install_exitrd_persistent.py', source)
-        self.assertNotIn('systemctl poweroff', source)
 
-    def test_installer_never_replaces_existing_live_exitrd(self):
-        source = (ROOT / 'tools/install_exitrd_persistent.py').read_text()
-        self.assertIn('precheck(EXPERIMENTAL, expected, activating=True)', source)
-        self.assertIn("command('systemctl', 'enable', '--now', NAME)", source)
-        self.assertIn("command('systemctl', 'disable', NAME)", source)
-        self.assertNotIn("poweroff", source.lower().replace("no poweroff", ""))
+class ManagementScriptTests(unittest.TestCase):
+    def test_install_refuses_without_interactive_terminal(self):
+        import subprocess
+        result = subprocess.run(
+            ['sh', str(ROOT / 'tools/manage_experimental_exitrd.sh'), '--install'],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('Interactive terminal required', result.stderr)
 
 if __name__ == '__main__':
     unittest.main()

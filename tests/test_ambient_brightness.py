@@ -3,9 +3,9 @@ import math
 import tempfile
 import unittest
 from pathlib import Path
-from src.integrations.outputs.ambient_brightness import AmbientConfig, parse_lux, lux_to_brightness, BrightnessSmoother
-from src.integrations.outputs.led_pwm import LedRenderer, OutputConfig, load_config
-from src.integrations.outputs.led_model import LedState,Led,Pattern
+from integrations.outputs.ambient_brightness import AmbientConfig, parse_lux, lux_to_brightness, BrightnessSmoother
+from integrations.outputs.led_pwm import LedRenderer, OutputConfig, load_config
+from integrations.outputs.led_model import LedState,Led,Pattern
 
 class TestAmbient(unittest.TestCase):
     def test_valid_plain_number(self): self.assertEqual(parse_lux(b'21.5\n'),21.5)

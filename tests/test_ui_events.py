@@ -5,7 +5,6 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 
 from sonos_ui.discovery import from_devices as speaker_snapshot, discover_speakers
-from sonos_ui.experimental_frontend import action_for
 from sonos_ui.input_adapter import to_ui_action
 from sonos_ui.model import DisplayModel
 from sonos_ui.multi_render import MultiRenderer
@@ -79,7 +78,6 @@ class UIIntegrationTests(unittest.TestCase):
         self.assertIsNone(encode_event('stop','pressed'))
         self.assertIsNone(decode_event(b'{"name":"encoder","event":"right","uid":"secret"}'))
         self.assertEqual(decode_event(encode_event('encoder','right')), ('encoder','right'))
-        self.assertEqual(action_for('encoder_sw','pressed'), 'confirm')
 
     def test_event_socket_is_private_and_removed(self):
         with tempfile.TemporaryDirectory() as directory:
