@@ -1,17 +1,16 @@
-"""INP-02: physical volume buttons (auto-repeat and coalesced, one-shot RPCs).
+"""INP-02: physical volume buttons (auto-repeat and one-shot RPCs).
 
 The GPIO loop calls VolumeRepeat.event()/tick() and hands the resulting steps to
-VolumeExecutor.submit(). The executor runs at most one player request at a time;
-steps arriving meanwhile are summed and sent together afterwards, so holding a
-button never builds up a backlog. A failed or uncertain request is never
-retried and drops pending steps. The player decides whether a change is allowed.
+VolumeExecutor.submit(). Only one request may be in flight. Repeats that arrive
+while it is busy are dropped, never accumulated or replayed after a slow drive
+wake or Sonos response. Failed or uncertain requests are never retried. The
+player decides whether a change is allowed.
 """
 from __future__ import annotations
 
 import threading
 
 VOLUME_BUTTONS = {'volume_up': 1, 'volume_dn': -1}
-MAX_STEP = 10  # must match volume_control.MAX_STEP in the player
 
 
 class VolumeRepeat:
@@ -50,30 +49,28 @@ class VolumeExecutor:
         self.publish = publish        # (name, event) -> bool, best effort UI
         self.report = report
         self._lock = threading.Lock()
-        self._pending = 0
         self._busy = False
 
     def submit(self, step):
         if step == 0:
             return False
+        if step not in (-1, 1):
+            raise ValueError('volume button step must be -1 or +1')
         with self._lock:
-            self._pending = max(-MAX_STEP, min(MAX_STEP, self._pending + step))
             if self._busy:
-                return True
+                return False  # Never queue a repeat behind a blocked RPC.
             self._busy = True
-        threading.Thread(target=self._run, name='volume-button', daemon=True).start()
+        try:
+            threading.Thread(target=self._run, args=(step,),
+                             name='volume-button', daemon=True).start()
+        except Exception:
+            with self._lock:
+                self._busy = False
+            raise
         return True
 
-    def _take(self):
-        with self._lock:
-            step, self._pending = self._pending, 0
-            if step == 0:
-                self._busy = False
-            return step
-
-    def _run(self):
-        step = self._take()
-        while step:
+    def _run(self, step):
+        try:
             command = f'volume {step:+d}'
             try:
                 reply = self.sender(self.socket_path, command)
@@ -87,6 +84,6 @@ class VolumeExecutor:
             except Exception as exc:
                 self.report('volume: unavailable or rejected ('
                             + type(exc).__name__ + '); not retrying')
-                with self._lock:
-                    self._pending = 0
-            step = self._take()
+        finally:
+            with self._lock:
+                self._busy = False

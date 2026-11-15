@@ -223,6 +223,10 @@ def should_publish_drive_activity(name, event, *, safe_executor):
         event == 'pressed'
         or (name == 'encoder' and event in ('left', 'right'))
     )
+    # Volume controls act on Sonos, not the optical drive. Waking a spun-down
+    # spindle would block the serialized player worker and delay volume RPCs.
+    if name in ('volume_up', 'volume_dn'):
+        return False
     if not physical:
         return False
     command = map_event(name, event)

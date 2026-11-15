@@ -256,7 +256,7 @@ class VolumeRepeatTests(unittest.TestCase):
 
 
 class VolumeExecutorTests(unittest.TestCase):
-    def test_coalesces_while_busy_and_publishes_level(self):
+    def test_drops_busy_repeats_and_publishes_level(self):
         gate = threading.Event()
         sent, published = [], []
 
@@ -266,16 +266,21 @@ class VolumeExecutorTests(unittest.TestCase):
             return {'ok': True, 'volume': 30 + len(sent)}
         ex = VolumeExecutor('/sock', sender=sender, report=lambda *_: None,
                             publish=lambda *e: published.append(e))
-        ex.submit(1)
+        self.assertTrue(ex.submit(1))
         time.sleep(0.05)
-        for _ in range(3):
-            ex.submit(1)
+        for _ in range(25):
+            self.assertFalse(ex.submit(1))
         gate.set()
         deadline = time.monotonic() + 2
         while ex._busy and time.monotonic() < deadline:
             time.sleep(0.01)
-        self.assertEqual(sent, ['volume +1', 'volume +3'])
-        self.assertEqual(published, [('volume', '31'), ('volume', '32')])
+        self.assertEqual(sent, ['volume +1'])
+        self.assertEqual(published, [('volume', '31')])
+        self.assertTrue(ex.submit(-1))
+        deadline = time.monotonic() + 2
+        while ex._busy and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(sent, ['volume +1', 'volume -1'])
 
     def test_failure_drops_pending_and_never_retries(self):
         gate = threading.Event()
@@ -286,22 +291,24 @@ class VolumeExecutorTests(unittest.TestCase):
             gate.wait(2)
             raise ValueError('player rejected command')
         ex = VolumeExecutor('/sock', sender=sender, report=lambda *_: None)
-        ex.submit(-1)
+        self.assertTrue(ex.submit(-1))
         time.sleep(0.05)
-        ex.submit(-1)
+        self.assertFalse(ex.submit(-1))
         gate.set()
         deadline = time.monotonic() + 2
         while ex._busy and time.monotonic() < deadline:
             time.sleep(0.01)
         self.assertEqual(sent, ['volume -1'])
 
-    def test_steps_are_clamped(self):
+    def test_busy_steps_are_discarded_not_clamped_or_queued(self):
         ex = VolumeExecutor('/sock', sender=lambda *_: {'ok': True}, report=lambda *_: None)
         ex._busy = True  # simulate a running request
         for _ in range(25):
-            ex.submit(1)
-        self.assertEqual(ex._pending, 10)
+            self.assertFalse(ex.submit(1))
+        self.assertFalse(ex.submit(-1))
         self.assertFalse(ex.submit(0))
+        with self.assertRaises(ValueError):
+            ex.submit(2)
 
 
 class VolumeOverlayTests(unittest.TestCase):
