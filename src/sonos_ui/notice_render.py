@@ -24,10 +24,6 @@ def icon_file(severity, grayscale=False, icon_root=ICON_ROOT):
     path = root / (prefix + suffix + ".png")
     if path.is_file():
         return path
-    if severity == "info":
-        legacy = root / ("info_ " + suffix + ".png")
-        if legacy.is_file():
-            return legacy
     return None
 
 
