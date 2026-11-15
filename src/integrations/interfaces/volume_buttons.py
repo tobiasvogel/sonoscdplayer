@@ -9,8 +9,14 @@ player decides whether a change is allowed.
 from __future__ import annotations
 
 import threading
+import time
 
 VOLUME_BUTTONS = {'volume_up': 1, 'volume_dn': -1}
+NO_TARGET_NOTICE_COOLDOWN = 2.0
+
+
+class NoTargetSelected(ValueError):
+    """The player rejected volume because there is no confirmed target."""
 
 
 class VolumeRepeat:
@@ -50,6 +56,7 @@ class VolumeExecutor:
         self.report = report
         self._lock = threading.Lock()
         self._busy = False
+        self._last_no_target_notice = float('-inf')
 
     def submit(self, step):
         if step == 0:
@@ -81,6 +88,16 @@ class VolumeExecutor:
                     self.report(f'volume: {command} -> {level}')
                 else:
                     self.report(f'volume: {command} acknowledged')
+            except NoTargetSelected:
+                # Do not flood the UI while VOL is held.
+                now = time.monotonic()
+                with self._lock:
+                    notify = now - self._last_no_target_notice >= NO_TARGET_NOTICE_COOLDOWN
+                    if notify:
+                        self._last_no_target_notice = now
+                if notify and self.publish is not None:
+                    self.publish('volume', 'no_target')
+                self.report('volume: no selected target; not retrying')
             except Exception as exc:
                 self.report('volume: unavailable or rejected ('
                             + type(exc).__name__ + '); not retrying')

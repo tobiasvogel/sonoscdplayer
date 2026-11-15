@@ -111,5 +111,6 @@
   "status.scan_running": "Suche Lautsprecher …",
   "status.scan_done": "{count} Lautsprecher gefunden",
   "status.scan_done_one": "1 Lautsprecher gefunden",
-  "status.scan_none": "Keine Lautsprecher gefunden"
+  "status.scan_none": "Keine Lautsprecher gefunden",
+  "status.volume_no_target": "Kein Wiedergabeziel ausgewählt"
 }

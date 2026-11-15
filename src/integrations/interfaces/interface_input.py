@@ -35,9 +35,9 @@ except ImportError:
     from power_gesture import PowerCoordinator
 
 try:
-    from .volume_buttons import VolumeExecutor, VolumeRepeat
+    from .volume_buttons import VolumeExecutor, VolumeRepeat, NoTargetSelected
 except ImportError:
-    from volume_buttons import VolumeExecutor, VolumeRepeat
+    from volume_buttons import VolumeExecutor, VolumeRepeat, NoTargetSelected
 
 try:
     from .connect_gesture import ConnectGesture
@@ -119,6 +119,10 @@ def request_reply(socket_path, command, uid=None):
     if b'\n' not in data or len(data) > 16384:
         raise ValueError('invalid player response')
     reply = json.loads(data.split(b'\n', 1)[0])
+    if (isinstance(reply, dict) and command.startswith('volume ')
+            and reply.get('ok') is False
+            and reply.get('error') == 'ValueError: no confirmed target'):
+        raise NoTargetSelected('no confirmed target')
     if not isinstance(reply, dict) or reply.get('ok') is not True:
         raise ValueError('player rejected command')
     return reply

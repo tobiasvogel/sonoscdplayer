@@ -10,7 +10,7 @@ from player_state import Mode
 from player_service import handle_command
 from volume_control import VolumeControl, parse_volume_command
 from integrations.interfaces.input_core import load_config
-from integrations.interfaces.volume_buttons import VolumeExecutor, VolumeRepeat
+from integrations.interfaces.volume_buttons import VolumeExecutor, VolumeRepeat, NoTargetSelected
 from sonos_ui.interactive_menu import InteractiveMenu, VOLUME_OVERLAY_SECONDS
 from sonos_ui.ui_event_bridge import decode_event, encode_event
 
@@ -310,8 +310,46 @@ class VolumeExecutorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ex.submit(2)
 
+    def test_no_target_is_reported_once_per_cooldown(self):
+        reports, notices = [], []
+        done = threading.Event()
+
+        def sender(_socket, _command):
+            raise NoTargetSelected('no confirmed target')
+
+        def report(message):
+            reports.append(message)
+            done.set()
+
+        executor = VolumeExecutor('/sock', sender=sender, report=report,
+                                  publish=lambda *event: notices.append(event))
+        for step in (1, -1):
+            self.assertTrue(executor.submit(step))
+            self.assertTrue(done.wait(2))
+            done.clear()
+            deadline = time.monotonic() + 2
+            while executor._busy and time.monotonic() < deadline:
+                time.sleep(0.01)
+        self.assertEqual(len(reports), 2)
+        self.assertEqual(notices, [('volume', 'no_target')])
+
 
 class VolumeOverlayTests(unittest.TestCase):
+    def test_missing_target_notice_is_localized_and_expires(self):
+        from sonos_ui.notice import Notice, notice_text
+        self.assertEqual(decode_event(encode_event('volume', 'no_target')),
+                         ('volume', 'no_target'))
+        self.assertEqual(notice_text(Notice('status.volume_no_target'), 'de'),
+                         'Kein Wiedergabeziel ausgewählt')
+        self.assertEqual(notice_text(Notice('status.volume_no_target'), 'en'),
+                         'No playback target selected')
+        menu = InteractiveMenu(discover=lambda **_: None)
+        self.assertTrue(menu.event('volume', 'no_target', now=10.0))
+        self.assertEqual(menu.connect_notices.current(now=10.1).key,
+                         'status.volume_no_target')
+        self.assertTrue(menu.event('volume', 'no_target', now=10.5))
+        self.assertIsNone(menu.connect_notices.current(now=12.1))
+
     def test_bridge_accepts_levels_only(self):
         for level in ('0', '42', '100'):
             self.assertEqual(decode_event(encode_event('volume', level)), ('volume', level))

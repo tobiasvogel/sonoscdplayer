@@ -447,6 +447,15 @@ class InteractiveMenu:
 
     def event(self, name, event, now=None):
         now = time.monotonic() if now is None else now
+        if (name, event) == ('volume', 'no_target'):
+            if self._power_busy or self.power_menu:
+                return False
+            current = self.connect_notices.current(now=now)
+            if current is not None and current.key == 'status.volume_no_target':
+                return True  # Do not restart an already displayed notice.
+            self._show_notice(Notice('status.volume_no_target', priority=35,
+                                     duration_seconds=2.0), now)
+            return True
         if name == 'volume':
             # Display only: the level was already set and acknowledged by the player.
             if not (isinstance(event, str) and event.isdigit() and 0 <= int(event) <= 100):

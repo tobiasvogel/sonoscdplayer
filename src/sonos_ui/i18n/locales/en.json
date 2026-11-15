@@ -111,5 +111,6 @@
   "status.scan_running": "Searching for speakers …",
   "status.scan_done": "{count} speakers found",
   "status.scan_done_one": "1 speaker found",
-  "status.scan_none": "No speakers found"
+  "status.scan_none": "No speakers found",
+  "status.volume_no_target": "No playback target selected"
 }
