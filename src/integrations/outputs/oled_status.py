@@ -197,6 +197,10 @@ def safe_modern_status_frame(state, *, cover_mode='auto', language='de'):
 MARQUEE_FRAME_SECONDS = 0.1
 
 
+# While a menu is open the loop runs this often, so turns and presses show at once.
+MENU_FRAME_SECONDS = 0.05
+
+
 def frame_delay(refresh_seconds):
     from sonos_ui.marquee import MARQUEE_CLOCK
     if MARQUEE_CLOCK.animating():
@@ -216,7 +220,8 @@ def selected_status_frame(state, *, menu=None, ui_modern=False,
     Retain the historical ui_modern/cached arguments for compatible callers,
     but neither option can re-enable a Legacy rendering branch.
     """
-    if menu is not None and getattr(menu, 'power_menu', False) is True:
+    if menu is not None and (getattr(menu, 'power_menu', False) is True
+                             or isinstance(getattr(menu, 'shutdown_screen', None), str)):
         return menu.frame(image_to_frame)
     drive_frame = drive_notice_frame(state, language=language)
     if drive_frame is not None:
@@ -426,6 +431,7 @@ def main(argv=None):
         if driver: driver.open(adopt_existing=args.adopt_boot_splash)
         end=time.monotonic()+args.seconds if args.seconds else None
         previous=None
+        next_status_at=0.0
         hold=StatusHold(args.offline_grace_seconds)
         ready_state=None
         if not args.adopt_boot_splash and splash is not None and args.splash_seconds != 0:
@@ -449,13 +455,33 @@ def main(argv=None):
             hold.success(ready_state,time.monotonic())
         with receiver_context as ui_events:
             while end is None or time.monotonic()<end:
+                menu_quick = False
                 if menu is not None:
                     menu.poll()
+                    handled = False
                     for _ in range(16):
                         received = ui_events.receive()
                         if received is None:
                             break
-                        menu.event(*received)
+                        handled = menu.event(*received) or handled
+                    menu_quick = (getattr(menu, 'active', False) is True
+                                  or getattr(menu, 'power_menu', False) is True)
+                    if handled and menu_quick:
+                        # Show the menu's answer to the turn/press at once; the
+                        # status request below can take up to its timeout while
+                        # the player is busy (e.g. waking the drive).
+                        try:
+                            # Same priorities as below (drive notices first),
+                            # with the last known player status.
+                            quick=(selected_status_frame(
+                                       hold.last_state, menu=menu, ui_modern=args.ui_modern,
+                                       cover_mode=cover_mode, language=menu.language)
+                                   if hold.last_state is not None else menu.frame(image_to_frame))
+                        except (ValueError, TypeError, KeyError):
+                            quick=menu.frame(image_to_frame)
+                        if bytes(quick.data)!=previous:
+                            write_frame(quick)
+                            previous=bytes(quick.data)
                 if ambient is not None:
                     new_contrast=ambient.tick(time.monotonic()*1000)
                     if new_contrast != last_contrast:
@@ -463,7 +489,16 @@ def main(argv=None):
                         print(json.dumps({'oled_contrast':new_contrast,'mode':'ambient','hardware':args.execute}),flush=True)
                         last_contrast=new_contrast
                 try:
-                    state=hold.success(ready_state if ready_state is not None else request_status(args.socket), time.monotonic())
+                    if ready_state is not None:
+                        state=hold.success(ready_state, time.monotonic())
+                    elif (menu_quick and hold.last_state is not None
+                          and time.monotonic() < next_status_at):
+                        # Menu open: answer the encoder quickly, but ask the
+                        # player only every --refresh-ms.
+                        state=hold.last_state
+                    else:
+                        next_status_at=time.monotonic()+args.refresh_ms/1000
+                        state=hold.success(request_status(args.socket), time.monotonic())
                     ready_state=None
                     frame=selected_status_frame(
                         state, menu=menu, ui_modern=args.ui_modern,
@@ -504,8 +539,8 @@ def main(argv=None):
                     write_frame(frame)
                     print(json.dumps(label,ensure_ascii=False),flush=True)
                     previous=current
-                time.sleep(frame_delay(args.refresh_ms/1000) if end is None
-                           else min(frame_delay(args.refresh_ms/1000),max(0,end-time.monotonic())))
+                delay=MENU_FRAME_SECONDS if menu_quick else frame_delay(args.refresh_ms/1000)
+                time.sleep(delay if end is None else min(delay,max(0,end-time.monotonic())))
     finally:
         try:
             if driver:

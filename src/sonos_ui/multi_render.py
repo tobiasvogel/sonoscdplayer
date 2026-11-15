@@ -4,7 +4,7 @@ from .render import Renderer
 from .theme import ssd1327_gray
 
 class MultiRenderer(Renderer):
-    def render_multi(self,state,*,gray=False):
+    def render_multi(self,state,*,gray=False,searching=False):
         t=self.theme
         im=Image.new('RGB',(128,128),t.background)
         self.shell(im,self.tr('menu.targets'))
@@ -12,7 +12,8 @@ class MultiRenderer(Renderer):
         count=len(state.topology.targets)
         if not count:
             # Below the two rows (apply/back) that remain without speakers.
-            self.text(im,(7,74),self.tr('status.no_targets'),fill=t.secondary,size=9,width=115,height=15)
+            key='status.scan_running' if searching else 'status.no_targets'
+            self.text(im,(7,74),self.tr(key),fill=t.secondary,size=9,width=115,height=15)
         rows=self.menu_window(count+2,state.focus)
         for slot,pos in enumerate(rows):
             focus=pos==state.focus

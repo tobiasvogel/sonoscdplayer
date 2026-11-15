@@ -281,6 +281,74 @@ class MenuWhileServiceOfflineTests(unittest.TestCase):
         self.assertIn('status_unavailable', output)
 
 
+class MenuResponsivenessTests(unittest.TestCase):
+    """Menu input shows at once, even while the player answers slowly."""
+
+    def test_event_is_drawn_before_the_slow_status_request(self):
+        import time as _time
+        order = []
+
+        class EventMenu(FakeMenu):
+            def __init__(self, **kwargs):
+                super().__init__(active=True, **kwargs)
+                self.sent = False
+            def event(self, *_args):
+                return True
+            def frame(self, _image_to_frame):
+                order.append('menu_frame')
+                return super().frame(_image_to_frame)
+
+        class OneEvent(FakeReceiver):
+            def __init__(self, _path):
+                self.events = [('encoder', 'right')]
+            def receive(self):
+                return self.events.pop() if self.events else None
+
+        def slow_status(*_args, **_kwargs):
+            order.append('status_request')
+            _time.sleep(0.05)
+            return {'schema_version': 1, 'player': {'mode': 'STOPPED'}}
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch('sonos_ui.interactive_menu.InteractiveMenu', EventMenu), \
+                patch('sonos_ui.ui_event_bridge.EventReceiver', OneEvent), \
+                patch.object(oled_status, 'request_status', slow_status), \
+                redirect_stdout(io.StringIO()):
+            oled_status.main([
+                '--ui-modern', '--ui-events-socket', str(Path(tmp) / 'events.sock'),
+                '--socket', str(Path(tmp) / 'player.sock'),
+                '--seconds', '0.3', '--splash-seconds', '0', '--refresh-ms', '500'])
+        self.assertEqual(order[0], 'menu_frame')
+        # While the menu is open the player is asked at most every --refresh-ms.
+        self.assertLessEqual(order.count('status_request'), 2)
+
+    def test_speaker_menu_says_it_is_searching(self):
+        import threading
+        from sonos_ui.interactive_menu import InteractiveMenu
+        release = threading.Event()
+        def slow_discover(**_kwargs):
+            release.wait(2)
+            from sonos_ui.multi_target import Topology
+            return Topology(())
+        menu = InteractiveMenu(discover=slow_discover, language='de')
+        menu._open_targets(0.0)
+        try:
+            self.assertTrue(menu.searching())
+            searching = bytes(menu.frame(oled_status.image_to_frame).data)
+        finally:
+            release.set()
+            menu._worker.join(2)
+        menu.poll(now=1.0)
+        self.assertFalse(menu.searching())
+        done = bytes(menu.frame(oled_status.image_to_frame).data)
+        self.assertNotEqual(searching, done)
+        from sonos_ui.multi_render import MultiRenderer
+        renderer = MultiRenderer(language='de')
+        self.assertEqual(
+            bytes(oled_status.image_to_frame(renderer.render_multi(menu.state, gray=True, searching=True)).data),
+            searching)
+
+
 class OledNoticeTests(unittest.TestCase):
 
     def test_wait_notice_uses_modern_localized_renderer(self):

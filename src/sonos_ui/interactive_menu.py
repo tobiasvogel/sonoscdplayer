@@ -186,6 +186,10 @@ class InteractiveMenu:
         self._discover_if_empty(now)
         return True
 
+    def searching(self):
+        """A speaker search is running in the background."""
+        return self._worker is not None and self._worker.is_alive()
+
     def _has_targets(self):
         return bool(self.state.topology.targets) and not self.state.topology.error
 
@@ -612,4 +616,5 @@ class InteractiveMenu:
         if self.section == 'network_status':
             return image_to_frame(self._navigation_renderer.network_status(
                 self.network_snapshot, language=self.language))
-        return image_to_frame(self.renderer.render_multi(self.state,gray=True))
+        return image_to_frame(self.renderer.render_multi(self.state,gray=True,
+                                                         searching=self.searching()))
