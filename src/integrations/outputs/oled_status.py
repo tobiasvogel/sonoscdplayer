@@ -208,6 +208,12 @@ def frame_delay(refresh_seconds):
     return refresh_seconds
 
 
+def netsetup_shown(menu):
+    check = getattr(menu, 'netsetup_snapshot', None)
+    snap = check() if callable(check) else None
+    return isinstance(getattr(snap, 'state', None), str)
+
+
 def menu_overlay_active(menu):
     check = getattr(menu, 'volume_overlay_active', None)
     return check() is True if callable(check) else False
@@ -221,7 +227,8 @@ def selected_status_frame(state, *, menu=None, ui_modern=False,
     but neither option can re-enable a Legacy rendering branch.
     """
     if menu is not None and (getattr(menu, 'power_menu', False) is True
-                             or isinstance(getattr(menu, 'shutdown_screen', None), str)):
+                             or isinstance(getattr(menu, 'shutdown_screen', None), str)
+                             or netsetup_shown(menu)):
         return menu.frame(image_to_frame)
     drive_frame = drive_notice_frame(state, language=language)
     if drive_frame is not None:
@@ -288,6 +295,9 @@ def main(argv=None):
     p.add_argument('--execute',action='store_true')
     p.add_argument('--ui-target-rpc',action='store_true',
                    help='experimental: explicitly enable set-target on menu confirmation')
+    p.add_argument('--ui-network-setup',action='store_true',
+                   help='CONNECT 10 s / network menu start the WLAN setup hotspot; '
+                        'needs the polkit rule from docs/NETWORK_SETUP.md')
     p.add_argument('--ui-power-actions',action='store_true',
                    help='enable the power menu (power off / restart); needs the polkit rule from docs/POWER_BUTTON.md')
     p.add_argument('--ui-events-socket',default=None,
@@ -417,10 +427,20 @@ def main(argv=None):
         if args.ui_power_actions:
             from power_action import PowerRequester
             power_action = PowerRequester().request
+        network_setup = None
+        if args.ui_network_setup:
+            from network_setup.nm import Nm
+            from network_setup.session import SetupSession
+            from network_setup.web import SetupWebServer
+            from sonos_ui.i18n import Translator
+            # The page follows the current menu language.
+            network_setup = SetupSession(Nm(), web_factory=lambda session, address: SetupWebServer(
+                session, address, lambda: Translator(menu.language)))
         menu = InteractiveMenu(language=language, target_rpc=sender,
                                group_target_rpc=group_sender, power_action=power_action,
                                current_target=current_target,
-                               on_language_change=ui_state.save_language)
+                               on_language_change=ui_state.save_language,
+                               network_setup=network_setup)
         receiver_context = EventReceiver(args.ui_events_socket)
     def stop_on_sigterm(_signum, _frame):
         # systemd's normal SIGTERM must run finally and release SPI/GPIO.
@@ -500,6 +520,8 @@ def main(argv=None):
                         next_status_at=time.monotonic()+args.refresh_ms/1000
                         state=hold.success(request_status(args.socket), time.monotonic())
                     ready_state=None
+                    if menu is not None and hasattr(menu, 'player_mode'):
+                        menu.player_mode = (state.get('player') or {}).get('mode')
                     frame=selected_status_frame(
                         state, menu=menu, ui_modern=args.ui_modern,
                         cover_mode=cover_mode,

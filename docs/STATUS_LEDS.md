@@ -11,7 +11,7 @@ The player runs without a screen of its own on the network, so the connection LE
 | On | Connected (LAN or WLAN) |
 | Breathing | A connection is being established |
 | Slow blinking | No network connection |
-| Fast blinking | Setup hotspot active (reserved for the future setup hotspot) |
+| Fast blinking | Setup hotspot active (see [Wi-Fi setup](NETWORK_SETUP.md)) |
 | Off | Network state cannot be read (for example, NetworkManager is not available), or the device is shutting down |
 
 The state is read from NetworkManager every 5 seconds, read-only (`nmcli device status`, only device type and state; no names, addresses or passwords). LAN takes precedence over WLAN. For a test without changing the network, the LED service accepts `--network connected|connecting|disconnected|hotspot|unknown`; the default `auto` reads the real state.

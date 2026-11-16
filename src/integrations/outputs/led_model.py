@@ -28,7 +28,7 @@ class Network(str, Enum):
     CONNECTED = 'connected'        # LAN or WLAN connected
     CONNECTING = 'connecting'      # a connection is being established
     DISCONNECTED = 'disconnected'  # no network connection
-    HOTSPOT = 'hotspot'            # setup hotspot active (reserved)
+    HOTSPOT = 'hotspot'            # setup hotspot active (NET-01)
 
 
 def classify_network(status) -> Network:

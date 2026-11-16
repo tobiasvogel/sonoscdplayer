@@ -14,6 +14,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 from tools.render_runtime_units import (
     EARLY_UNIT,
+    NETWORK_RULE,
     POLKIT_RULE,
     UNITS,
     existing_dropins,
@@ -362,7 +363,7 @@ class RuntimeUnitRenderTests(unittest.TestCase):
 
     def test_renders_four_complete_units_and_preserves_safety_controls(self):
         units = render(ROOT / 'systemd', **self.inputs)
-        self.assertEqual(set(units), set(UNITS) | {EARLY_UNIT, POLKIT_RULE})
+        self.assertEqual(set(units), set(UNITS) | {EARLY_UNIT, POLKIT_RULE, NETWORK_RULE})
         for name in UNITS:
             content = units[name]
             self.assertIn('WorkingDirectory=/opt/example/src', content)
@@ -402,21 +403,31 @@ class RuntimeUnitRenderTests(unittest.TestCase):
         self.assertIn('--execute --selected-target-execute --power-actions '
                       '--drive-activity-events --connect-gestures',
                       units['sonoscdplayer-buttons.service'])
-        self.assertIn('--ui-target-rpc --ui-power-actions',
-                      units['sonoscdplayer-oled.service'])
-        rule = units[POLKIT_RULE]
-        self.assertIn('subject.user === "example"', rule)
-        self.assertNotIn('@SONOSCDPLAYER_', rule)
+        oled = units['sonoscdplayer-oled.service']
+        self.assertIn('--ui-target-rpc --ui-power-actions --ui-network-setup', oled)
+        self.assertIn('AmbientCapabilities=CAP_NET_BIND_SERVICE', oled)
+        for name in (POLKIT_RULE, NETWORK_RULE):
+            rule = units[name]
+            self.assertIn('subject.user === "example"', rule)
+            self.assertNotIn('@SONOSCDPLAYER_', rule)
+        network = units[NETWORK_RULE]
+        for action in ('wifi.scan', 'wifi.share.protected',
+                       'settings.modify.system', 'network-control'):
+            self.assertIn('org.freedesktop.NetworkManager.' + action, network)
 
     def test_each_optional_switch_can_be_disabled(self):
         units = render(ROOT / 'systemd', power_actions=False,
                        drive_activity_events=False, connect_gestures=False,
-                       **self.inputs)
+                       network_setup=False, **self.inputs)
         buttons = units['sonoscdplayer-buttons.service']
         for flag in ('--power-actions', '--drive-activity-events', '--connect-gestures'):
             self.assertNotIn(flag, buttons)
-        self.assertNotIn('--ui-power-actions', units['sonoscdplayer-oled.service'])
+        oled = units['sonoscdplayer-oled.service']
+        self.assertNotIn('--ui-power-actions', oled)
+        self.assertNotIn('--ui-network-setup', oled)
+        self.assertNotIn('AmbientCapabilities', oled)
         self.assertNotIn(POLKIT_RULE, units)
+        self.assertNotIn(NETWORK_RULE, units)
 
     def test_rejects_root_or_malformed_service_user(self):
         for invalid in ('root', '', 'Pi', 'a b', 'x;rm', '../x'):
@@ -540,11 +551,11 @@ class RuntimeUnitRenderTests(unittest.TestCase):
                 ('--service-user', self.inputs['user']),
             ):
                 argv.extend((name, value))
-            main(argv + ['--no-power-actions'])
+            main(argv + ['--no-power-actions', '--no-network-setup'])
             self.assertEqual({p.name for p in out.iterdir()}, set(UNITS) | {EARLY_UNIT})
             main(argv)
             self.assertEqual({p.name for p in out.iterdir()},
-                             set(UNITS) | {EARLY_UNIT, POLKIT_RULE})
+                             set(UNITS) | {EARLY_UNIT, POLKIT_RULE, NETWORK_RULE})
 
 
 def tracked_text_files():

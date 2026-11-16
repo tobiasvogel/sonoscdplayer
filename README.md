@@ -147,7 +147,7 @@ The active configuration lives in **`/etc/sonoscdplayer/`** (`player.toml`, `int
 
 A configuration update utility offers dry-run checks, structural validation against an optional reference, backup creation, and rollback support. Perform service-affecting updates while the player is idle. See [Updating the player configuration](docs/CONFIG_UPDATE.md).
 
-Guided first-time network setup, including a temporary Wi-Fi setup hotspot and browser-based configuration, is planned but is not yet a complete setup workflow.
+To join a new Wi-Fi network, hold CONNECT for 10 seconds: the player opens a temporary setup hotspot and shows its name, password and a web address on the display. See [Wi-Fi setup](docs/NETWORK_SETUP.md).
 
 ## Display and languages
 
@@ -200,6 +200,7 @@ Additional documentation is available in the [`docs/`](docs/) directory.
 | [Configuration files and location](docs/CONFIGURATION.md) | Standard location, installation, migration, and systemd units |
 | [Configuration updates](docs/CONFIG_UPDATE.md) | TOML configuration checks, replacement, and rollback |
 | [Display languages and translations](docs/I18N.md) | Language selection and adding translations |
+| [Wi-Fi setup](docs/NETWORK_SETUP.md) | Joining a new Wi-Fi network through the setup hotspot |
 | [Power button](docs/POWER_BUTTON.md) | Power controls, permissions, and activation |
 | [Shutdown and restart screens](docs/SHUTDOWN_SCREENS.md) | OLED screens while shutting down or restarting, installation, optional exitrd |
 | [Status LEDs](docs/STATUS_LEDS.md) | Meaning of the power and connection (network) LEDs |

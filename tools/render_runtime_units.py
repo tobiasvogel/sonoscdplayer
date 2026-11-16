@@ -6,9 +6,10 @@ placeholders; they contain no installation paths or account names. All units
 read their configuration from the standard location (src/config_paths.py,
 /etc/sonoscdplayer by default).
 
-POWER actions (with the polkit rule), drive-activity wake events and CONNECT
-gestures are enabled by default; --no-power-actions, --no-drive-activity-events
-and --no-connect-gestures switch them off.
+POWER actions (with the polkit rule), drive-activity wake events, CONNECT
+gestures and the WLAN setup hotspot (with its polkit rule) are enabled by
+default; --no-power-actions, --no-drive-activity-events, --no-connect-gestures
+and --no-network-setup switch them off.
 
 Preparation only: never installs, removes drop-ins, calls systemctl, or restarts.
 All deployment-specific paths must be passed explicitly and remain local.
@@ -30,6 +31,7 @@ UNITS = (
 )
 EARLY_UNIT = 'sonoscdplayer-early-power-led.service'
 POLKIT_RULE = '50-sonoscdplayer-power.rules'
+NETWORK_RULE = '50-sonoscdplayer-network.rules'
 PLACEHOLDER = re.compile(r'@SONOSCDPLAYER_[A-Z_]+@')
 USER_NAME = re.compile(r'[a-z_][a-z0-9_-]{0,31}')
 
@@ -78,7 +80,7 @@ def add_after(text, requirement):
 
 
 def render(source_dir, *, checkout, python_venv, user, power_actions=True,
-           drive_activity_events=True, connect_gestures=True):
+           drive_activity_events=True, connect_gestures=True, network_setup=True):
     checkout, python_venv = (absolute_path(str(v)) for v in (checkout, python_venv))
     player_config, interface_config, ui_config = (absolute_path(str(p)) for p in (
         config_paths.player_config(), config_paths.interface_config(),
@@ -86,7 +88,8 @@ def render(source_dir, *, checkout, python_venv, user, power_actions=True,
     user = service_user(user)
     root = Path(source_dir)
     rendered = {}
-    oled_power = ' --ui-power-actions' if power_actions else ''
+    oled_power = (' --ui-power-actions' if power_actions else '') + (
+        ' --ui-network-setup' if network_setup else '')
     buttons_extra = ''.join(flag for flag, enabled in (
         (' --power-actions', power_actions),
         (' --drive-activity-events', drive_activity_events),
@@ -131,6 +134,10 @@ def render(source_dir, *, checkout, python_venv, user, power_actions=True,
                 ), 1)
             else:
                 text = replace_directive(text, 'RuntimeDirectory', 'sonoscdplayer-ui')
+            if network_setup and 'AmbientCapabilities=' not in text:
+                # The setup page listens on port 80 of the hotspot address only.
+                text = text.replace('[Service]\n', (
+                    '[Service]\nAmbientCapabilities=CAP_NET_BIND_SERVICE\n'), 1)
         if name == UNITS[3]:
             text = add_after(text, 'sonoscdplayer-oled.service')
             text = replace_directive(
@@ -149,6 +156,10 @@ def render(source_dir, *, checkout, python_venv, user, power_actions=True,
         rule = (root / 'polkit' / POLKIT_RULE).read_text(encoding='utf-8')
         rendered[POLKIT_RULE] = require_rendered(
             POLKIT_RULE, rule.replace('@SONOSCDPLAYER_USER@', user))
+    if network_setup:
+        rule = (root / 'polkit' / NETWORK_RULE).read_text(encoding='utf-8')
+        rendered[NETWORK_RULE] = require_rendered(
+            NETWORK_RULE, rule.replace('@SONOSCDPLAYER_USER@', user))
     return rendered
 
 
@@ -201,6 +212,8 @@ def main(argv=None):
                    default=True, help='button presses wake an idle optical drive')
     p.add_argument('--connect-gestures', action=argparse.BooleanOptionalAction,
                    default=True, help='CONNECT short/long gestures and speaker_select')
+    p.add_argument('--network-setup', action=argparse.BooleanOptionalAction, default=True,
+                   help='WLAN setup hotspot (CONNECT 10 s); renders the NetworkManager polkit rule')
     p.add_argument('--systemd-dir', type=Path, default=Path('/etc/systemd/system'),
                    help='Read-only check for installed drop-ins overriding rendered units')
     args = p.parse_args(argv)
@@ -212,7 +225,8 @@ def main(argv=None):
                    checkout=args.checkout, python_venv=args.python_venv,
                    user=args.service_user, power_actions=args.power_actions,
                    drive_activity_events=args.drive_activity_events,
-                   connect_gestures=args.connect_gestures)
+                   connect_gestures=args.connect_gestures,
+                   network_setup=args.network_setup)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for name, text in units.items():
         out = args.output_dir / name

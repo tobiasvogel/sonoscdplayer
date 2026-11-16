@@ -1,0 +1,19 @@
+// SonosCDPlayer: let the service user run the WLAN setup (NET-01).
+//
+// Template only: render it with
+//   tools/render_runtime_units.py --service-user <account> ...
+// and install the rendered copy (root) into /etc/polkit-1/rules.d/.
+// Remove the file to revoke. Granted to this one account only: scan WLANs,
+// start the setup hotspot, and add/activate WLAN connection profiles.
+polkit.addRule(function(action, subject) {
+    var allowed = [
+        "org.freedesktop.NetworkManager.wifi.scan",
+        "org.freedesktop.NetworkManager.wifi.share.protected",
+        "org.freedesktop.NetworkManager.wifi.share.open",
+        "org.freedesktop.NetworkManager.settings.modify.system",
+        "org.freedesktop.NetworkManager.network-control"
+    ];
+    if (subject.user === "@SONOSCDPLAYER_USER@" && allowed.indexOf(action.id) >= 0) {
+        return polkit.Result.YES;
+    }
+});

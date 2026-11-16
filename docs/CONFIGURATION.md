@@ -91,4 +91,4 @@ python3 tools/render_runtime_units.py --output-dir /tmp/sonoscdplayer-units \
     --checkout <checkout>/src --python-venv <venv>/bin/python --service-user <account>
 ```
 
-By default the rendered units enable the POWER button actions (and render the matching polkit rule), idle-drive wake on button activity and the CONNECT gestures. Use `--no-power-actions`, `--no-drive-activity-events` or `--no-connect-gestures` to switch an option off. The tool only writes the output directory; review the files before installing them.
+By default the rendered units enable the POWER button actions (and render the matching polkit rule), idle-drive wake on button activity, the CONNECT gestures and the Wi-Fi setup hotspot (with its own polkit rule, see [Wi-Fi setup](NETWORK_SETUP.md)). Use `--no-power-actions`, `--no-drive-activity-events`, `--no-connect-gestures` or `--no-network-setup` to switch an option off. The tool only writes the output directory; review the files before installing them.

@@ -185,7 +185,16 @@ NETWORK_POLL_SECONDS = 5.0
 def read_network() -> Network:
     """Read-only NetworkManager snapshot reduced to the connection-LED state."""
     from sonos_ui.network_status import read_network_status
-    return classify_network(read_network_status())
+    network = classify_network(read_network_status())
+    if network == Network.CONNECTED:
+        # The setup hotspot also counts as a connected WLAN device.
+        try:
+            from network_setup.nm import Nm
+            if Nm(timeout=2).hotspot_active():
+                return Network.HOTSPOT
+        except Exception:
+            pass
+    return network
 
 
 def main(argv=None):

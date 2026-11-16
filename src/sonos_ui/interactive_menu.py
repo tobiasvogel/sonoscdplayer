@@ -39,7 +39,7 @@ VOLUME_OVERLAY_SECONDS = 2.0
 
 
 class InteractiveMenu:
-    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None, network_reader=read_network_status, current_target=None, on_language_change=None):
+    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None, network_reader=read_network_status, current_target=None, on_language_change=None, network_setup=None):
         self.state = MultiSelection()
         self.language = Translator(language).language
         self.languages = available_languages()
@@ -82,6 +82,11 @@ class InteractiveMenu:
         self._current_target = current_target
         # Called with the new language code after a confirmed menu choice.
         self._on_language_change = on_language_change
+        # WLAN setup through the hotspot (NET-01); None = not available here.
+        self.network_setup = network_setup
+        self._netsetup_last = None
+        self._netsetup_was_active = None
+        self.player_mode = None   # updated by the OLED loop from the player status
         self._current_loaded = current_target is None
         self._current_worker = None
         self._current_result = None
@@ -159,7 +164,10 @@ class InteractiveMenu:
             if self.menu_focus == 0:
                 self._open_network_status(now)
             elif self.menu_focus == 1:
-                self._connect_event('settings', now)
+                if self.network_setup is not None:
+                    self._start_network_setup(now)
+                else:
+                    self._connect_event('settings', now)
             else:
                 self.section = 'main'
                 self.menu_focus = 1
@@ -211,9 +219,48 @@ class InteractiveMenu:
         self.connect_notices.post(notice, now=now)
         self.active = True
 
+    def netsetup_snapshot(self):
+        if self.network_setup is None:
+            return None
+        snap = self.network_setup.snapshot()
+        return snap if snap.state != 'idle' else None
+
+    def _start_network_setup(self, now):
+        """CONNECT >= 10 s or menu: start, or cancel a running setup."""
+        if self.network_setup.active:
+            self.network_setup.cancel()
+            if self._netsetup_was_active is not None:
+                self.active = self._netsetup_was_active
+                self._netsetup_was_active = None
+            self._show_notice(Notice('netsetup.cancelled', priority=40, duration_seconds=2.0), now)
+            return True
+        if self.player_mode in ('STARTING', 'PLAYING', 'PAUSED'):
+            # The WLAN chip cannot be hotspot and client at once: playback would stop.
+            self._show_notice(Notice('netsetup.blocked', severity='warning', priority=40,
+                                     duration_seconds=3.0), now)
+            return True
+        # Drop the CONNECT countdown first, so the screen before it comes back later.
+        self.connect_notices.clear(now=now)
+        self._restore_after_notice()
+        if self._netsetup_was_active is None:
+            self._netsetup_was_active = self.active
+        self.network_setup.start()
+        self.active = True
+        return True
+
     def _connect_event(self, action, now):
         if self._power_busy or self.power_menu:
             return False
+        if self.network_setup is not None and action == 'setup_requested':
+            return self._start_network_setup(now)
+        if self.network_setup is not None and action == 'settings':
+            # CONNECT 3-10 s: the network menu with "Set up Wi-Fi".
+            self.connect_notices.clear(now=now)
+            self._restore_after_notice()
+            self.active = True
+            self.section = 'network'
+            self.menu_focus = 1
+            return True
         if action not in ('status', 'settings', 'settings_hint', 'setup_requested',
                           'warning_1', 'warning_2', 'warning_3',
                           'warning_4', 'warning_5'):
@@ -394,6 +441,7 @@ class InteractiveMenu:
                     self.connect_notices.clear(now=now)
                     self._show_notice(notice, now)
         changed = self._poll_current_target(now) or changed
+        changed = self._poll_network_setup() or changed
         with self._lock:
             result = self._target_result
             self._target_result = None
@@ -428,6 +476,22 @@ class InteractiveMenu:
         elif not self._has_targets() and now >= self._next_refresh:
             # Nothing found yet (e.g. network not ready at boot): retry quietly.
             self._start_discovery(now)
+        return changed
+
+    def _poll_network_setup(self):
+        if self.network_setup is None:
+            return False
+        self.network_setup.tick()
+        snap = self.network_setup.snapshot()
+        changed = snap != self._netsetup_last
+        self._netsetup_last = snap
+        if snap.state == 'idle' and self._netsetup_was_active is not None:
+            # Setup over: back to what was shown before it started.
+            self.active = self._netsetup_was_active
+            self._netsetup_was_active = None
+            changed = True
+        elif snap.state != 'idle':
+            self.active = True
         return changed
 
     def _poll_current_target(self, now):
@@ -503,6 +567,9 @@ class InteractiveMenu:
             return self._open_targets(now)
         if name == 'connect':
             return self._connect_event(event, now)
+        if self.netsetup_snapshot() is not None and not self.power_menu and \
+                (name, event) != ('power', 'short'):
+            return False  # the setup screen stays until done, timed out or cancelled
         if (name, event) == ('power', 'short') and self._power_action is not None:
             self.connect_notices.clear(now=now)
             self._restore_after_notice()
@@ -589,6 +656,9 @@ class InteractiveMenu:
         if active_notice is not None:
             return image_to_frame(self._connect_renderer.render(
                 active_notice, language=self.language, grayscale=True))
+        netsetup = self.netsetup_snapshot()
+        if netsetup is not None and not self.power_menu:
+            return image_to_frame(self.renderer.render_netsetup(netsetup, gray=True))
         if self.power_menu:
             return image_to_frame(self.renderer.render_power(
                 self.power_focus, self.power_notice, gray=True))
