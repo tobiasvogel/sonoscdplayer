@@ -101,6 +101,7 @@ def probe_cache(identity, cache_path):
     return DiscCache(cache_path).get(identity)
 
 
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--device', default='auto')
     parser.add_argument('--config', type=Path, default=player_config())
