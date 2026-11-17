@@ -20,7 +20,8 @@ from .notice_render import NoticeRenderer
 from .notice_policy import NoticeTiming
 from .text_input import DEFAULT_EXTRA_CHARACTERS
 from .wifi_entry import WifiEntryController
-from .navigation_pages import NavigationRenderer, MAIN_ITEMS, NETWORK_ITEMS, SETTINGS_ITEMS
+from .navigation_pages import NavigationRenderer
+from .menu_catalog import NAVIGATION_PAGES
 from .network_status import NetworkStatus, read_network_status
 
 
@@ -138,8 +139,8 @@ class InteractiveMenu:
 
     def _navigation_event(self, name, event, now):
         if name == 'encoder' and event in ('left', 'right'):
-            choices = {'main': MAIN_ITEMS, 'network': NETWORK_ITEMS,
-                       'settings': SETTINGS_ITEMS}.get(self.section)
+            page = NAVIGATION_PAGES.get(self.section)
+            choices = page[1] if page is not None else None
             if choices is None:
                 return False
             step = 1 if event == 'right' else -1
@@ -721,11 +722,8 @@ class InteractiveMenu:
             self.renderer.bottom(im,status=self.renderer.tr('status.local_only'),
                                  footer=self.renderer.tr('footer.confirm'))
             return image_to_frame(im)
-        if self.section in ('main', 'network', 'settings'):
-            items = {'main': MAIN_ITEMS, 'network': NETWORK_ITEMS,
-                     'settings': SETTINGS_ITEMS}[self.section]
-            heading = {'main': 'menu.main', 'network': 'menu.network',
-                       'settings': 'menu.settings'}[self.section]
+        if self.section in NAVIGATION_PAGES:
+            heading, items = NAVIGATION_PAGES[self.section]
             return image_to_frame(self._navigation_renderer.page(
                 heading, items, self.menu_focus, language=self.language))
         if self.section == 'network_status':
