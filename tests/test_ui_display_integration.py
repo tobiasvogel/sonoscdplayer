@@ -124,16 +124,34 @@ class DisplayIntegrationTests(unittest.TestCase):
         self.assertEqual(menu.semantic_screen(now=2).items[0].key,
                          "network.status")
 
-    def test_unsupported_target_feedback_fails_closed_in_oled_preview(self):
-        """Target notices are semantic but not yet covered by 01C OLED preview."""
+    def test_target_feedback_keeps_legacy_oled_footer_and_semantic_notice(self):
+        """Pending/rejected targets keep OLED rows but character notices."""
+        from dataclasses import replace
+        from sonos_ui.multi_target import Target, Topology
+        target = Target("speaker-opaque", "Wohnzimmer",
+                        ("speaker-opaque",), ("Wohnzimmer",))
         menu = InteractiveMenu()
         menu.active, menu.section = True, "targets"
-        menu.state = menu.state.action("confirm")  # empty Apply stays an ordinary screen
-        menu._target_pending = True
-        screen = menu.semantic_screen(now=0)
-        self.assertEqual(screen.kind, "notice")
-        with self.assertRaises(ValueError):
-            graphic_frame_from_menu(menu, now=0)
+        menu.state = replace(menu.state, topology=Topology((target,)),
+                             focus=0, draft=frozenset(("speaker-opaque",)))
+        for pending, notice in ((True, "status.target_pending"),
+                                (False, "status.target_rejected"),
+                                (False, "status.target_accepted"),
+                                (False, "status.invalid_selection")):
+            with self.subTest(pending=pending, notice=notice):
+                menu._target_pending = pending
+                menu.state = replace(menu.state, notice=notice)
+                semantic = menu.semantic_screen(now=1)
+                self.assertEqual(semantic.kind, "notice")
+                with patch("sonos_ui.render.MARQUEE_CLOCK.elapsed", return_value=0):
+                    original = menu.frame(lambda image: image)
+                    preview = graphic_frame_from_menu(menu, now=1)
+                self.assertEqual((original.mode, original.tobytes()),
+                                 (preview.mode, preview.tobytes()))
+                character = character_frame_from_menu(menu, LCD16, now=1)
+                self.assertNotIn("speaker-opaque", "".join(character.lines))
+                self.assertEqual(menu.section, "targets")
+                self.assertEqual(menu.state.notice, notice)
 
     def test_character_and_graphic_paths_do_not_add_display_inputs(self):
         """Neither projection confirms a notice or selects a speaker."""
