@@ -6,6 +6,16 @@ max_buffer_mib = 16
 enabled = true
 read_cd_text = true
 online_lookup = true
+# Autoselect only when textual evidence clearly separates release candidates.
+auto_match = true
+
+[metadata.matching]
+# Heuristic agreement score (0..100), not a probability.
+confidence_threshold = 90
+# Require this lead over the second-ranked release.
+minimum_margin = 15
+# Minimum number of CD-TEXT track titles for ambiguous DiscIDs.
+minimum_track_titles = 3
 
 # First external metadata provider; a one-shot request after local TOC.
 [metadata.musicbrainz]
