@@ -15,6 +15,10 @@ _DISC = re.compile(r'^\s*CD-TEXT for Disc:\s*$', re.IGNORECASE)
 _TRACK = re.compile(r'^\s*CD-TEXT for Track\s+(\d+):\s*$', re.IGNORECASE)
 _FIELD = re.compile(r'^\s*([A-Z][A-Z0-9_ ]*):\s*(.*?)\s*$', re.IGNORECASE)
 
+# cd-info reports ISRC and MCN above the CD-TEXT analysis section.
+_TECH_ISRC = re.compile(r'^TRACK\s+(\d+)\s+ISRC:\s*([A-Z0-9]{12})\s*$', re.I)
+_TECH_MCN = re.compile(r'^Media Catalog Number \(MCN\):\s*(\d{13})\s*$', re.I)
+
 
 @dataclass(frozen=True)
 class LocalTrackMetadata:
@@ -32,6 +36,7 @@ class LocalDiscMetadata:
     tracks: tuple[LocalTrackMetadata, ...]
     cdtext_status: str  # available | absent | unavailable | failed | disabled
     cdtext_error: str | None = None
+    mcn: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -66,6 +71,42 @@ def parse_cd_info_cdtext(output: str) -> tuple[dict[str, str], dict[int, dict[st
     return disc, tracks
 
 
+
+def parse_cd_info_identifiers(output: str) -> tuple[str | None, dict[int, str]]:
+    """Extract technical MCN/ISRC without treating CD-TEXT as identifiers.
+
+    All-zero placeholders and conflicting repeated identifiers are ignored.
+    """
+    mcn = None
+    mcn_conflict = False
+    isrcs: dict[int, str] = {}
+    conflicted: set[int] = set()
+    for line in output.split('CD Analysis Report', 1)[0].splitlines():
+        match = _TECH_ISRC.fullmatch(line)
+        if match:
+            number, value = int(match.group(1)), match.group(2).upper()
+            if number < 1 or value == '0' * 12 or number in conflicted:
+                continue
+            previous = isrcs.get(number)
+            if previous is not None and previous != value:
+                isrcs.pop(number, None)
+                conflicted.add(number)
+            else:
+                isrcs[number] = value
+            continue
+        match = _TECH_MCN.fullmatch(line)
+        if match and not mcn_conflict:
+            value = match.group(1)
+            if value == '0' * 13:
+                continue
+            if mcn is not None and mcn != value:
+                mcn = None
+                mcn_conflict = True
+            else:
+                mcn = value
+    return mcn, isrcs
+
+
 def read_cdtext(device: str, *, timeout: int = 15,
                 runner=subprocess.run) -> tuple[str, dict, dict, str | None]:
     """Return (status, disc fields, track fields, sanitized error).
@@ -86,9 +127,14 @@ def read_cdtext(device: str, *, timeout: int = 15,
     if result.returncode != 0:
         return 'failed', {}, {}, f'cd-info exited with code {result.returncode}'
     disc, tracks = parse_cd_info_cdtext(result.stdout)
-    if not disc and not any(tracks.values()):
-        return 'absent', {}, {}, None
-    return 'available', disc, tracks, None
+    has_cdtext = bool(disc or any(tracks.values()))
+    mcn, isrcs = parse_cd_info_identifiers(result.stdout)
+    if mcn is not None:
+        disc.setdefault('MCN', mcn)
+    for number, isrc in isrcs.items():
+        tracks.setdefault(number, {}).setdefault('ISRC', isrc)
+    # ISRC/MCN may be present even without any CD-TEXT.
+    return ('available' if has_cdtext else 'absent'), disc, tracks, None
 
 
 def build_local_metadata(toc: DiscTOC, *, cdtext_status: str,
@@ -110,4 +156,4 @@ def build_local_metadata(toc: DiscTOC, *, cdtext_status: str,
     return LocalDiscMetadata(album=disc_fields.get('TITLE'),
                              artist=disc_fields.get('PERFORMER'),
                              tracks=tracks, cdtext_status=cdtext_status,
-                             cdtext_error=error)
+                             cdtext_error=error, mcn=disc_fields.get('MCN'))
