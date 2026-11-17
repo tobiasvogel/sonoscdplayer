@@ -1,9 +1,16 @@
-"""State machine of one WLAN setup (D-223).
+"""State machine of one WLAN setup (D-223, D-224).
 
 idle -> preparing -> hotspot -> connecting -> connected
                         ^            |
                         +-- failed --+   (hotspot restarts, same password)
 hotspot -> idle after 15 min or on cancel (CONNECT held again).
+
+On-device entry (encoder press on the hotspot screen, D-224):
+hotspot -> scanning -> choosing -> connecting -> connected
+              (hotspot ends)  ^         |
+                              +-failed--+   (back to the list/password entry)
+choosing -> preparing -> hotspot ("Back"); choosing -> idle after 15 min
+without input. The list, password entry etc. are UI state in the menu.
 All NetworkManager work runs in worker threads; the UI only reads snapshots.
 """
 from __future__ import annotations
@@ -18,6 +25,7 @@ from .nm import NmError, valid_password, valid_ssid
 HOTSPOT_SECONDS = 15 * 60
 CONNECTED_SHOW_SECONDS = 6.0
 HANDOVER_SECONDS = 2.0
+RADIO_SETTLE_SECONDS = 1.0   # after the hotspot ends, before scanning again
 SSID_PREFIX = 'SonosCDPlayer-'
 # No 0/O, 1/I/L: the password is read off a small display.
 PASSWORD_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
@@ -30,7 +38,8 @@ def new_password():
 
 @dataclass(frozen=True)
 class SetupSnapshot:
-    state: str = 'idle'          # idle, preparing, hotspot, connecting, connected, unavailable
+    # idle, preparing, hotspot, scanning, choosing, connecting, connected, unavailable
+    state: str = 'idle'
     hotspot_ssid: str = ''
     password: str = ''
     address: str = ''
@@ -39,6 +48,8 @@ class SetupSnapshot:
     error: str = ''              # '', 'connect_failed', 'hotspot_failed', 'no_wifi'
     remaining: int = 0           # seconds until the hotspot ends
     networks: tuple = ()
+    manual: bool = False         # on-device entry instead of the web page
+    saved: tuple = ()            # SSIDs with a stored profile (on-device entry)
 
 
 class SetupSession:
@@ -60,12 +71,13 @@ class SetupSession:
         self._worker = None
         self._generation = 0
         self._sleep = sleep
+        self._identity = None        # (hotspot ssid, password, networks)
 
     # ---- read side -------------------------------------------------------
     def snapshot(self):
         with self._lock:
             snap = self._snap
-            if snap.state == 'hotspot':
+            if snap.state in ('hotspot', 'choosing'):
                 remaining = max(0, int(self._deadline - self._clock()))
                 snap = SetupSnapshot(**{**snap.__dict__, 'remaining': remaining})
             return snap
@@ -107,18 +119,65 @@ class SetupSession:
                 return 'not_ready'
             self._generation += 1
             generation = self._generation
+            hidden = ssid not in {n.ssid for n in self._snap.networks}
             self._snap = SetupSnapshot(**{**self._snap.__dict__, 'state': 'connecting',
                                           'target': ssid, 'error': ''})
-        self._spawn(self._connect, generation, ssid, password)
+        self._spawn(self._connect, generation, ssid, password, hidden)
         return ''
+
+    # ---- on-device entry (D-224) ----------------------------------------
+    def manual(self):
+        """End the hotspot and offer the network list on the display."""
+        with self._lock:
+            if self._snap.state != 'hotspot':
+                return False
+            self._generation += 1
+            generation = self._generation
+            previous = self._snap.networks
+            self._snap = SetupSnapshot(state='scanning', manual=True)
+        self._spawn(self._scan_manual, generation, previous)
+        return True
+
+    def back_to_hotspot(self):
+        """From the on-device list back to the hotspot (same name and password)."""
+        with self._lock:
+            if self._snap.state != 'choosing' or self._identity is None:
+                return False
+            self._generation += 1
+            generation = self._generation
+            self._snap = SetupSnapshot(state='preparing')
+        self._spawn(self._restart_hotspot, generation)
+        return True
+
+    def connect_manual(self, ssid, password=None, *, hidden=False):
+        """Connect from the display; password None uses a stored profile."""
+        if not valid_ssid(ssid):
+            return 'invalid_ssid'
+        if password is not None and not valid_password(password):
+            return 'invalid_password'
+        with self._lock:
+            if self._snap.state != 'choosing':
+                return 'not_ready'
+            self._generation += 1
+            generation = self._generation
+            self._snap = SetupSnapshot(**{**self._snap.__dict__, 'state': 'connecting',
+                                          'target': ssid, 'error': ''})
+        self._spawn(self._connect_manual, generation, ssid, password, hidden)
+        return ''
+
+    def touch(self):
+        """Input on the display: the 15 minutes start again."""
+        with self._lock:
+            if self._snap.state == 'choosing':
+                self._deadline = self._clock() + self._hotspot_seconds
 
     def tick(self):
         """Call regularly (UI loop): ends an unused hotspot, hides 'connected'."""
         now = self._clock()
         with self._lock:
             state = self._snap.state
-            if state == 'hotspot' and now >= self._deadline:
-                self._log('[netsetup] hotspot timed out')
+            if state in ('hotspot', 'choosing') and now >= self._deadline:
+                self._log('[netsetup] setup timed out')
                 expired = True
             elif state in ('connected', 'unavailable') and now >= self._shown_until:
                 self._snap = SetupSnapshot()
@@ -170,6 +229,7 @@ class SetupSession:
             self._stop_web()
 
     def _start_hotspot(self, generation, ssid, password, networks, *, error):
+        self._identity = (ssid, password, networks)
         self._nm.start_hotspot(self._device, ssid, password)
         address = self._nm.hotspot_address(self._device)
         url = self._start_web(address)
@@ -187,13 +247,13 @@ class SetupSession:
         else:
             self._log('[netsetup] hotspot active')
 
-    def _connect(self, generation, ssid, password):
+    def _connect(self, generation, ssid, password, hidden=False):
         snap = self.snapshot()
         self._sleep(HANDOVER_SECONDS)  # let the answer page reach the phone first
         self._stop_web()
         try:
             self._nm.stop_hotspot()
-            self._nm.connect(self._device, ssid, password)
+            self._nm.connect(self._device, ssid, password, hidden=hidden)
         except NmError as exc:
             self._log(f'[netsetup] {exc}')
             if not self._current(generation):
@@ -213,6 +273,57 @@ class SetupSession:
                 self._snap = SetupSnapshot(state='connected', target=ssid)
                 self._shown_until = self._clock() + CONNECTED_SHOW_SECONDS
         self._log('[netsetup] connected to the new network')
+
+    def _failed(self, generation, error):
+        with self._lock:
+            if self._current(generation):
+                self._snap = SetupSnapshot(state='unavailable', error=error)
+                self._shown_until = self._clock() + CONNECTED_SHOW_SECONDS
+
+    def _scan_manual(self, generation, previous):
+        self._stop_web()
+        try:
+            self._nm.stop_hotspot()
+        except NmError as exc:
+            self._log(f'[netsetup] {exc}')
+        self._sleep(RADIO_SETTLE_SECONDS)
+        # Right after the hotspot a scan may come back empty: keep the old list then.
+        networks = tuple(self._nm.scan(self._device)) or previous
+        saved = tuple(sorted(self._nm.saved_profiles()))
+        with self._lock:
+            if self._current(generation):
+                self._deadline = self._clock() + self._hotspot_seconds
+                self._snap = SetupSnapshot(state='choosing', manual=True,
+                                           networks=networks, saved=saved)
+
+    def _restart_hotspot(self, generation):
+        ssid, password, networks = self._identity
+        try:
+            self._start_hotspot(generation, ssid, password, networks, error='')
+        except NmError as exc:
+            self._log(f'[netsetup] {exc}')
+            self._failed(generation, 'hotspot_failed')
+            self._stop_web()
+
+    def _connect_manual(self, generation, ssid, password, hidden):
+        try:
+            if password is None:
+                self._nm.connect_saved(self._device, ssid)
+            else:
+                self._nm.connect(self._device, ssid, password, hidden=hidden)
+        except NmError as exc:
+            self._log(f'[netsetup] {exc}')
+            with self._lock:
+                if self._current(generation):
+                    self._deadline = self._clock() + self._hotspot_seconds
+                    self._snap = SetupSnapshot(**{**self._snap.__dict__, 'state': 'choosing',
+                                                  'error': 'connect_failed'})
+            return
+        with self._lock:
+            if self._current(generation):
+                self._snap = SetupSnapshot(state='connected', target=ssid)
+                self._shown_until = self._clock() + CONNECTED_SHOW_SECONDS
+        self._log('[netsetup] connected to the chosen network')
 
     def _teardown(self, _unused):
         self._stop_web()

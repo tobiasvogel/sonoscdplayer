@@ -3,7 +3,7 @@
 Only these NetworkManager operations are used: list devices, scan WLANs,
 create/remove the temporary hotspot profile, and add/activate/remove WLAN
 profiles created by this player (name prefix ``sonoscdplayer-wifi``). Other
-profiles are never modified. Secrets are passed to nmcli but never logged or
+profiles are only activated (on-device setup, D-224), never modified. Secrets are passed to nmcli but never logged or
 included in error messages.
 """
 from __future__ import annotations
@@ -145,7 +145,7 @@ class Nm:
         self._run('connection', 'down', 'id', HOTSPOT_PROFILE, check=False)
         self._run('connection', 'delete', 'id', HOTSPOT_PROFILE, check=False)
 
-    def connect(self, device, ssid, password):
+    def connect(self, device, ssid, password, *, hidden=False):
         """Add (or replace) the player's profile for ssid, prefer it, activate it."""
         if not valid_ssid(ssid) or not valid_password(password):
             raise NmError('invalid network name or password')
@@ -154,6 +154,8 @@ class Nm:
         args = ['connection', 'add', 'type', 'wifi', 'ifname', device, 'con-name', name,
                 'ssid', ssid, 'connection.autoconnect', 'yes',
                 'connection.autoconnect-priority', str(NEW_PRIORITY)]
+        if hidden:
+            args += ['802-11-wireless.hidden', 'yes']
         if password:
             args += ['wifi-sec.key-mgmt', 'wpa-psk', 'wifi-sec.psk', password]
         self._run(*args)
@@ -163,6 +165,46 @@ class Nm:
             self._run('connection', 'delete', 'id', name, check=False)
             raise NmError('could not connect to the network')
         self._demote_older(name)
+        return name
+
+    def saved_profiles(self):
+        """{ssid: profile name} of all stored WLAN profiles (not the hotspot)."""
+        try:
+            out = self._run('--terse', '--escape', 'yes', '--fields', 'NAME,TYPE',
+                            'connection', 'show').stdout
+        except NmError:
+            return {}
+        found = {}
+        for line in out.splitlines():
+            fields = split_terse(line)
+            if len(fields) != 2 or fields[1] != '802-11-wireless' or \
+                    fields[0] == HOTSPOT_PROFILE:
+                continue
+            try:
+                value = self._run('--escape', 'no', '--get-values', '802-11-wireless.ssid',
+                                  'connection', 'show', 'id', fields[0]).stdout
+            except NmError:
+                continue
+            ssid = value.rstrip('\n')
+            if valid_ssid(ssid):
+                # Prefer the player's own profile if there are several.
+                if ssid not in found or fields[0].startswith(WIFI_PROFILE_PREFIX):
+                    found[ssid] = fields[0]
+        return found
+
+    def connect_saved(self, device, ssid):
+        """Activate an existing profile for ssid without asking for its password."""
+        name = self.saved_profiles().get(ssid)
+        if name is None:
+            raise NmError('no saved profile for this network')
+        result = self._run('--wait', str(CONNECT_WAIT_SECONDS), 'connection', 'up', 'id', name,
+                           'ifname', device, timeout=CONNECT_WAIT_SECONDS + 10, check=False)
+        if result.returncode != 0:
+            raise NmError('could not connect with the saved profile')
+        if name.startswith(WIFI_PROFILE_PREFIX):
+            self._run('connection', 'modify', 'id', name,
+                      'connection.autoconnect-priority', str(NEW_PRIORITY), check=False)
+            self._demote_older(name)
         return name
 
     def _demote_older(self, keep):

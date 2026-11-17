@@ -4,3 +4,8 @@ language = "de" # de | en
 
 [ui.cover]
 mode = "auto" # auto | on | off
+
+[ui.text_input]
+# Characters offered in addition to ASCII when typing a name on the device
+# (e.g. a hidden Wi-Fi network). Wi-Fi passwords are always ASCII.
+extra_characters = "äöüÄÖÜß"

@@ -48,7 +48,7 @@ Every tool still accepts an explicit path (`--config`, `--display-config`, `--ui
 
 If a required file is missing, the service stops with an error naming the expected path. Exceptions:
 
-- `ui.toml` is optional; without it the built-in UI defaults apply.
+- `ui.toml` is optional; without it the built-in UI defaults apply. Besides the language and cover mode it holds `[ui.text_input] extra_characters`, the characters offered in addition to ASCII when typing a name on the device (default `äöüÄÖÜß`, see [Wi-Fi setup](NETWORK_SETUP.md#entering-on-the-device)).
 - The early boot power LED falls back to BCM12 so that boot is never blocked.
 - The OLED renderer without `--execute` (offline preview) uses the default display pins.
 

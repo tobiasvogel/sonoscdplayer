@@ -18,6 +18,8 @@ from .connect_notice import ConnectNoticeView
 from .notice import Notice
 from .notice_render import NoticeRenderer
 from .notice_policy import NoticeTiming
+from .text_input import DEFAULT_EXTRA_CHARACTERS
+from .wifi_entry import WifiEntryController
 from .navigation_pages import NavigationRenderer, MAIN_ITEMS, NETWORK_ITEMS, SETTINGS_ITEMS
 from .network_status import NetworkStatus, read_network_status
 
@@ -40,7 +42,7 @@ VOLUME_OVERLAY_SECONDS = 2.0
 
 
 class InteractiveMenu:
-    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None, network_reader=read_network_status, current_target=None, on_language_change=None, network_setup=None):
+    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None, network_reader=read_network_status, current_target=None, on_language_change=None, network_setup=None, text_extra_characters=DEFAULT_EXTRA_CHARACTERS):
         self.state = MultiSelection()
         self.language = Translator(language).language
         self.languages = available_languages()
@@ -85,6 +87,10 @@ class InteractiveMenu:
         self._on_language_change = on_language_change
         # WLAN setup through the hotspot (NET-01); None = not available here.
         self.network_setup = network_setup
+        # On-device WLAN choice from the hotspot screen (D-224).
+        self.wifi_entry = (WifiEntryController(network_setup,
+                                               extra_characters=text_extra_characters)
+                           if network_setup is not None else None)
         self._netsetup_last = None
         self._netsetup_was_active = None
         self.player_mode = None   # updated by the OLED loop from the player status
@@ -486,6 +492,7 @@ class InteractiveMenu:
         snap = self.network_setup.snapshot()
         changed = snap != self._netsetup_last
         self._netsetup_last = snap
+        self.wifi_entry.sync(snap)
         if snap.state == 'idle' and self._netsetup_was_active is not None:
             # Setup over: back to what was shown before it started.
             self.active = self._netsetup_was_active
@@ -568,9 +575,13 @@ class InteractiveMenu:
             return self._open_targets(now)
         if name == 'connect':
             return self._connect_event(event, now)
-        if self.netsetup_snapshot() is not None and not self.power_menu and \
-                (name, event) != ('power', 'short'):
-            return False  # the setup screen stays until done, timed out or cancelled
+        netsetup = self.netsetup_snapshot()
+        if netsetup is not None and not self.power_menu and (name, event) != ('power', 'short'):
+            # The setup screen stays until done, timed out or cancelled; the
+            # encoder drives the on-device choice (D-224).
+            if name in ('encoder', 'encoder_sw'):
+                return self.wifi_entry.event(name, event, now, netsetup)
+            return False
         if (name, event) == ('power', 'short') and self._power_action is not None:
             self.connect_notices.clear(now=now)
             self._restore_after_notice()
@@ -660,7 +671,8 @@ class InteractiveMenu:
                 dismiss_hint=NoticeTiming().encoder_can_confirm(active_notice)))
         netsetup = self.netsetup_snapshot()
         if netsetup is not None and not self.power_menu:
-            return image_to_frame(self.renderer.render_netsetup(netsetup, gray=True))
+            return image_to_frame(self.wifi_entry.frame(self.renderer, netsetup,
+                                                        now=time.monotonic()))
         if self.power_menu:
             return image_to_frame(self.renderer.render_power(
                 self.power_focus, self.power_notice, gray=True))

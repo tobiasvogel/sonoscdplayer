@@ -141,10 +141,18 @@ class FakeNm:
     def stop_hotspot(self):
         self.log.append(('stop',))
 
-    def connect(self, device, ssid, password):
-        self.log.append(('connect', ssid, password))
+    def connect(self, device, ssid, password, hidden=False):
+        self.log.append(('connect', ssid, password) + (('hidden',) if hidden else ()))
         if not self.connect_ok:
             raise NmError('could not connect')
+
+    def saved_profiles(self):
+        return dict(getattr(self, 'saved', {}))
+
+    def connect_saved(self, device, ssid):
+        self.log.append(('saved', ssid))
+        if not getattr(self, 'saved_ok', True):
+            raise NmError('saved profile failed')
 
 
 class FakeWeb:

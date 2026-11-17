@@ -78,7 +78,7 @@ class MultiRenderer(Renderer):
             d.rounded_rectangle((10,76,10+round(107*level/100),84),radius=2,fill=t.accent)
         return ssd1327_gray(im) if gray else im
 
-    def render_netsetup(self,snap,*,gray=False):
+    def render_netsetup(self,snap,*,gray=False,footer=None):
         """WLAN setup (D-223): hotspot name, password and address, or progress."""
         t=self.theme
         im=Image.new('RGB',(128,128),t.background)
@@ -94,10 +94,11 @@ class MultiRenderer(Renderer):
                 status,fill=self.tr('netsetup.failed'),t.warning
             else:
                 status,fill=self.tr('netsetup.remaining',minutes=max(1,(snap.remaining+59)//60)),None
-            self.bottom(im,status=status,footer=self.tr('netsetup.cancel_hint'),status_fill=fill)
+            self.bottom(im,status=status,footer=footer or self.tr('netsetup.cancel_hint'),status_fill=fill)
         else:
             message={
                 'preparing':self.tr('netsetup.preparing'),
+                'scanning':self.tr('netsetup.scanning'),
                 'connecting':self.tr('netsetup.connecting',ssid=snap.target),
                 'connected':self.tr('netsetup.connected',ssid=snap.target),
                 'unavailable':self.tr('netsetup.no_wifi' if snap.error=='no_wifi' else 'netsetup.hotspot_failed'),
@@ -107,7 +108,30 @@ class MultiRenderer(Renderer):
             top=64-len(lines)*7
             for row,line in enumerate(lines):
                 self.text(im,(6,top+row*14),line,fill=fill,size=11,bold=True,width=116,height=14,scroll=True)
-            self.bottom(im,status='',footer=self.tr('netsetup.cancel_hint') if snap.state=='preparing' else '')
+            self.bottom(im,status='',footer=self.tr('netsetup.cancel_hint') if snap.state in ('preparing','scanning') else '')
+        return ssd1327_gray(im) if gray else im
+
+    def render_wifi_list(self,networks,saved,focus,*,notice='',gray=False):
+        """On-device WLAN choice (D-224): found networks, hidden network, back."""
+        t=self.theme
+        im=Image.new('RGB',(128,128),t.background)
+        self.shell(im,self.tr('netsetup.choose'))
+        rows=[(n.ssid,'✓' if n.ssid in saved else '') for n in networks]
+        rows+=[(self.tr('netsetup.hidden'),'+'),(self.tr('netsetup.back_hotspot'),'<')]
+        if not networks:
+            self.text(im,(6,16),self.tr('netsetup.none_found'),fill=t.secondary,size=8,width=116,height=10)
+        for slot,index in enumerate(self.menu_window(len(rows),focus)):
+            label,mark=rows[index]
+            self.menu_row(im,slot,label,selected=index==focus,marker=mark)
+        if notice:
+            status,fill=self.tr(notice),t.warning
+        elif focus<len(networks):
+            n=networks[focus]
+            kind='saved' if n.ssid in saved else ('secure' if n.secure else 'open')
+            status,fill=self.tr('netsetup.detail',signal=n.signal,kind=self.tr('netsetup.kind.'+kind)),None
+        else:
+            status,fill='',None
+        self.bottom(im,status=status,footer=self.tr('footer.select'),status_fill=fill)
         return ssd1327_gray(im) if gray else im
 
     def render_power(self,focus,notice='',*,gray=False):

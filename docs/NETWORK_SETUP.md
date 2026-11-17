@@ -1,6 +1,6 @@
 # Wi-Fi setup (setup hotspot)
 
-The player can join a new Wi-Fi network without a keyboard, screen or SSH access. It opens a temporary hotspot; a phone or laptop connects to it and enters the Wi-Fi details in a small web page.
+The player can join a new Wi-Fi network without a keyboard, screen or SSH access. It opens a temporary hotspot; a phone or laptop connects to it and enters the Wi-Fi details in a small web page. Without a phone, the network can also be chosen and its password entered on the player itself with the rotary encoder.
 
 ## Starting and ending
 
@@ -10,7 +10,8 @@ The player can join a new Wi-Fi network without a keyboard, screen or SSH access
 | Hold CONNECT for 3–10 seconds, release | Opens the network menu with **Set up Wi-Fi** selected |
 | Menu **Network → Set up Wi-Fi** | Starts the setup |
 | Hold CONNECT for 10 seconds again | Ends the setup |
-| No input for 15 minutes | The hotspot ends by itself |
+| Press the encoder on the hotspot screen | Ends the hotspot and shows the network list on the display (see [Entering on the device](#entering-on-the-device)) |
+| No input for 15 minutes | The setup ends by itself |
 
 The setup does not start while a CD is playing or paused; stop playback first. While the setup screen is shown, other buttons are ignored (POWER still opens the power menu).
 
@@ -25,11 +26,42 @@ The setup does not start while a CD is playing or paused; stop playback first. W
 
 The page has no other function, loads no external resources and is reachable only on the hotspot while it is active. Phones often show it automatically as a sign-in page.
 
+## Entering on the device
+
+The hotspot screen alternates between the hints "Press: enter manually" and "CONNECT 10 s: cancel". Pressing the encoder ends the hotspot, searches again and shows:
+
+- the visible networks, strongest first; a ✓ marks networks with a stored profile. The status line shows signal strength and whether the network is saved, secured or open;
+- **Hidden network …** to type its name;
+- **Back to hotspot**, which reopens the hotspot with the same name and password.
+
+Choosing a network:
+
+| Network | What happens |
+| --- | --- |
+| Stored profile (✓) | Connects right away without asking. If that fails, the password entry opens. |
+| Open | Connects right away. |
+| Secured | The password entry opens. |
+| Hidden | Name entry, then password entry (leave it empty for an open network). |
+
+**Text entry:** turning the encoder moves a character wheel, pressing takes the character shown in the frame. The wheel holds all printable ASCII characters (a–z, A–Z, 0–9, space shown as ␣, punctuation) and three actions, reached by turning left from **a**: ✓ **Done**, ⌫ **Delete last character**, ✕ **Cancel** (back to the list). Turning fast skips four characters per step. The password is shown in plain text, so typing errors can be seen; the counter shows the length used and allowed (WLAN names: bytes, at most 32; passwords: 8–63 characters).
+
+Names can also contain the extra characters `äöüÄÖÜß`. Change them in `ui.toml` (see [Configuration](CONFIGURATION.md)):
+
+```toml
+[ui.text_input]
+extra_characters = "äöüÄÖÜß"
+```
+
+Passwords are always ASCII, as WPA2 requires.
+
+After a wrong password, the entry opens again with the text kept and a hint. Without input for 15 minutes the setup ends; CONNECT 10 s ends it at any time.
+
 ## Stored networks
 
 - Networks added here are saved as NetworkManager profiles named `sonoscdplayer-wifi-<hash>`.
 - The newest one gets autoconnect priority 100; earlier ones added here drop to 90.
-- Other Wi-Fi profiles (for example from Raspberry Pi Imager) are kept unchanged with their own priority, so the player still falls back to them when the new network is out of reach.
+- Other Wi-Fi profiles (for example from Raspberry Pi Imager) are kept unchanged with their own priority, so the player still falls back to them when the new network is out of reach. On the device they are only activated, never changed.
+- Hidden networks are stored as hidden, so the player also finds them again after a restart.
 - To remove a network: `nmcli connection delete id <profile>`.
 
 ## Connection LED

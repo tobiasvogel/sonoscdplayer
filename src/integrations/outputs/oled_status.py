@@ -440,7 +440,8 @@ def main(argv=None):
                                group_target_rpc=group_sender, power_action=power_action,
                                current_target=current_target,
                                on_language_change=ui_state.save_language,
-                               network_setup=network_setup)
+                               network_setup=network_setup,
+                               text_extra_characters=ui_config.extra_characters)
         receiver_context = EventReceiver(args.ui_events_socket)
     def stop_on_sigterm(_signum, _frame):
         # systemd's normal SIGTERM must run finally and release SPI/GPIO.
