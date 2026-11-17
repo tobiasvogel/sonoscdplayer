@@ -27,6 +27,7 @@ import tomllib
 from cd_toc import read_toc
 from disc_startup import inspect_initial_disc
 from disc_monitor import DiscMonitor
+from player_metadata import MetadataWorker
 from safe_drive_eject import eject_verified_idle
 from player_state import PlayerState, Mode
 from drive_power import DrivePowerManager, load_config
@@ -400,7 +401,7 @@ def eject_and_recover(controller, monitor, power):
     return result
 
 
-def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, target_store=None):
+def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, target_store=None, metadata_worker=None):
     path = Path(socket_path).expanduser().absolute()
     if not path.parent.is_dir():
         raise ValueError('socket parent directory does not exist')
@@ -494,6 +495,11 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     publisher.publish(controller, power)
                     return reply
 
+                if metadata_worker is not None:
+                    current_toc = disc_monitor.loaded_toc if disc_monitor is not None else drive_toc
+                    if metadata_worker.observe(current_toc):
+                        controller.metadata_snapshot = None
+
                 # Volume control is passed only to volume requests, so the
                 # established command path stays unchanged for all others.
                 extra = ({'volume': volume} if isinstance(request, dict)
@@ -569,6 +575,12 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                             controller._joined or controller._group_uncertain
                         ),
                     )
+                if metadata_worker is not None:
+                    current_toc = disc_monitor.loaded_toc if disc_monitor is not None else drive_toc
+                    if metadata_worker.observe(current_toc):
+                        controller.metadata_snapshot = None
+                    if metadata_worker.poll(current_toc):
+                        controller.metadata_snapshot = metadata_worker.snapshot
                 publisher.publish(controller, power)
 
             busy = None
@@ -655,6 +667,7 @@ def run(argv=None):
         ap.error('config file not found')
     ctrl = None
     power = None
+    metadata_worker = None
     shutdown_policy = 'stop_owned'
     previous_sigterm = (install_sigterm_handler()
                         if threading.current_thread() is threading.main_thread() else None)
@@ -682,6 +695,31 @@ def run(argv=None):
                                         startup_timeout=float(startup_timeout)), route=routed_source_ip)
         ctrl.disc_status = disc_status
         ctrl.display_toc = toc  # existing verified TOC, read-only display metadata
+        # Metadata is strictly best-effort, never a prerequisite for playback.
+        # No CD commands in this worker; only cached TOC, local DB and network.
+        try:
+            meta = settings.get('metadata', {})
+            if not isinstance(meta, dict):
+                raise ValueError('metadata must be a TOML table')
+            if meta.get('enabled', True) is True:
+                musicbrainz = meta.get('musicbrainz', {})
+                if not isinstance(musicbrainz, dict):
+                    raise ValueError('metadata.musicbrainz must be a table')
+                timeout = musicbrainz.get('timeout_seconds', 8)
+                if type(timeout) not in (int, float) or not 1 <= timeout <= 30:
+                    raise ValueError('invalid metadata.musicbrainz.timeout_seconds')
+                # Do not make requests when online metadata is disabled.
+                online = (meta.get('online_lookup', True) is True
+                          and musicbrainz.get('enabled', True) is True)
+                metadata_worker = MetadataWorker(
+                    cache_path=Path(ns.state_dir) / 'metadata.sqlite3',
+                    cover_dir=Path(ns.state_dir) / 'covers',
+                    online=online, timeout=timeout,
+                    display_supports_cover=False)
+                metadata_worker.observe(toc)
+        except (OSError, ValueError) as exc:
+            print(f'[metadata] disabled: {type(exc).__name__}', flush=True)
+
         # Never issue start/keepalive motor commands when no readable disc was
         # selected. M0.19b will implement safe idle discovery and reloading.
         if toc is not None:
@@ -704,13 +742,16 @@ def run(argv=None):
             monitor.loaded_toc = toc  # verified startup TOC, never stale
         serve(ctrl, ns.socket, power=power, drive_id=identity,
               drive_toc=toc, disc_monitor=monitor,
-              target_store=TargetStore(ns.state_dir))
+              target_store=TargetStore(ns.state_dir),
+              metadata_worker=metadata_worker)
     except KeyboardInterrupt:
         print('\n[M0.12b-r7] shutdown requested', flush=True)
     except Exception as exc:
         print(f'[M0.12a] service failed: {type(exc).__name__}: {exc}', file=sys.stderr)
         return 1
     finally:
+        if metadata_worker is not None:
+            metadata_worker.close()
         if ctrl:
             result = ctrl.shutdown_owned(shutdown_policy)
             print(f'[M0.12b-r7] shutdown: {result}', flush=True)

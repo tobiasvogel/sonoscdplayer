@@ -146,6 +146,7 @@ class Controller:
         self._display_progress = None  # read-only Sonos timing; never used to control PLAY
         self._display_progress_poll_at = None
         self.display_toc = None  # validated startup/idle TOC; never read disc for display
+        self.metadata_snapshot = None  # asynchronously loaded, TOC-qualified display info
         self.stopped_since = None
         self.status_hook = None  # optional read-only snapshot publisher
         self.disc_status = None  # optional M0.19 independent disc observation
@@ -195,6 +196,8 @@ class Controller:
             snapshot['progress'] = dict(self._display_progress)
         if self.disc_status is not None:
             snapshot['disc'] = self.disc_status.snapshot()
+        if self.metadata_snapshot is not None:
+            snapshot['metadata'] = dict(self.metadata_snapshot)
         return snapshot
 
     def _ownership(self, player, expected):
