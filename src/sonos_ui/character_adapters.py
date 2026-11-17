@@ -38,7 +38,7 @@ def navigation_screen(section: str, focus: int, *, language: str = "de") -> Sema
 
 def text_entry_frame(entry: TextEntry, capabilities: DisplayCapabilities,
                      *, title: str, language: str = "de",
-                     subtitle: str = "") -> CharacterFrame:
+                     subtitle: str = "", page: int = 0) -> CharacterFrame:
     """A tiny-screen projection of the existing D-224 input state.
 
     The controller still owns the 95-character wheel, fast turning, UTF-8
@@ -51,6 +51,8 @@ def text_entry_frame(entry: TextEntry, capabilities: DisplayCapabilities,
     width, height = capabilities.columns, capabilities.rows
     if width < 8 or height < 2:
         raise ValueError("text entry requires at least 8 columns and 2 rows")
+    if type(page) is not int or page < 0:
+        raise ValueError("page must be nonnegative")
     tr = Translator(language).tr
     current = entry.current
     if current in _ACTION_KEYS:
@@ -75,7 +77,7 @@ def text_entry_frame(entry: TextEntry, capabilities: DisplayCapabilities,
 
     if height == 2:
         # Errors temporarily occupy the first row, not the selected action.
-        lines = [fit(diagnostic) if entry.error else fit(tail),
+        lines = [fit(diagnostic) if entry.error and page % 2 == 0 else fit(tail),
                  fit("> " + choice)]
     elif height == 3:
         lines = [fit(title), fit(diagnostic) if entry.error else fit(tail),
