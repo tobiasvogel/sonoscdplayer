@@ -20,6 +20,8 @@ from disc_musicbrainz import identity_from_toc, lookup_disc
 from disc_metadata import read_cdtext, build_local_metadata
 from disc_matching import MatchingPolicy, decide_release, merged_metadata
 from metadata_language_rules import load_language_rules
+from disc_cache import DiscCache
+from disc_covers import CoverCache, CoverPolicy
 from disc_startup import optical_devices
 from drive_access import drive_lock
 
@@ -80,15 +82,38 @@ def matching_settings(path):
     return read_text, policy
 
 
-def main(argv=None):
+
+def cover_settings(path):
+    with path.open('rb') as handle:
+        config = tomllib.load(handle)
+    metadata = config.get('metadata', {})
+    values = metadata.get('cover_art', {})
+    if not isinstance(values, dict):
+        raise ValueError('[metadata.cover_art] must be a table')
+    return CoverPolicy(
+        enabled=values.get('enabled', False),
+        max_dimension_px=values.get('max_dimension_px', 512))
+
+
+def probe_cache(identity, cache_path):
+    if cache_path is None:
+        return None
+    return DiscCache(cache_path).get(identity)
+
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--device', default='auto')
     parser.add_argument('--config', type=Path, default=player_config())
     parser.add_argument('--offline', action='store_true', help='DiscID only, without network')
+    parser.add_argument('--cache-db', type=Path, help='Opt-in local SQLite metadata cache')
+    parser.add_argument('--cover-dir', type=Path, help='Explicit directory for cached cover JPEGs')
+    parser.add_argument('--fetch-cover', action='store_true', help='Fetch a single cover when configured')
+
     args = parser.parse_args(argv)
     try:
         enabled, online, timeout = read_settings(args.config)
         read_text, matching_policy = matching_settings(args.config)
+        cover_policy = cover_settings(args.config)
         if not enabled:
             print('Metadata disabled by configuration', file=sys.stderr)
             return 2
@@ -116,7 +141,22 @@ def main(argv=None):
         track_fields=track_fields, error=text_error)
     report = {'disc_id': identity.disc_id, 'toc': identity.toc,
               'track_count': len(toc.tracks)}
-    if args.offline or not online:
+    try:
+        cached = probe_cache(identity, args.cache_db)
+    except (OSError, ValueError) as exc:
+        print(f'Cache read failed: {type(exc).__name__}', file=sys.stderr)
+        return 1
+    if cached is not None and not args.offline:
+        # Current CD-TEXT remains authoritative, even when a cache entry exists.
+        effective = local if local.cdtext_status == 'available' else cached.local
+        report.update(
+            lookup_status='cached', match_status='cached',
+            selected_release_id=cached.release_id,
+            match_score=cached.confidence_score,
+            match_method=cached.match_method,
+            local_metadata=local.to_dict(),
+            effective_metadata=effective.to_dict())
+    elif args.offline or not online:
         report['lookup_status'] = 'disabled'
     else:
         result = lookup_disc(identity, track_count=len(toc.tracks),
@@ -140,6 +180,22 @@ def main(argv=None):
             effective_metadata=merged_metadata(local, decision).to_dict())
         if result.error:
             report['lookup_error'] = result.error
+        if args.cache_db is not None and result.status in ('unique', 'ambiguous'):
+            try:
+                saved = DiscCache(args.cache_db).put(
+                    identity, local, release_id=decision.selected_release_id,
+                    match_method=decision.status if decision.selected_release_id else None,
+                    confidence_score=decision.score if decision.selected_release_id else None)
+                report['cache_saved'] = saved
+            except (OSError, ValueError) as exc:
+                report['cache_error'] = type(exc).__name__
+    if args.fetch_cover and args.cover_dir is not None and report.get('selected_release_id'):
+        try:
+            image_path = CoverCache(args.cover_dir).get_or_download(
+                report['selected_release_id'], policy=cover_policy)
+            report['cover_file'] = str(image_path) if image_path else None
+        except (OSError, ValueError, RuntimeError) as exc:
+            report['cover_error'] = type(exc).__name__
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
 

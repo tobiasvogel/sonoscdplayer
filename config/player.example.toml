@@ -25,6 +25,12 @@ soft_suffixes = ["Sing mit", "TV Version"]
 # Protected terms never silently match a different edition/recording.
 protected_suffixes = ["Live", "Instrumental", "Remastered", "Deluxe"]
 
+# META-01C: one stored cover per release, no upscaling or second size.
+# Pillow is needed only when downloading covers.
+[metadata.cover_art]
+enabled = false
+max_dimension_px = 512
+
 # First external metadata provider; a one-shot request after local TOC.
 [metadata.musicbrainz]
 enabled = true
