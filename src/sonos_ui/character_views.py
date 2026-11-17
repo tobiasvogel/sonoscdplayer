@@ -31,7 +31,8 @@ def _page(now: float, count: int) -> int:
 def _render(screen, capabilities, now):
     return render_character_screen(
         screen, capabilities,
-        page=_page(now, character_page_count(screen, capabilities)))
+        page=_page(now, character_page_count(screen, capabilities)),
+        scroll_offset=int(now * 2) % 96)
 
 
 def _notice_frame(notice: Notice, capabilities, now, language):
@@ -48,23 +49,30 @@ def _notice_frame(notice: Notice, capabilities, now, language):
 def _setup_frame(snapshot, capabilities, now, language):
     tr = Translator(language).tr
     if snapshot.state == "hotspot":
-        # SSID, password and address remain available in separate rotating
-        # views even on 16x2. Never log or store the hotspot password here.
+        # Rotate complete label/value pairs. Unlike a single 'label: value'
+        # line this never clips the *start* of the password or SSID on 16x2.
         fields = (
-            ScreenItem("ssid", tr("netsetup.network"),
-                       value=snapshot.hotspot_ssid),
-            ScreenItem("password", tr("netsetup.password"),
-                       value=snapshot.password),
-            ScreenItem("address", tr("netsetup.open"),
-                       value=snapshot.url.replace("http://", "")),
-            ScreenItem("remaining", "Zeit",
-                       value=tr("netsetup.remaining",
-                                minutes=max(1, (snapshot.remaining + 59) // 60))),
-            ScreenItem("manual", tr("netsetup.manual_hint")),
-            ScreenItem("cancel", tr("netsetup.cancel_hint")),
+            ("SSID", snapshot.hotspot_ssid),
+            (tr("netsetup.password"), snapshot.password),
+            ("URL", snapshot.url.replace("http://", "")),
+            (tr("netsetup.remaining",
+                minutes=max(1, (snapshot.remaining + 59) // 60)),
+             tr("netsetup.manual_hint")),
+            (tr("netsetup.cancel_hint"), ""),
         )
-        return _render(SemanticScreen("idle", heading=tr("netsetup.title"),
-                                     items=fields), capabilities, now)
+        label, value = fields[_page(now, len(fields))]
+        if capabilities.rows == 2:
+            screen = SemanticScreen("idle", items=(
+                ScreenItem("label", label),
+                ScreenItem("value", value or " ")))
+        else:
+            screen = SemanticScreen("idle", items=(
+                ScreenItem("label", tr("netsetup.title")),
+                ScreenItem("name", label),
+                ScreenItem("value", value or " "),
+                ScreenItem("cancel", tr("netsetup.cancel_hint"))))
+        return render_character_screen(
+            screen, capabilities, scroll_offset=int(now * 2) % 96)
     key = {
         "preparing": "netsetup.preparing",
         "scanning": "netsetup.scanning",
@@ -131,7 +139,7 @@ def character_frame_from_menu(menu, capabilities: DisplayCapabilities,
                             capabilities, now, menu.language)
                 return render_character_screen(
                     wifi_choice_screen(wifi, setup, language=menu.language),
-                    capabilities)
+                    capabilities, scroll_offset=int(now * 2) % 96)
             if wifi.mode in ("ssid", "password"):
                 if wifi.entry is None:
                     raise ValueError("WLAN entry state missing")
@@ -147,7 +155,7 @@ def character_frame_from_menu(menu, capabilities: DisplayCapabilities,
     if menu.power_menu:
         return render_character_screen(
             power_menu_screen(menu.power_focus, language=menu.language),
-            capabilities)
+            capabilities, scroll_offset=int(now * 2) % 96)
 
     if menu.volume_overlay_active(now=now):
         return _render(SemanticScreen(
@@ -159,12 +167,13 @@ def character_frame_from_menu(menu, capabilities: DisplayCapabilities,
         return render_character_screen(
             language_menu_screen(tuple(menu.languages), menu.language_focus,
                                  language=menu.language),
-            capabilities)
+            capabilities, scroll_offset=int(now * 2) % 96)
     if menu.active:
         if menu.section in ("main", "network", "settings"):
             return render_character_screen(
                 navigation_screen(menu.section, menu.menu_focus,
-                                  language=menu.language), capabilities)
+                                  language=menu.language), capabilities,
+                scroll_offset=int(now * 2) % 96)
         if menu.section == "network_status":
             return _render(network_status_screen(menu.network_snapshot,
                                                 language=menu.language),
@@ -178,7 +187,7 @@ def character_frame_from_menu(menu, capabilities: DisplayCapabilities,
                                      capabilities, now, menu.language)
             return render_character_screen(
                 speaker_selection_screen(menu.state, language=menu.language),
-                capabilities)
+                capabilities, scroll_offset=int(now * 2) % 96)
         raise ValueError("unknown active menu section")
 
     if not isinstance(base_screen, SemanticScreen) or base_screen.kind not in (
