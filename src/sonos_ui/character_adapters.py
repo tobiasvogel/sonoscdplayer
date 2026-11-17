@@ -9,23 +9,17 @@ from .character_layout import portable_text, render_character_screen
 from .display_backend import CharacterFrame, validate_frame
 from .display_capabilities import DisplayCapabilities
 from .i18n import Translator
-from .navigation_pages import MAIN_ITEMS, NETWORK_ITEMS, SETTINGS_ITEMS
+from .menu_catalog import navigation_page
 from .semantic_screen import ScreenItem, SemanticScreen
 from .text_input import CANCEL, DELETE, DONE, TextEntry
 
-_PAGE_KEYS = {"main": ("menu.main", MAIN_ITEMS),
-              "network": ("menu.network", NETWORK_ITEMS),
-              "settings": ("menu.settings", SETTINGS_ITEMS)}
 _ACTION_KEYS = {DONE: "textinput.done", DELETE: "textinput.delete",
                 CANCEL: "textinput.cancel"}
 
 
 def navigation_screen(section: str, focus: int, *, language: str = "de") -> SemanticScreen:
     """Project the live menu's existing item ordering, without driving it."""
-    try:
-        heading, item_keys = _PAGE_KEYS[section]
-    except (KeyError, TypeError) as exc:
-        raise ValueError("unsupported navigation section") from exc
+    heading, item_keys = navigation_page(section)
     if type(focus) is not int or not 0 <= focus < len(item_keys):
         raise ValueError("focus outside navigation menu")
     tr = Translator(language).tr
