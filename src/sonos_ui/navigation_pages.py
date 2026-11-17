@@ -7,7 +7,7 @@ from .menu_catalog import MAIN_ITEMS, NETWORK_ITEMS, SETTINGS_ITEMS
 
 
 class NavigationRenderer(Renderer):
-    def _menu_pixels(self, heading, items, focus):
+    def _menu_pixels(self, heading, items, focus, *, language):
         """One pixel layout for legacy navigation and semantic navigation."""
         t = self.theme
         image = Image.new("RGB", (128, 128), t.background)
@@ -17,17 +17,20 @@ class NavigationRenderer(Renderer):
             marker = "<" if key == "menu.back" else ">"
             self.menu_row(image, slot, label, selected=index == focus,
                           marker=marker)
-        self.bottom(image, status=self.tr("status.local_only"),
-                    footer=self.tr("footer.select"))
+        from .i18n import Translator
+        tr = Translator(language).tr
+        self.bottom(image, status=tr("status.local_only"),
+                    footer=tr("footer.select"))
         return ssd1327_gray(image)
 
     def page(self, heading, items, focus, *, language="de"):
         """Existing OLED API kept intact for production callers."""
         from .i18n import Translator
         tr = Translator(language).tr
-        return self._menu_pixels(tr(heading), [(key, tr(key)) for key in items], focus)
+        return self._menu_pixels(tr(heading), [(key, tr(key)) for key in items],
+                                 focus, language=language)
 
-    def semantic_menu(self, screen):
+    def semantic_menu(self, screen, *, language="de"):
         """Render a navigation SemanticScreen using the identical pixel path.
 
         The semantic item keys control marker choice, not execution. Only
@@ -41,9 +44,10 @@ class NavigationRenderer(Renderer):
             raise ValueError("navigation menu needs exactly one focused item")
         return self._menu_pixels(
             screen.heading, [(item.key, item.label) for item in screen.items],
-            next(i for i, item in enumerate(screen.items) if item.focused))
+            next(i for i, item in enumerate(screen.items) if item.focused),
+            language=language)
 
-    def _status_pixels(self, heading, fields):
+    def _status_pixels(self, heading, fields, *, language):
         t = self.theme
         image = Image.new("RGB", (128, 128), t.background)
         self.shell(image, heading)
@@ -53,8 +57,10 @@ class NavigationRenderer(Renderer):
                       width=116, height=11)
             self.text(image, (9, y + 11), value, fill=t.primary, size=10,
                       bold=True, width=113, height=13)
-        self.bottom(image, status=self.tr("network.readonly"),
-                    footer=self.tr("footer.select"))
+        from .i18n import Translator
+        tr = Translator(language).tr
+        self.bottom(image, status=tr("network.readonly"),
+                    footer=tr("footer.select"))
         return ssd1327_gray(image)
 
     def network_status(self, snapshot, *, language="de"):
@@ -67,9 +73,10 @@ class NavigationRenderer(Renderer):
             ("network.preferred", "network.preferred." + snapshot.preferred),
         )
         return self._status_pixels(
-            tr("network.status"), [(tr(key), tr(value)) for key, value in fields])
+            tr("network.status"), [(tr(key), tr(value)) for key, value in fields],
+            language=language)
 
-    def semantic_network_status(self, screen):
+    def semantic_network_status(self, screen, *, language="de"):
         """Render the common read-only network-status screen."""
         from .semantic_screen import SemanticScreen
         if not isinstance(screen, SemanticScreen) or screen.kind != "idle":
@@ -80,4 +87,5 @@ class NavigationRenderer(Renderer):
         if any(item.value is None for item in screen.items):
             raise ValueError("network-status values required")
         return self._status_pixels(
-            screen.heading, [(item.label, item.value) for item in screen.items])
+            screen.heading, [(item.label, item.value) for item in screen.items],
+            language=language)
