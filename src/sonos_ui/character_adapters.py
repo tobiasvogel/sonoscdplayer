@@ -76,15 +76,19 @@ def text_entry_frame(entry: TextEntry, capabilities: DisplayCapabilities,
         diagnostic = count
 
     if height == 2:
-        # Errors temporarily occupy the first row, not the selected action.
-        lines = [fit(diagnostic) if entry.error and page % 2 == 0 else fit(tail),
-                 fit("> " + choice)]
+        # Every view retains the action wheel on row 2. With an error we
+        # alternate error/text/context; otherwise text/context alternates.
+        if entry.error:
+            top = (diagnostic, tail, subtitle or title)[page % 3]
+        else:
+            top = (tail, subtitle or title)[page % 2]
+        lines = [fit(top), fit("> " + choice)]
     elif height == 3:
         lines = [fit(title), fit(diagnostic) if entry.error else fit(tail),
                  fit("> " + choice)]
     else:
-        lines = [fit(title), fit(tail), fit(diagnostic),
-                 fit("> " + choice)]
+        lines = [fit(subtitle if subtitle and page % 2 else title),
+                 fit(tail), fit(diagnostic), fit("> " + choice)]
         if height > 4 and subtitle:
             lines.append(fit(subtitle))
     lines.extend([" " * width] * (height - len(lines)))
