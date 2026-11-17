@@ -3,9 +3,7 @@ from PIL import Image
 from .render import Renderer
 from .theme import ssd1327_gray
 
-MAIN_ITEMS = ("menu.targets", "menu.network", "menu.settings", "menu.back")
-NETWORK_ITEMS = ("network.status", "network.setup", "menu.back")
-SETTINGS_ITEMS = ("menu.language", "menu.rescan", "menu.back")
+from .menu_catalog import MAIN_ITEMS, NETWORK_ITEMS, SETTINGS_ITEMS
 
 
 class NavigationRenderer(Renderer):
