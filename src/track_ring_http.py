@@ -321,6 +321,8 @@ class Handler(BaseHTTPRequestHandler):
         server = self.server
         if server.cover_route is None or urlsplit(self.path).path != server.cover_route:
             return False
+        # Shows in the player journal whether Sonos fetches the album art at all.
+        server.stream.log(f'cover {self.command} client={self.client_address[0]}')
         self.send_response(200)
         self.send_header('Content-Type', 'image/jpeg')
         self.send_header('Content-Length', str(len(server.cover_bytes)))

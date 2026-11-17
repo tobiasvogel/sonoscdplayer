@@ -67,13 +67,31 @@ def _prefer_cdtext(local, cached):
 
 
 def _cover_file(cover_cache, release_id, cover_policy):
-    """Covers are optional: any failure here keeps album and titles."""
-    if not release_id or not cover_policy.enabled:
-        return None
+    """(path or None, reason). Covers are optional: failures keep the titles."""
+    if not release_id:
+        return None, 'no_release'
+    if not cover_policy.enabled:
+        return None, 'off'
     try:
-        return cover_cache.get_or_download(release_id, policy=cover_policy)
-    except Exception:
-        return None
+        path = cover_cache.get_or_download(release_id, policy=cover_policy)
+    except Exception as exc:
+        return None, 'failed:' + type(exc).__name__
+    # None from the cache = no front image at the Cover Art Archive or download failed.
+    return (path, 'ok') if path is not None else (None, 'unavailable')
+
+
+def describe(snapshot):
+    """One journal line per disc: how the names and the cover were found."""
+    if not isinstance(snapshot, dict):
+        return '[metadata] none'
+    titles = sum(1 for t in snapshot.get('tracks') or () if t.get('title'))
+    release = snapshot.get('release_id') or '-'
+    return ('[metadata] disc={disc} match={match} cdtext={cdtext} lookup={lookup} '
+            'release={release} titles={titles}/{count} cover={cover}').format(
+        disc=snapshot.get('disc_id') or '-', match=snapshot.get('match_status'),
+        cdtext=snapshot.get('cdtext_status'), lookup=snapshot.get('lookup_status') or '-',
+        release=release, titles=titles, count=len(snapshot.get('tracks') or ()),
+        cover=snapshot.get('cover_status'))
 
 
 def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, timeout,
@@ -122,7 +140,7 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                             # Metadata remains available even with read-only DB.
                             pass
     # Cover mode off suppresses even cached files in the UI.
-    cover = _cover_file(cover_cache, release_id, cover_policy)
+    cover, cover_status = _cover_file(cover_cache, release_id, cover_policy)
     return {
         'disc_id': identity.disc_id,
         'album': effective.album,
@@ -134,6 +152,7 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
         'match_status': match,
         'match_score': score,
         'cover_file': str(cover) if cover is not None else None,
+        'cover_status': cover_status,
         'cdtext_status': local.cdtext_status,
         'lookup_status': lookup_status,
     }

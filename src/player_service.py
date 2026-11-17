@@ -28,6 +28,7 @@ from cd_toc import read_toc
 from disc_startup import inspect_initial_disc
 from disc_monitor import DiscMonitor
 from player_metadata import MetadataWorker, matching_policy_from_config
+from player_metadata import describe as describe_metadata
 from disc_metadata import read_cdtext
 from drive_access import drive_lock
 from sonos_metadata import album_prefix_from_config
@@ -606,6 +607,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                         controller.metadata_snapshot = None
                     if metadata_worker.poll(current_toc):
                         controller.metadata_snapshot = metadata_worker.snapshot
+                        print(describe_metadata(controller.metadata_snapshot), flush=True)
                 publisher.publish(controller, power)
 
             busy = None

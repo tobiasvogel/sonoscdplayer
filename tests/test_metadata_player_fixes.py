@@ -103,6 +103,27 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(len(self.executor.jobs), 1)
 
 
+class DescribeTests(unittest.TestCase):
+    def test_journal_line(self):
+        from player_metadata import _cover_file, describe
+        snap = {'disc_id': 'D', 'match_status': 'cached', 'cdtext_status': 'available',
+                'lookup_status': None, 'release_id': RELEASE, 'cover_status': 'ok',
+                'tracks': [{'title': 'a'}, {'title': None}]}
+        line = describe(snap)
+        self.assertIn('match=cached', line)
+        self.assertIn('titles=1/2', line)
+        self.assertIn('cover=ok', line)
+        self.assertEqual(describe(None), '[metadata] none')
+        policy = CoverPreferences('on').download_policy(display_supports_cover=False)
+        off = CoverPreferences('off').download_policy(display_supports_cover=True)
+        missing = SimpleNamespace(get_or_download=lambda *a, **k: None)
+        broken = SimpleNamespace(get_or_download=Mock(side_effect=RuntimeError()))
+        self.assertEqual(_cover_file(missing, None, policy), (None, 'no_release'))
+        self.assertEqual(_cover_file(missing, RELEASE, off), (None, 'off'))
+        self.assertEqual(_cover_file(missing, RELEASE, policy), (None, 'unavailable'))
+        self.assertEqual(_cover_file(broken, RELEASE, policy), (None, 'failed:RuntimeError'))
+
+
 class CoverPolicyTests(unittest.TestCase):
     def test_auto_downloads_for_sonos_too(self):
         auto = CoverPreferences('auto')
