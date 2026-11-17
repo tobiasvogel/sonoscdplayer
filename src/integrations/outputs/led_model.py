@@ -45,8 +45,7 @@ def classify_network(status) -> Network:
 
 
 class PowerFault(str, Enum):
-    DRIVE = 'drive'
-    CRITICAL = 'critical'
+    DRIVE = 'drive'          # optical drive missing (player status disc NO_DRIVE)
 
 @dataclass(frozen=True)
 class Led:
@@ -100,14 +99,18 @@ def derive_led_state(
     if not operating:
         return LedState(Led(Pattern.OFF, 'device_off'), Led(Pattern.OFF, 'device_off'))
 
-    if power_fault == PowerFault.CRITICAL:
-        power = Led(Pattern.TRIPLE_FLASH, 'critical_device_fault')
+    disc = status.get('disc')
+    if power_fault is None and isinstance(disc, Mapping) and disc.get('mode') == 'NO_DRIVE':
+        power_fault = PowerFault.DRIVE
+
+    # D-225: shutting down wins (the player stops meanwhile), then the drive,
+    # then player errors.
+    if shutting_down:
+        power = Led(Pattern.SLOW_BLINK, 'shutting_down')
     elif power_fault == PowerFault.DRIVE:
         power = Led(Pattern.DOUBLE_FLASH, 'drive_fault')
     elif mode == 'ERROR':
-        power = Led(Pattern.BLINK, 'player_error_unclassified')
-    elif shutting_down:
-        power = Led(Pattern.SLOW_BLINK, 'shutting_down')
+        power = Led(Pattern.FAST_BLINK, 'player_error_unclassified')
     elif mode == 'STARTING':
         power = Led(Pattern.BREATHE, 'starting')
     else:

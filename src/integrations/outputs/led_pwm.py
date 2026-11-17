@@ -10,6 +10,7 @@ from gpio_settings import apply_gpio_warnings, gpio_warnings_enabled
 import json
 import math
 import signal
+import subprocess
 import socket
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -180,6 +181,27 @@ class LedRenderer:
 
 
 NETWORK_POLL_SECONDS = 5.0
+# Until the player answers for the first time, an unreachable player is still
+# starting (breathing), not an error; only after this time does the LED blink.
+STARTUP_GRACE_SECONDS = 120.0
+SYSTEM_POLL_SECONDS = 2.0
+
+
+def read_shutting_down():
+    """True while systemd stops the system (poweroff/reboot), read-only."""
+    try:
+        result = subprocess.run(['/usr/bin/systemctl', 'is-system-running'],
+                                capture_output=True, text=True, timeout=2, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.stdout.strip() == 'stopping'
+
+
+def unavailable_status(started, now, last_good_at):
+    """Status to show when the player cannot be read (D-225)."""
+    if last_good_at is None and now - started < STARTUP_GRACE_SECONDS:
+        return {'schema_version': 1, 'player': {'mode': 'STARTING'}}, 'waiting_for_player'
+    return {'schema_version': 1, 'player': {'mode': 'ERROR'}}, 'status_unavailable'
 
 
 def read_network() -> Network:
@@ -237,6 +259,11 @@ def main(argv=None):
     network_future = None
     next_network_poll = 0.0
     network = Network.UNKNOWN if args.network == 'auto' else Network(args.network)
+    system_executor = (ThreadPoolExecutor(max_workers=1, thread_name_prefix='system')
+                       if args.gpio and not args.self_test else None)
+    system_future = None
+    next_system_poll = 0.0
+    shutting_down = False
     last_lux = None
     last_lux_at = None
     last_sensor_error = None
@@ -281,6 +308,16 @@ def main(argv=None):
                         if network_future is None and now >= next_network_poll:
                             network_future = network_executor.submit(read_network)
                             next_network_poll = now + NETWORK_POLL_SECONDS
+                    if system_executor is not None:
+                        if system_future is not None and system_future.done():
+                            try:
+                                shutting_down = bool(system_future.result())
+                            except Exception:
+                                pass
+                            system_future = None
+                        if system_future is None and now >= next_system_poll:
+                            system_future = system_executor.submit(read_shutting_down)
+                            next_system_poll = now + SYSTEM_POLL_SECONDS
                     if now >= next_poll:
                         try:
                             last_status = read_status(args.socket)
@@ -298,17 +335,20 @@ def main(argv=None):
                         next_poll = now + 0.5
                     if last_status is None:
                         # Make socket failure visible instead of silently masking
-                        # caller-selected connection simulations.
-                        state = derive_led_state({'schema_version': 1, 'player': {'mode': 'ERROR'}},
-                                                 network=network)
-                        source = 'status_unavailable: ' + str(last_error)
+                        # caller-selected connection simulations - except while
+                        # the player is still starting (D-225).
+                        fallback, why = unavailable_status(started, now, last_good_at)
+                        state = derive_led_state(fallback, network=network,
+                                                 shutting_down=shutting_down)
+                        source = why + ': ' + str(last_error)
                     else:
                         try:
-                            state = derive_led_state(last_status, network=network)
+                            state = derive_led_state(last_status, network=network,
+                                                     shutting_down=shutting_down)
                             source = 'player_status'
                         except ValueError as exc:
                             state = derive_led_state({'schema_version': 1, 'player': {'mode': 'ERROR'}},
-                                                     network=network)
+                                                     network=network, shutting_down=shutting_down)
                             source = 'status_invalid: ' + str(exc)
                 if executor is not None:
                     if sensor_future is not None and sensor_future.done():
@@ -350,6 +390,8 @@ def main(argv=None):
             executor.shutdown(wait=False, cancel_futures=True)
         if network_executor is not None:
             network_executor.shutdown(wait=False, cancel_futures=True)
+        if system_executor is not None:
+            system_executor.shutdown(wait=False, cancel_futures=True)
     return 0
 
 

@@ -6,6 +6,7 @@ import os
 import socket
 import tempfile
 import threading
+import subprocess
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -46,7 +47,7 @@ class LedModelTests(unittest.TestCase):
         self.assertEqual(derive_led_state(snapshot('STARTING')).power.pattern, Pattern.BREATHE)
 
     def test_error_blinks(self):
-        self.assertEqual(derive_led_state(snapshot('ERROR')).power.pattern, Pattern.BLINK)
+        self.assertEqual(derive_led_state(snapshot('ERROR')).power.pattern, Pattern.FAST_BLINK)
 
     def test_off_is_explicit_not_no_disc(self):
         result = derive_led_state(snapshot('NO_DISC'), operating=False, network=Network.CONNECTED)
@@ -125,17 +126,23 @@ def status(mode='STOPPED'):
 class LedPatternTests(unittest.TestCase):
     def test_power_modes(self):
         self.assertEqual(derive_led_state(status(), power_fault=PowerFault.DRIVE).power.pattern, Pattern.DOUBLE_FLASH)
-        self.assertEqual(derive_led_state(status(), power_fault=PowerFault.CRITICAL).power.pattern, Pattern.TRIPLE_FLASH)
         self.assertEqual(derive_led_state(status(), shutting_down=True).power.pattern, Pattern.SLOW_BLINK)
         self.assertEqual(derive_led_state(status('ERROR')).power.reason, 'player_error_unclassified')
-    def test_critical_priority(self):
-        self.assertEqual(derive_led_state(status('ERROR'), power_fault=PowerFault.CRITICAL, shutting_down=True).power.pattern, Pattern.TRIPLE_FLASH)
+    def test_shutting_down_wins(self):
+        self.assertEqual(derive_led_state(status('ERROR'), power_fault=PowerFault.DRIVE, shutting_down=True).power.pattern, Pattern.SLOW_BLINK)
+    def test_missing_drive_from_status(self):
+        missing={'schema_version':1,'player':{'mode':'NO_DISC'},'disc':{'mode':'NO_DRIVE','device':None,'track_count':0,'error':None}}
+        self.assertEqual(derive_led_state(missing).power.pattern, Pattern.DOUBLE_FLASH)
+        missing['disc']['mode']='NO_DISC'
+        self.assertEqual(derive_led_state(missing).power.pattern, Pattern.STEADY)
+        missing['disc']['mode']='NO_DRIVE'; missing['player']['mode']='ERROR'
+        self.assertEqual(derive_led_state(missing).power.pattern, Pattern.DOUBLE_FLASH)
     def test_both_independent(self):
         state=derive_led_state(status('PLAYING'), network=Network.DISCONNECTED)
         self.assertEqual(state.power.pattern,Pattern.STEADY)
         self.assertEqual(state.connection.pattern,Pattern.SLOW_BLINK)
     def test_off_overrides_errors(self):
-        state=derive_led_state(status('ERROR'), operating=False, power_fault=PowerFault.CRITICAL, network=Network.DISCONNECTED)
+        state=derive_led_state(status('ERROR'), operating=False, power_fault=PowerFault.DRIVE, network=Network.DISCONNECTED)
         self.assertEqual((state.power.pattern,state.connection.pattern),(Pattern.OFF,Pattern.OFF))
     def test_flash_samples(self):
         cfg=PatternConfig(brightness=.7)
@@ -164,14 +171,19 @@ class LedPatternTests(unittest.TestCase):
         bad=derive_led_state(status('ERROR'))
         good=derive_led_state(status())
         hold.update(bad,0)
-        self.assertEqual(hold.update(good,2999).power.pattern,Pattern.BLINK)
+        self.assertEqual(hold.update(good,2999).power.pattern,Pattern.FAST_BLINK)
         self.assertEqual(hold.update(good,3000).power.pattern,Pattern.STEADY)
     def test_priority_preempts(self):
         hold=ErrorHold()
         hold.update(derive_led_state(status('ERROR')),0)
-        high=derive_led_state(status(),power_fault=PowerFault.CRITICAL)
-        self.assertEqual(hold.update(high,100).power.pattern,Pattern.TRIPLE_FLASH)
-        self.assertEqual(hold.update(derive_led_state(status()),3010).power.pattern,Pattern.TRIPLE_FLASH)
+        high=derive_led_state(status(),power_fault=PowerFault.DRIVE)
+        self.assertEqual(hold.update(high,100).power.pattern,Pattern.DOUBLE_FLASH)
+        self.assertEqual(hold.update(derive_led_state(status()),3010).power.pattern,Pattern.DOUBLE_FLASH)
+    def test_shutdown_is_not_held_back_by_an_error(self):
+        hold=ErrorHold()
+        hold.update(derive_led_state(status('ERROR')),0)
+        down=derive_led_state(status('ERROR'),shutting_down=True)
+        self.assertEqual(hold.update(down,10).power.pattern,Pattern.SLOW_BLINK)
 
     def test_network_led_is_not_held(self):
         hold=ErrorHold()
@@ -265,7 +277,7 @@ class LedPwmConfigTests(unittest.TestCase):
         ok=derive_led_state({'schema_version':1,'player':{'mode':'STOPPED'}})
         render.tick(err,0)
         self.assertEqual(render.tick(ok,1000)[0],.7)
-        self.assertEqual(render.tick(ok,1500)[0],0)
+        self.assertEqual(render.tick(ok,1350)[0],0)
         self.assertEqual(render.tick(ok,3001)[0],.7)
     def test_status_uses_readonly_command(self):
         with tempfile.TemporaryDirectory() as d:
@@ -304,9 +316,36 @@ class TestDiagnostics(unittest.TestCase):
              contextlib.redirect_stdout(out):
             self.assertEqual(led_pwm.main(['--network','disconnected','--seconds','0.05']), 0)
         first=json.loads(out.getvalue().splitlines()[0])
-        self.assertIn('status_unavailable',first['source'])
-        self.assertEqual(first['power_pattern'],'blink')
+        # Never answered yet: still starting, breathing instead of an error (D-225).
+        self.assertIn('waiting_for_player',first['source'])
+        self.assertEqual(first['power_pattern'],'breathe')
         self.assertEqual(first['connection_pattern'],'slow_blink')
+
+    def test_unreachable_player_is_an_error_after_the_start_time(self):
+        out=io.StringIO()
+        with patch.object(led_pwm, 'load_config', return_value=led_pwm.OutputConfig(tick_ms=10)), \
+             patch.object(led_pwm, 'read_status', side_effect=FileNotFoundError('missing socket')), \
+             patch.object(led_pwm, 'STARTUP_GRACE_SECONDS', 0.0), \
+             contextlib.redirect_stdout(out):
+            self.assertEqual(led_pwm.main(['--network','disconnected','--seconds','0.05']), 0)
+        first=json.loads(out.getvalue().splitlines()[0])
+        self.assertIn('status_unavailable',first['source'])
+        self.assertEqual(first['power_pattern'],'fast_blink')
+
+    def test_unavailable_status_after_first_answer_is_an_error(self):
+        status_, why = led_pwm.unavailable_status(0.0, 5.0, last_good_at=1.0)
+        self.assertEqual((status_['player']['mode'], why), ('ERROR', 'status_unavailable'))
+        status_, why = led_pwm.unavailable_status(0.0, 5.0, last_good_at=None)
+        self.assertEqual((status_['player']['mode'], why), ('STARTING', 'waiting_for_player'))
+
+    def test_shutdown_detection(self):
+        done = lambda out: subprocess.CompletedProcess([], 0, out, '')
+        with patch.object(led_pwm.subprocess, 'run', return_value=done('stopping\n')):
+            self.assertTrue(led_pwm.read_shutting_down())
+        with patch.object(led_pwm.subprocess, 'run', return_value=done('running\n')):
+            self.assertFalse(led_pwm.read_shutting_down())
+        with patch.object(led_pwm.subprocess, 'run', side_effect=OSError('no systemctl')):
+            self.assertFalse(led_pwm.read_shutting_down())
 
     def test_service_reads_the_network_state_in_the_background(self):
         out=io.StringIO()

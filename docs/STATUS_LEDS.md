@@ -20,10 +20,11 @@ The state is read from NetworkManager every 5 seconds, read-only (`nmcli device 
 
 | LED | Meaning |
 | --- | --- |
-| Breathing at boot | The system is starting (early boot LED, until the LED service takes over) |
+| Breathing | The system is starting: from boot (early boot LED) until the player answers for the first time; also while playback is starting |
 | On | Ready, also while playing or paused |
-| Breathing | Playback is starting |
-| Blinking | The player reports an error, or its status cannot be read |
-| Off | Device is shutting down |
+| Double flash | The CD drive is missing or not connected |
+| Fast blinking | The player reports an error, or its status cannot be read (at start only after 2 minutes without an answer) |
+| Slow blinking | The device is shutting down or restarting |
+| Off | Shutdown finished: the device can be switched off |
 
-Errors stay visible for at least 3 seconds, even if they clear sooner.
+Shutting down takes precedence over everything else. Errors stay visible for at least 3 seconds, even if they clear sooner.

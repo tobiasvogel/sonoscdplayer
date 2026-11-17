@@ -52,8 +52,8 @@ def intensity(pattern: Pattern, elapsed_ms: float, config: PatternConfig = Patte
     raise ValueError('unsupported pattern')
 
 # Only power-LED faults are held; the network LED follows its observation directly.
-_ERROR_REASONS = frozenset({'critical_device_fault','drive_fault','player_error_unclassified'})
-_PRIORITY = {'critical_device_fault': 5, 'drive_fault':4, 'player_error_unclassified':3}
+_ERROR_REASONS = frozenset({'drive_fault','player_error_unclassified'})
+_PRIORITY = {'drive_fault':4, 'player_error_unclassified':3}
 
 class ErrorHold:
     """Per-LED minimum error visibility, explicit timestamps, no background thread.
@@ -83,6 +83,12 @@ class ErrorHold:
         for i, incoming in enumerate((state.power, state.connection)):
             old=self._active[i]
             is_error=incoming.reason in _ERROR_REASONS
+            if incoming.reason == 'shutting_down':
+                # Shutting down is shown at once, never behind a held error (D-225).
+                self._active[i]=None
+                self._until[i]=0.0
+                result.append(incoming)
+                continue
             if is_error and (old is None or incoming.reason != old.reason and _PRIORITY[incoming.reason] >= _PRIORITY[old.reason]):
                 old=incoming
                 self._active[i]=incoming
