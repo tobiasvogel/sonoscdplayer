@@ -7,15 +7,11 @@ InteractiveMenu.event and NoticeTiming. The productive OLED path is untouched.
 """
 from __future__ import annotations
 
-from .character_adapters import (
-    language_menu_screen, navigation_screen, network_status_screen,
-    power_menu_screen, speaker_selection_screen, text_entry_frame,
-    wifi_choice_screen,
-)
+from .character_adapters import text_entry_frame, wifi_choice_screen
 from .character_layout import character_page_count, render_character_screen
 from .display_capabilities import DisplayCapabilities
 from .i18n import Translator
-from .notice import Notice, notice_text
+from .notice import Notice
 from .notice_policy import NoticeTiming
 from .semantic_screen import ScreenItem, SemanticScreen, screen_from_notice
 
