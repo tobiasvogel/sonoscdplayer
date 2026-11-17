@@ -101,5 +101,25 @@ class MetadataWorkerTests(unittest.TestCase):
         self.assertIsNone(self.worker.snapshot)
 
 
+    def test_service_matching_policy_configuration(self):
+        from player_metadata import matching_policy_from_config
+        meta = {
+            'auto_match': False,
+            'matching': {'confidence_threshold': 97, 'minimum_margin': 25,
+                         'minimum_track_titles': 4, 'rule_languages': ['fr']}
+        }
+        policy = matching_policy_from_config(meta)
+        self.assertFalse(policy.auto_match)
+        self.assertEqual(policy.confidence_threshold, 97)
+        self.assertEqual(policy.minimum_margin, 25)
+        self.assertEqual(policy.minimum_track_titles, 4)
+        self.assertIn('fr', policy.language_rules.languages)
+
+    def test_malformed_policy_rejected_without_player_failure(self):
+        from player_metadata import matching_policy_from_config
+        with self.assertRaises(ValueError):
+            matching_policy_from_config({'matching': {'rule_languages': '../'}})
+
+
 if __name__ == '__main__':
     unittest.main()

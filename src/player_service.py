@@ -27,7 +27,7 @@ import tomllib
 from cd_toc import read_toc
 from disc_startup import inspect_initial_disc
 from disc_monitor import DiscMonitor
-from player_metadata import MetadataWorker
+from player_metadata import MetadataWorker, matching_policy_from_config
 from safe_drive_eject import eject_verified_idle
 from player_state import PlayerState, Mode
 from drive_power import DrivePowerManager, load_config
@@ -715,6 +715,7 @@ def run(argv=None):
                     cache_path=Path(ns.state_dir) / 'metadata.sqlite3',
                     cover_dir=Path(ns.state_dir) / 'covers',
                     online=online, timeout=timeout,
+                    matching_policy=matching_policy_from_config(meta),
                     display_supports_cover=False)
                 metadata_worker.observe(toc)
         except (OSError, ValueError) as exc:

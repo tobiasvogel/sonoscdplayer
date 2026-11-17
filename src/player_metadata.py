@@ -14,8 +14,35 @@ from disc_cache import DiscCache, DEFAULT_DB_PATH
 from disc_covers import CoverCache, DEFAULT_COVER_DIR
 from disc_metadata import build_local_metadata
 from disc_matching import MatchingPolicy, decide_release, merged_metadata
+from metadata_language_rules import load_language_rules
 from disc_musicbrainz import identity_from_toc, lookup_disc
 from cover_preferences import read_cover_preferences
+
+
+def matching_policy_from_config(metadata):
+    """Share the explicit matching policy with the stand-alone diagnostic."""
+    values = metadata.get('matching', {})
+    if not isinstance(values, dict):
+        raise ValueError('metadata.matching must be a table')
+    defaults = MatchingPolicy()
+
+    def suffixes(name, fallback):
+        supplied = values.get(name, list(fallback))
+        if type(supplied) is not list or any(type(s) is not str for s in supplied):
+            raise ValueError(f'metadata.matching.{name} must be a list')
+        return tuple(supplied)
+
+    languages = values.get('rule_languages', [])
+    if type(languages) is not list or any(type(s) is not str for s in languages):
+        raise ValueError('metadata.matching.rule_languages must be a list')
+    return MatchingPolicy(
+        auto_match=metadata.get('auto_match', defaults.auto_match),
+        confidence_threshold=values.get('confidence_threshold', defaults.confidence_threshold),
+        minimum_margin=values.get('minimum_margin', defaults.minimum_margin),
+        minimum_track_titles=values.get('minimum_track_titles', defaults.minimum_track_titles),
+        soft_suffixes=suffixes('soft_suffixes', defaults.soft_suffixes),
+        protected_suffixes=suffixes('protected_suffixes', defaults.protected_suffixes),
+        language_rules=load_language_rules(tuple(languages)))
 
 
 def _safe_result(toc, *, cache, cover_cache, cover_policy, online, timeout,
