@@ -65,6 +65,15 @@ The configuration files are only read, never written by the services. What is ch
 
 After a restart the player restores this selection without contacting any speaker and never starts playback on its own. The display menu asks the player for it and shows the remembered speakers as checked. PLAY checks the speakers as usual; if one is not available, an error is shown and the selection is kept. Choosing other speakers replaces the file; deleting it forgets the selection. Outside systemd the directory can be set with `player_service.py --state-dir`.
 
+## Playing on
+
+Like a CD player, the next track follows when a track has played to its end; after the last track the player stops. A STOP from the Sonos app is not mistaken for the end of a track: the player continues only if the last position it saw was within a few seconds of the end. Switch it off in `player.toml`:
+
+```toml
+[playback]
+continue = false
+```
+
 ## CD information on Sonos
 
 When the player knows the CD (CD-TEXT or MusicBrainz), Sonos shows the track title, the artist, the album and the cover instead of "SonosCDPlayer Track 3". The album name gets a prefix so the CD stands out in the Sonos app; set it in `player.toml`:

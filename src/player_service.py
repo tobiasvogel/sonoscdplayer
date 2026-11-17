@@ -723,6 +723,10 @@ def run(argv=None):
         ctrl.disc_status = disc_status
         ctrl.album_prefix = album_prefix_from_config(settings)
         ctrl.use_queue = use_queue_from_config(settings)
+        playback = settings.get('playback', {})
+        if not isinstance(playback, dict) or type(playback.get('continue', True)) is not bool:
+            raise ValueError('playback.continue must be true or false')
+        ctrl.auto_advance = playback.get('continue', True)
         ctrl.display_toc = toc  # existing verified TOC, read-only display metadata
         # Metadata is strictly best-effort, never a prerequisite for playback.
         # No CD commands in this worker; only cached TOC, local DB and network.

@@ -55,7 +55,15 @@ def _field(value):
     return value[:MAX_FIELD] or None
 
 
-def track_didl(url, metadata, track, *, album_prefix=DEFAULT_ALBUM_PREFIX, cover_url=None):
+def _duration(seconds):
+    if type(seconds) not in (int, float) or not 0 < seconds < 360000:
+        return None
+    total = int(seconds + 0.5)
+    return f'{total // 3600}:{total // 60 % 60:02d}:{total % 60:02d}'
+
+
+def track_didl(url, metadata, track, *, album_prefix=DEFAULT_ALBUM_PREFIX, cover_url=None,
+               duration_seconds=None):
     """DIDL-Lite for one track, or None without metadata (plain play_uri then)."""
     if not isinstance(metadata, dict):
         return None
@@ -80,8 +88,11 @@ def track_didl(url, metadata, track, *, album_prefix=DEFAULT_ALBUM_PREFIX, cover
         parts.append(f'<upnp:album>{escape(album)}</upnp:album>')
     if cover_url:
         parts.append(f'<upnp:albumArtURI>{escape(cover_url)}</upnp:albumArtURI>')
+    # The track length lets the Sonos app show duration and progress.
+    length = _duration(entry.get('duration_seconds')) or _duration(duration_seconds)
+    duration = f' duration="{length}"' if length else ''
     parts += ['<upnp:class>object.item.audioItem.musicTrack</upnp:class>',
-              f'<res protocolInfo="http-get:*:audio/wav:*">{escape(url)}</res>',
+              f'<res protocolInfo="http-get:*:audio/wav:*"{duration}>{escape(url)}</res>',
               '</item></DIDL-Lite>']
     return ''.join(parts)
 

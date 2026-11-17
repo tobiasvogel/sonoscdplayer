@@ -40,6 +40,11 @@ album_prefix = "CD: "
 # while shuffle or repeat is on. false: set the stream directly (title only).
 use_queue = true
 
+[playback]
+# Like a CD player: after a track has played to its end, the next one
+# follows; after the last track the player stops. false: stop after each track.
+continue = true
+
 [audio_startup]
 prebuffer_before_sonos = true
 pcm_timeout_seconds = 45

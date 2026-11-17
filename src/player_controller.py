@@ -135,6 +135,11 @@ def ownership_for_transport(player, uid, url, expected, members=frozenset()):
 
 
 
+# A track counts as played out when its last verified position was this close
+# to its end (progress is polled every 2 s; Sonos stops shortly after the end).
+END_TOLERANCE_SECONDS = 6
+
+
 class Controller:
     """A single owner: only this instance's exact URI may be stopped."""
     def __init__(self, state, uid, host, port, server, verify=verify_target, route=None, find_many=None):
@@ -154,6 +159,8 @@ class Controller:
         self.album_prefix = DEFAULT_ALBUM_PREFIX  # [sonos] album_prefix, before the album name
         self.use_queue = True        # [sonos] use_queue: play from the queue to show artist/album
         self._queue_entry = None     # (1-based position, url) of our own queue item
+        self.auto_advance = True     # [playback] continue: next track after a track ends
+        self._pending_advance = None
         self.stopped_since = None
         self.status_hook = None  # optional read-only snapshot publisher
         self.disc_status = None  # optional M0.19 independent disc observation
@@ -332,12 +339,17 @@ class Controller:
                         return
                     group_proof_url = None   # proven through our queue item
                 url = self.owned_url
+                advance = self._next_after_end(self._display_progress)
                 self.state = self.state.natural_end()
                 self._drop_queue_entry(player)
                 self.owned_url = None
                 self.player = None
                 self.server.close()
-                self._release_group(owned_url=group_proof_url)
+                if advance is None:
+                    self._release_group(owned_url=group_proof_url)
+                else:
+                    # Like a CD player: the next track follows. The group stays.
+                    self._pending_advance = advance
                 print('[M0.11d] STOPPED observed; local server closed', flush=True)
             elif transport == 'TRANSITIONING':
                 self.stopped_since = None
@@ -368,6 +380,45 @@ class Controller:
                 self._display_progress_poll_at = None
         except Exception as exc:
             self._fail(f'ownership/status check failed: {type(exc).__name__}: {exc}')
+        if self._pending_advance is not None:
+            track, self._pending_advance = self._pending_advance, None
+            self._advance_to(track)
+
+    def _toc_duration(self, track):
+        try:
+            return int(self.display_toc.get_track(track).duration_seconds + 0.5)
+        except Exception:
+            return None
+
+    def _next_after_end(self, progress):
+        """Next track number after a real end of track, else None.
+
+        Sonos reports STOPPED the same way for its own STOP button; only a
+        last verified position within END_TOLERANCE of the end counts as the
+        track having played out. The last track ends the disc as before.
+        """
+        if not self.auto_advance or not isinstance(progress, dict):
+            return None
+        elapsed, duration = progress.get('elapsed_seconds'), progress.get('duration_seconds')
+        if type(elapsed) is not int or type(duration) is not int or \
+                duration - elapsed > END_TOLERANCE_SECONDS:
+            return None
+        numbers = self.state.track_numbers
+        index = numbers.index(self.state.selected_track)
+        return numbers[index + 1] if index + 1 < len(numbers) else None
+
+    def _advance_to(self, track):
+        members = self._group_members
+        try:
+            self.state = self.state.select(track)
+            print(f'[M0.11d] track ended; continuing with track {track}', flush=True)
+            self.play(members=members)
+        except BaseException as exc:
+            # play() already set ERROR; keep a joined group for inspection.
+            if self._joined:
+                self._group_uncertain = True
+                self._recovery_url = None
+            print(f'[M0.11d] continuing failed: {type(exc).__name__}: {exc}', flush=True)
 
     def _drop_queue_entry(self, player):
         """After our own verified stop/end: remove our queue item if still ours."""
@@ -454,7 +505,8 @@ class Controller:
             cover_url = (f'http://{host}:{self.port}{cover_route(cover_path)}'
                          if cover_path else None)
             didl = track_didl(url, meta, self.state.selected_track,
-                              album_prefix=self.album_prefix, cover_url=cover_url)
+                              album_prefix=self.album_prefix, cover_url=cover_url,
+                              duration_seconds=self._toc_duration(self.state.selected_track))
             if didl is not None and self.use_queue and queue_allowed(player):
                 # Appended last, so Sonos stops after our track instead of
                 # continuing with the user's queue. Nothing else is touched.
