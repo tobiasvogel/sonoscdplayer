@@ -94,3 +94,107 @@ def render_navigation(section: str, focus: int,
     return render_character_screen(
         navigation_screen(section, focus, language=language),
         capabilities, scroll_offset=scroll_offset)
+
+
+def speaker_selection_screen(state, *, language: str = "de") -> SemanticScreen:
+    """Read-only projection of MultiSelection including Apply and Back.
+
+    Distinguishes draft checkmarks from focus and never touches the topology
+    or requests a player write. Uses existing stable target keys.
+    """
+    from .multi_target import MultiSelection
+    if not isinstance(state, MultiSelection):
+        raise TypeError("expected MultiSelection")
+    tr = Translator(language).tr
+    items = [
+        ScreenItem(key=target.key, label=target.label,
+                   selected=target.key in state.draft, focused=i == state.focus,
+                   intent="toggle_target")
+        for i, target in enumerate(state.topology.targets)
+    ]
+    n = len(items)
+    items.extend((
+        ScreenItem(key="menu.review", label=tr("menu.review"),
+                   focused=state.focus == n,
+                   enabled=not state.topology.error and bool(state.draft),
+                   intent="review_target"),
+        ScreenItem(key="menu.back", label=tr("menu.back"),
+                   focused=state.focus >= n + 1, intent="back"),
+    ))
+    return SemanticScreen("menu", heading=tr("menu.targets"), items=tuple(items))
+
+
+def power_menu_screen(focus: int, *, language: str = "de") -> SemanticScreen:
+    """POWER overlay contents only; no POWER action or confirmation here."""
+    keys = ("menu.back", "menu.poweroff", "menu.reboot")
+    if type(focus) is not int or not 0 <= focus < len(keys):
+        raise ValueError("invalid power focus")
+    tr = Translator(language).tr
+    return SemanticScreen("menu", heading=tr("menu.power"),
+                          items=tuple(ScreenItem(key, tr(key), focused=i == focus,
+                                                 intent=key)
+                                      for i, key in enumerate(keys)))
+
+
+def language_menu_screen(languages: tuple[str, ...], focus: int,
+                         *, language: str = "de") -> SemanticScreen:
+    """Existing language-picker state, not an independent picker."""
+    tr = Translator(language)
+    if not isinstance(languages, tuple) or not languages or (
+            type(focus) is not int or not 0 <= focus < len(languages)):
+        raise ValueError("invalid language picker")
+    return SemanticScreen(
+        "menu", heading=tr.tr("menu.language"),
+        items=tuple(ScreenItem(key=code, label=tr.language_name(code),
+                               focused=i == focus, selected=code == tr.language,
+                               intent="choose_language")
+                    for i, code in enumerate(languages)))
+
+
+def wifi_choice_screen(controller, snapshot, *, language: str = "de") -> SemanticScreen:
+    """WLAN choices exactly as WifiEntryController.event interprets them.
+
+    Unlike the older graphic list, do not invent an extra 'rescan' entry:
+    the live controller supports networks, HIDDEN and BACK only.
+    """
+    from .wifi_entry import WifiEntryController, HIDDEN, BACK
+    from network_setup.session import SetupSnapshot
+    if not isinstance(controller, WifiEntryController) or not isinstance(snapshot, SetupSnapshot):
+        raise TypeError("expected WLAN UI controller and setup snapshot")
+    if snapshot.state != "choosing" or controller.mode != "list":
+        raise ValueError("WLAN choice list is not active")
+    tr = Translator(language).tr
+    choices = controller.items(snapshot)
+    if type(controller.focus) is not int or not 0 <= controller.focus < len(choices):
+        raise ValueError("invalid WLAN menu focus")
+    items = []
+    for index, choice in enumerate(choices):
+        if choice is HIDDEN:
+            key, label, selected, intent = (
+                "wifi:hidden", tr("netsetup.hidden"), False, "hidden_network")
+        elif choice is BACK:
+            key, label, selected, intent = (
+                "wifi:back", tr("netsetup.back_hotspot"), False, "back_to_hotspot")
+        else:
+            key, label, selected, intent = (
+                f"wifi:{index}", choice.ssid, choice.ssid in snapshot.saved,
+                "choose_network")
+        items.append(ScreenItem(key, label, focused=index == controller.focus,
+                                selected=selected, intent=intent))
+    return SemanticScreen("menu", heading=tr("netsetup.choose"), items=tuple(items))
+
+
+def network_status_screen(snapshot, *, language: str = "de") -> SemanticScreen:
+    """Read-only network status; translating keys follows the OLED page."""
+    from .network_status import NetworkStatus
+    if not isinstance(snapshot, NetworkStatus):
+        raise TypeError("expected NetworkStatus")
+    tr = Translator(language).tr
+    pairs = (
+        ("network.ethernet", "network.state." + snapshot.ethernet),
+        ("network.wifi", "network.state." + snapshot.wifi),
+        ("network.preferred", "network.preferred." + snapshot.preferred),
+    )
+    return SemanticScreen(
+        "idle", heading=tr("network.status"),
+        items=tuple(ScreenItem(k, tr(k), value=tr(v)) for k, v in pairs))
