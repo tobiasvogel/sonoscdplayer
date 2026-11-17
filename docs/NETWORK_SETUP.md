@@ -6,7 +6,7 @@ The player can join a new Wi-Fi network without a keyboard, screen or SSH access
 
 | Action | Result |
 | --- | --- |
-| Hold CONNECT for 10 seconds | Starts the setup (a countdown appears from 5 seconds) |
+| Hold CONNECT for 10 seconds | Starts the setup (from 5 seconds the countdown "Network setup via hotspot in …" appears) |
 | Hold CONNECT for 3–10 seconds, release | Opens the network menu with **Set up Wi-Fi** selected |
 | Menu **Network → Set up Wi-Fi** | Starts the setup |
 | Hold CONNECT for 10 seconds again | Ends the setup (the countdown reads "Setup ends in …"; releasing earlier keeps the setup running) and returns to the screen shown before it |
@@ -31,6 +31,7 @@ The page has no other function, loads no external resources and is reachable onl
 The hotspot screen alternates between the hints "Press: enter manually" and "CONNECT 10 s: cancel". Pressing the encoder ends the hotspot, searches again and shows:
 
 - the visible networks, strongest first; a ✓ marks networks with a stored profile. The status line shows signal strength and whether the network is saved, secured or open;
+- **Search networks** to search again (for example after switching on a phone hotspot; phones often show their hotspot only while its settings page is open);
 - **Hidden network …** to type its name;
 - **Back to hotspot**, which reopens the hotspot with the same name and password.
 
@@ -43,7 +44,7 @@ Choosing a network:
 | Secured | The password entry opens. |
 | Hidden | Name entry, then password entry (leave it empty for an open network). |
 
-**Text entry:** turning the encoder moves a character wheel, pressing takes the character shown in the frame. The wheel holds all printable ASCII characters (a–z, A–Z, 0–9, space shown as ␣, punctuation) and three actions, reached by turning left from **a**: ✓ **Done**, ⌫ **Delete last character**, ✕ **Cancel** (back to the list). Turning fast skips four characters per step. The password is shown in plain text, so typing errors can be seen; the counter shows the length used and allowed (WLAN names: bytes, at most 32; passwords: 8–63 characters).
+**Text entry:** turning the encoder moves a character wheel, pressing takes the character shown in the frame. The wheel holds all printable ASCII characters (a–z, A–Z, 0–9, space shown as ␣, punctuation) and three actions, reached by turning left from **a**: ✓ **Done**, ⌫ **Delete last character**, ✕ **Cancel** (back to the list). Turning fast skips four characters per step. A short press on CONNECT works as **Done** as well. The password is shown in plain text, so typing errors can be seen; the counter shows the length used and allowed (WLAN names: bytes, at most 32; passwords: 8–63 characters).
 
 Names can also contain the extra characters `äöüÄÖÜß`. Change them in `ui.toml` (see [Configuration](CONFIGURATION.md)):
 

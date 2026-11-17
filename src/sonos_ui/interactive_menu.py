@@ -294,6 +294,9 @@ class InteractiveMenu:
                                              params={'seconds': int(action[8:])}, priority=80,
                                              duration_seconds=0, dismissible=False), now=now)
             return True
+        if action == 'status' and self.connect_notices.current(now=now) is None:
+            # Short press (with a separate speaker button): "Done" in the text entry.
+            return self.wifi_entry.short_connect(self.netsetup_snapshot())
         if action in ('status', 'settings'):
             # Released before 10 s: the setup simply continues.
             changed = self.connect_notices.clear(now=now)
@@ -592,6 +595,11 @@ class InteractiveMenu:
             self._volume_level = int(event)
             self._volume_until = now + VOLUME_OVERLAY_SECONDS
             return True
+        if (name, event) == ('speaker_select', 'pressed') and not self.power_menu and \
+                self.netsetup_snapshot() is not None:
+            # Short CONNECT during the setup: "Done" in the text entry, else nothing
+            # (never the speaker selection behind the setup screen).
+            return self.wifi_entry.short_connect(self.netsetup_snapshot())
         if (name, event) == ('speaker_select', 'pressed'):
             if self._power_busy or self.power_menu:
                 return False

@@ -80,6 +80,6 @@ def render_text_entry(renderer, entry, *, title, subtitle='', gray=False):
     elif current == ' ':
         status = tr('textinput.space')
     else:
-        status = ''
+        status = tr('textinput.connect_hint')
     renderer.bottom(image, status=status, footer=tr('textinput.footer'))
     return ssd1327_gray(image) if gray else image

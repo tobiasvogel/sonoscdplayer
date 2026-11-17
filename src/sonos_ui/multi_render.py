@@ -117,7 +117,7 @@ class MultiRenderer(Renderer):
         im=Image.new('RGB',(128,128),t.background)
         self.shell(im,self.tr('netsetup.choose'))
         rows=[(n.ssid,'✓' if n.ssid in saved else '') for n in networks]
-        rows+=[(self.tr('netsetup.hidden'),'+'),(self.tr('netsetup.back_hotspot'),'<')]
+        rows+=[(self.tr('netsetup.rescan'),'↻'),(self.tr('netsetup.hidden'),'+'),(self.tr('netsetup.back_hotspot'),'<')]
         if not networks:
             self.text(im,(6,16),self.tr('netsetup.none_found'),fill=t.secondary,size=8,width=116,height=10)
         for slot,index in enumerate(self.menu_window(len(rows),focus)):

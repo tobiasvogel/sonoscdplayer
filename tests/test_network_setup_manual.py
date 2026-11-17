@@ -182,8 +182,9 @@ class MenuManualTests(unittest.TestCase):
         self.key('encoder', 'right')
         self.key('encoder', 'right')
         self.key('encoder', 'right')
+        self.key('encoder', 'right')
         self.key('encoder', 'right')   # clamps at "Back to hotspot"
-        self.assertEqual(self.menu.wifi_entry.focus, 3)
+        self.assertEqual(self.menu.wifi_entry.focus, 4)
         self.frame()
         self.key('encoder_sw')
         self.assertEqual(self.session.snapshot().state, 'hotspot')
@@ -225,7 +226,7 @@ class MenuManualTests(unittest.TestCase):
 
     def test_hidden_network_name_with_umlaut_then_open(self):
         self.key('encoder_sw')
-        for _ in range(2):
+        for _ in range(3):
             self.key('encoder', 'right')
         self.key('encoder_sw')               # hidden network
         self.assertEqual(self.menu.wifi_entry.mode, 'ssid')
@@ -295,6 +296,74 @@ class CancelByConnectTests(unittest.TestCase):
         self.assertIsNone(self.menu.connect_notices.current(now=time.monotonic()))
         self.assertEqual(self.menu.section, 'targets')     # network menu not opened
         self.menu.frame(lambda image: image)
+
+
+class PolishTests(unittest.TestCase):
+    """Rescan entry, short CONNECT as Done (17.11.)."""
+
+    def setUp(self):
+        self.nm = ManualNm()
+        self.session, _clock, _webs = make_session(self.nm)
+        self.menu = InteractiveMenu(discover=lambda **_: None, network_setup=self.session)
+        self.send('connect', 'setup_requested')
+        self.send('encoder_sw')
+
+    def send(self, name, event='pressed'):
+        result = self.menu.event(name, event, now=time.monotonic())
+        self.session.join()
+        self.menu.poll(now=time.monotonic())
+        return result
+
+    def test_rescan_finds_phone_hotspot(self):
+        phone = WifiNetwork('Phone', 50, True)
+        self.nm.networks = [HOME, CAFE, phone]
+        self.send('encoder', 'right')
+        self.send('encoder', 'right')        # "Search networks"
+        self.assertTrue(self.send('encoder_sw'))
+        self.assertEqual(self.session.snapshot().networks, (HOME, CAFE, phone))
+        self.assertEqual((self.menu.wifi_entry.mode, self.menu.wifi_entry.focus), ('list', 0))
+        self.menu.frame(lambda image: image)
+
+    def test_empty_scan_is_retried_once(self):
+        calls = []
+        original = self.nm.scan
+
+        def flaky(device):
+            calls.append(device)
+            return [] if len(calls) == 1 else original(device)
+        self.nm.scan = flaky
+        self.session.rescan()
+        self.session.join()
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.session.snapshot().networks, (HOME, CAFE))
+
+    def test_short_connect_finishes_password(self):
+        self.send('encoder_sw')              # Home -> password entry
+        entry = self.menu.wifi_entry.entry
+        for char in 'secret123':
+            entry.position = entry.items.index(char)
+            self.send('encoder_sw')
+        entry.position = entry.items.index('x')   # not on Done
+        self.assertTrue(self.send('speaker_select'))     # short CONNECT, no own button
+        self.assertEqual(self.nm.log[-1], ('connect', 'Home', 'secret123'))
+
+    def test_short_connect_with_separate_speaker_button(self):
+        self.send('encoder_sw')
+        entry = self.menu.wifi_entry.entry
+        entry.text = 'secret123'
+        self.assertTrue(self.send('connect', 'status'))
+        self.assertEqual(self.nm.log[-1], ('connect', 'Home', 'secret123'))
+
+    def test_short_connect_validates_and_never_opens_speakers(self):
+        self.send('encoder_sw')
+        self.send('speaker_select')          # empty password: too short, stays
+        self.assertEqual(self.menu.wifi_entry.entry.error, ('textinput.too_short', {'count': 8}))
+        self.menu.wifi_entry.entry.result = 'cancelled'
+        self.menu.wifi_entry.mode = 'list'
+        self.assertFalse(self.send('speaker_select'))   # in the list: nothing
+        self.send('connect', 'setup_requested')         # end the setup
+        self.menu.poll(now=time.monotonic() + 10)
+        self.assertFalse(self.menu.active)               # no speaker selection behind it
 
 
 if __name__ == '__main__':

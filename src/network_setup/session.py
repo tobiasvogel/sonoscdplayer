@@ -26,6 +26,7 @@ HOTSPOT_SECONDS = 15 * 60
 CONNECTED_SHOW_SECONDS = 6.0
 HANDOVER_SECONDS = 2.0
 RADIO_SETTLE_SECONDS = 1.0   # after the hotspot ends, before scanning again
+SCAN_RETRY_SECONDS = 3.0     # an empty scan is repeated once after this
 SSID_PREFIX = 'SonosCDPlayer-'
 # No 0/O, 1/I/L: the password is read off a small display.
 PASSWORD_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
@@ -136,6 +137,18 @@ class SetupSession:
             previous = self._snap.networks
             self._snap = SetupSnapshot(state='scanning', manual=True)
         self._spawn(self._scan_manual, generation, previous)
+        return True
+
+    def rescan(self):
+        """Search again from the on-device list (e.g. a phone hotspot switched on later)."""
+        with self._lock:
+            if self._snap.state != 'choosing':
+                return False
+            self._generation += 1
+            generation = self._generation
+            previous = self._snap.networks
+            self._snap = SetupSnapshot(state='scanning', manual=True)
+        self._spawn(self._scan_manual, generation, previous, False)
         return True
 
     def back_to_hotspot(self):
@@ -280,15 +293,20 @@ class SetupSession:
                 self._snap = SetupSnapshot(state='unavailable', error=error)
                 self._shown_until = self._clock() + CONNECTED_SHOW_SECONDS
 
-    def _scan_manual(self, generation, previous):
-        self._stop_web()
-        try:
-            self._nm.stop_hotspot()
-        except NmError as exc:
-            self._log(f'[netsetup] {exc}')
+    def _scan_manual(self, generation, previous, end_hotspot=True):
+        if end_hotspot:
+            self._stop_web()
+            try:
+                self._nm.stop_hotspot()
+            except NmError as exc:
+                self._log(f'[netsetup] {exc}')
         self._sleep(RADIO_SETTLE_SECONDS)
-        # Right after the hotspot a scan may come back empty: keep the old list then.
-        networks = tuple(self._nm.scan(self._device)) or previous
+        networks = tuple(self._nm.scan(self._device))
+        if not networks:
+            # Right after the hotspot the radio may still be busy: one more try,
+            # then keep the old list.
+            self._sleep(SCAN_RETRY_SECONDS)
+            networks = tuple(self._nm.scan(self._device)) or previous
         saved = tuple(sorted(self._nm.saved_profiles()))
         with self._lock:
             if self._current(generation):

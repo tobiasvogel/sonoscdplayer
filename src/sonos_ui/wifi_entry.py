@@ -8,6 +8,7 @@ from __future__ import annotations
 from .text_input import DEFAULT_EXTRA_CHARACTERS, TextEntry
 from .text_input_render import render_text_entry
 
+RESCAN = object()
 HIDDEN = object()
 BACK = object()
 HINT_SWITCH_SECONDS = 4.0   # hotspot screen alternates its two footer hints
@@ -72,7 +73,7 @@ class WifiEntryController:
         self._submitted = None
 
     def items(self, snap):
-        return list(snap.networks) + [HIDDEN, BACK]
+        return list(snap.networks) + [RESCAN, HIDDEN, BACK]
 
     # ---- input -------------------------------------------------------------
     def event(self, name, event, now, snap):
@@ -99,6 +100,17 @@ class WifiEntryController:
         if not pressed:
             return False
         self.entry.press()
+        return self._after_entry()
+
+    def short_connect(self, snap):
+        """Short CONNECT press during name/password entry = Done."""
+        if snap.state != 'choosing' or self.mode not in ('ssid', 'password'):
+            return False
+        self.session.touch()
+        self.entry.finish()
+        return self._after_entry()
+
+    def _after_entry(self):
         if self.entry.result == 'cancelled':
             self.mode, self.entry = 'list', None
         elif self.entry.result == 'done' and self.mode == 'ssid':
@@ -115,6 +127,9 @@ class WifiEntryController:
         if item is BACK:
             self._reset()
             return self.session.back_to_hotspot()
+        if item is RESCAN:
+            self.focus = 0
+            return self.session.rescan()
         if item is HIDDEN:
             self.mode = 'ssid'
             self.entry = TextEntry(extra_characters=self.extra_characters,

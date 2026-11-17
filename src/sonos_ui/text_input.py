@@ -99,10 +99,16 @@ class TextEntry:
         self.error = None
         return True
 
+    def finish(self):
+        """Same as pressing on DONE (e.g. a short CONNECT press as shortcut)."""
+        return self._run(DONE)
+
     def press(self):
         """Take the shown character or run the shown action."""
+        return self._run(self.current)
+
+    def _run(self, item):
         self.error = None
-        item = self.current
         if item == CANCEL:
             self.result = 'cancelled'
         elif item == DELETE:
