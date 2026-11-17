@@ -1,7 +1,8 @@
 [streaming]
 max_buffer_mib = 16
 
-# META-01A: local TOC and CD-TEXT detection; no internet access.
+# CD metadata: CD-TEXT (read once right after the TOC), then MusicBrainz.
+# A failed online lookup is tried once more after 2 minutes.
 [metadata]
 enabled = true
 read_cd_text = true
@@ -29,6 +30,11 @@ protected_suffixes = ["Live", "Instrumental", "Remastered", "Deluxe"]
 [metadata.musicbrainz]
 enabled = true
 timeout_seconds = 8
+
+[sonos]
+# Put before the album name that Sonos shows for a CD (track title, artist,
+# album and cover come from the CD metadata). Empty string: no prefix.
+album_prefix = "CD: "
 
 [audio_startup]
 prebuffer_before_sonos = true

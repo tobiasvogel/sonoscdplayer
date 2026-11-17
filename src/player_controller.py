@@ -25,6 +25,8 @@ from player_switch import ownership_snapshot
 from sonos_ui.playback_progress import verified_progress
 import sonos_group
 from sonos_parallel_test import detect_drive, stream_lines, wait_reader
+from metadata_status import status_metadata
+from sonos_metadata import DEFAULT_ALBUM_PREFIX, cover_route, track_didl
 
 
 class ProcessServer:
@@ -48,13 +50,14 @@ class ProcessServer:
             elif 'READER end written=' in line:
                 self._reader_active = False
 
-    def start(self, track):
+    def start(self, track, cover=None):
         if self.proc is not None:
             raise RuntimeError('server already attached')
         events = queue.Queue()
         p = self.popen([sys.executable, '-u', str(self.base / 'track_ring_http.py'),
                         '--device', self.device, '--track', str(track),
-                        '--port', str(self.port), '--config', str(self.config)],
+                        '--port', str(self.port), '--config', str(self.config)]
+                       + (['--cover', str(cover)] if cover else []),
                        cwd=self.base, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, text=True, bufsize=1)
         self.proc = p
@@ -147,6 +150,7 @@ class Controller:
         self._display_progress_poll_at = None
         self.display_toc = None  # validated startup/idle TOC; never read disc for display
         self.metadata_snapshot = None  # asynchronously loaded, TOC-qualified display info
+        self.album_prefix = DEFAULT_ALBUM_PREFIX  # [sonos] album_prefix, before the album name
         self.stopped_since = None
         self.status_hook = None  # optional read-only snapshot publisher
         self.disc_status = None  # optional M0.19 independent disc observation
@@ -197,7 +201,9 @@ class Controller:
         if self.disc_status is not None:
             snapshot['disc'] = self.disc_status.snapshot()
         if self.metadata_snapshot is not None:
-            snapshot['metadata'] = dict(self.metadata_snapshot)
+            # Compact on purpose: status readers have small reply limits.
+            snapshot['metadata'] = status_metadata(self.metadata_snapshot,
+                                                   self.state.selected_track)
         return snapshot
 
     def _ownership(self, player, expected):
@@ -401,7 +407,13 @@ class Controller:
         if self.status_hook is not None:
             self.status_hook()
         try:
-            self.server.start(self.state.selected_track)
+            meta = self.metadata_snapshot
+            cover = meta.get('cover_file') if isinstance(meta, dict) else None
+            cover_path = cover_route(cover) and cover
+            if cover_path:
+                self.server.start(self.state.selected_track, cover=cover_path)
+            else:
+                self.server.start(self.state.selected_track)
             player = self._verify_retained_group(candidate) if retained else self.verify(candidate)
             if wanted and not retained:
                 for member_uid, member in member_players.items():
@@ -422,7 +434,14 @@ class Controller:
                     self._group_uncertain = True
                     self._recovery_url = None
                     raise
-            player.play_uri(url, title=f'SonosCDPlayer Track {self.state.selected_track}')
+            cover_url = (f'http://{host}:{self.port}{cover_route(cover_path)}'
+                         if cover_path else None)
+            didl = track_didl(url, meta, self.state.selected_track,
+                              album_prefix=self.album_prefix, cover_url=cover_url)
+            if didl is not None:
+                player.play_uri(url, meta=didl)
+            else:
+                player.play_uri(url, title=f'SonosCDPlayer Track {self.state.selected_track}')
         except BaseException as exc:
             self.server.close()
             # A failed/ambiguous play_uri may already have changed the coordinator.

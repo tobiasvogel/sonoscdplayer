@@ -26,6 +26,25 @@ def read_status(path='/run/sonoscdplayer/control.sock', timeout=0.35):
     return result['state']
 
 
+def _text(value):
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def disc_metadata(state, count):
+    """Album, artist, current track title and cover from the player status.
+
+    The player publishes metadata only for the disc whose TOC it verified, so
+    nothing here can belong to an earlier CD. Without a disc: nothing.
+    """
+    meta = state.get('metadata')
+    if count <= 0 or not isinstance(meta, dict):
+        return None, None, None, None
+    artist = _text(meta.get('artist')) or _text(meta.get('track_artist'))
+    cover = meta.get('cover_file')
+    return (_text(meta.get('album')), artist, _text(meta.get('track_title')),
+            cover if isinstance(cover, str) and cover.startswith('/') else None)
+
+
 def project_status(state, previous=None):
     """Only fields currently supported by player_service; never invent metadata.
 
@@ -66,10 +85,11 @@ def project_status(state, previous=None):
             if type(e) is int and 0 <= e <= 359999:
                 if d is None or (type(d) is int and 0 < d <= 359999 and e <= d):
                     elapsed, duration = e, d
+    album, artist, title, cover = disc_metadata(state, count)
     return DisplayModel(
         view='playback' if playback in ('playing', 'paused') else 'idle',
         disc_present=count > 0,
-        album=None, artist=None, title=None, cover=None,
+        album=album, artist=artist, title=title, cover=cover,
         track=track, track_count=count, playback=playback,
         speaker=None, elapsed_seconds=elapsed, duration_seconds=duration,
         disc_phase=mode,  # state label only, never authorizes transport actions

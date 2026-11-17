@@ -157,3 +157,14 @@ def build_local_metadata(toc: DiscTOC, *, cdtext_status: str,
                              artist=disc_fields.get('PERFORMER'),
                              tracks=tracks, cdtext_status=cdtext_status,
                              cdtext_error=error, mcn=disc_fields.get('MCN'))
+
+
+#: (status, disc fields, track fields, error) as returned by read_cdtext().
+NO_CDTEXT = ('disabled', {}, {}, None)
+
+
+def local_metadata_from_cdtext(toc, cdtext=None) -> LocalDiscMetadata:
+    """Combine the verified TOC with a CD-TEXT reading taken by the player."""
+    status, disc_fields, track_fields, error = cdtext or NO_CDTEXT
+    return build_local_metadata(toc, cdtext_status=status, disc_fields=disc_fields,
+                                track_fields=track_fields, error=error)

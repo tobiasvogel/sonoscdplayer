@@ -60,8 +60,21 @@ The configuration files are only read, never written by the services. What is ch
 | --- | --- |
 | `target.json` | The last confirmed speaker selection (coordinator and group members), written by the player |
 | `ui.json` | The display language chosen in the menu, written by the OLED service; it takes precedence over `ui.toml` and is also read by the shutdown screens |
+| `metadata.sqlite3` | Album and track names found for each CD (CD-TEXT, MusicBrainz), written by the player |
+| `covers/` | One cached cover image per album, if covers are enabled (`[ui.cover] mode`) |
 
 After a restart the player restores this selection without contacting any speaker and never starts playback on its own. The display menu asks the player for it and shows the remembered speakers as checked. PLAY checks the speakers as usual; if one is not available, an error is shown and the selection is kept. Choosing other speakers replaces the file; deleting it forgets the selection. Outside systemd the directory can be set with `player_service.py --state-dir`.
+
+## CD information on Sonos
+
+When the player knows the CD (CD-TEXT or MusicBrainz), Sonos shows the track title, the artist, the album and the cover instead of "SonosCDPlayer Track 3". The album name gets a prefix so the CD stands out in the Sonos app; set it in `player.toml`:
+
+```toml
+[sonos]
+album_prefix = "CD: "   # empty string: no prefix
+```
+
+Names that arrive while a track is already playing appear from the next track on; a running track is never restarted for them. The cover is offered to Sonos by the player's stream server. With `[ui.cover] mode = "auto"` covers are downloaded because Sonos shows them; `"off"` switches covers off everywhere.
 
 ## Boot setup
 
