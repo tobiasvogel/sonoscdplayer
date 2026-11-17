@@ -188,7 +188,7 @@ class DisplayIntegrationTests(unittest.TestCase):
         menu = InteractiveMenu()
         menu.active, menu.section = True, "targets"
         menu.state = replace(menu.state, notice="status.target_rejected")
-        with patch.object(menu, "_send_target") as send, \\
+        with patch.object(menu, "_send_target") as send, \
              patch.object(menu, "_discover_if_empty") as discover:
             graphic_frame_from_menu(menu, now=1)
             character_frame_from_menu(menu, LCD16, now=1)
