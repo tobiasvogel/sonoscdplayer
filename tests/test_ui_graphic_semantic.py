@@ -102,7 +102,7 @@ class GraphicSemanticParityTests(unittest.TestCase):
 
 
 
-class ExtendedGraphicParityTests(GraphicSemanticParityTests):
+class ExtendedGraphicParityTests(unittest.TestCase):
     @staticmethod
     def pixel_bytes(image):
         return (image.mode, image.size, image.tobytes())
