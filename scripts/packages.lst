@@ -16,3 +16,4 @@ libgnutls28-dev
 fonts-dejavu-core
 python3-rpi.gpio
 python3-pytest
+python3-libdiscid
