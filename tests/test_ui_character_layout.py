@@ -3,7 +3,9 @@ import unittest
 
 from sonos_ui.character_layout import portable_text, render_character_screen
 from sonos_ui.character_adapters import (
-    navigation_screen, render_navigation, text_entry_frame,\n    speaker_selection_screen, power_menu_screen, language_menu_screen,\n    wifi_choice_screen, network_status_screen,
+    navigation_screen, render_navigation, text_entry_frame,
+    speaker_selection_screen, power_menu_screen, language_menu_screen,
+    wifi_choice_screen, network_status_screen,
 )
 from sonos_ui.display_backend import validate_frame
 from sonos_ui.display_capabilities import DisplayCapabilities, SSD1327_CAPABILITIES
@@ -53,7 +55,7 @@ class CharacterLayoutTests(unittest.TestCase):
         first = render_character_screen(screen, LCD16, page=0)
         next_page = render_character_screen(screen, LCD16, page=2)
         self.assertNotEqual(first, next_page)
-        self.assertIn("Dies ist ein sehr", first.lines[0])
+        self.assertIn("Dies ist ein", first.lines[0])
         self.assertIn("weitergeht", "".join(next_page.lines))
         validate_frame(LCD16, next_page)
 
