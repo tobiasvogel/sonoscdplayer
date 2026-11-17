@@ -31,7 +31,7 @@ The page has no other function, loads no external resources and is reachable onl
 The hotspot screen alternates between the hints "Press: enter manually" and "CONNECT 10 s: cancel". Pressing the encoder ends the hotspot, searches again and shows:
 
 - the visible networks, strongest first; a ✓ marks networks with a stored profile. The status line shows signal strength and whether the network is saved, secured or open;
-- **Search networks** to search again (for example after switching on a phone hotspot; phones often show their hotspot only while its settings page is open);
+- **Search networks** to search again (for example after switching on a phone hotspot; phones often show their hotspot only while its settings page is open; still missing: see [Requirements](#requirements));
 - **Hidden network …** to type its name;
 - **Back to hotspot**, which reopens the hotspot with the same name and password.
 
@@ -73,6 +73,7 @@ While the hotspot is active, the connection LED blinks fast (see [Status LEDs](S
 
 - NetworkManager (default on Raspberry Pi OS Bookworm and later).
 - The Wi-Fi country must be set (`raspi-config` → Localisation → WLAN Country). Without it, the Wi-Fi radio stays blocked and no hotspot can start.
+- The Raspberry Pi 4 sees Wi-Fi on 2.4 GHz and on part of the 5 GHz channels, depending on the Wi-Fi country; it cannot use 6 GHz. A network that is missing from the list usually sends on a band or channel the Pi cannot see. This is common with phone hotspots, which often default to 5 or 6 GHz: switch the phone's hotspot to 2.4 GHz (on Pixel phones: **Extend compatibility**; on iPhones: **Maximise Compatibility**), then choose **Search networks**. If the phone offers "WPA3 only", choose WPA2/WPA3 instead.
 - On a Raspberry Pi 4 the Wi-Fi chip cannot be hotspot and client at the same time. During the setup the Pi is therefore not connected over Wi-Fi; a LAN cable keeps working.
 - The OLED service needs the rights described below. Units rendered with `tools/render_runtime_units.py` include them by default; `--no-network-setup` leaves the feature out.
 
