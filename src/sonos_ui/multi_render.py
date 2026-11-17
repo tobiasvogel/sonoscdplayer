@@ -37,33 +37,63 @@ def wrap_lines(value,width,size,*,max_lines=4):
 
 
 class MultiRenderer(Renderer):
-    def render_multi(self,state,*,gray=False,searching=False):
+    def _multi_pixels(self, labels, marks, focus, *, count, draft_count,
+                      notice='', error=False, searching=False, gray=False):
+        """Identical speaker-list pixel path for legacy and semantic views."""
         t=self.theme
         im=Image.new('RGB',(128,128),t.background)
         self.shell(im,self.tr('menu.targets'))
-        self.text(im,(6,16),self.tr('status.targets',selected=len(state.draft),total=len(state.topology.targets)),fill=t.secondary,size=8,width=116,height=10)
-        count=len(state.topology.targets)
+        self.text(im,(6,16),self.tr('status.targets',selected=draft_count,total=count),
+                  fill=t.secondary,size=8,width=116,height=10)
         if not count:
-            # Below the two rows (apply/back) that remain without speakers.
             key='status.scan_running' if searching else 'status.no_targets'
             self.text(im,(7,74),self.tr(key),fill=t.secondary,size=9,width=115,height=15)
-        rows=self.menu_window(count+2,state.focus)
-        for slot,pos in enumerate(rows):
-            focus=pos==state.focus
-            if pos==count:
-                name=self.tr('menu.review')
-                check='>'
-            elif pos==count+1:
-                name=self.tr('menu.back')
-                check='<'
-            else:
-                target=state.topology.targets[pos]
-                name=target.label
-                check='✓' if target.key in state.draft else '□'
-            self.menu_row(im,slot,name,selected=focus,marker=check)
-        status=self.tr(state.notice) if state.notice else (self.tr('status.incomplete') if state.topology.error else self.tr('status.no_changes'))
+        for slot,pos in enumerate(self.menu_window(len(labels),focus)):
+            self.menu_row(im,slot,labels[pos],selected=pos==focus,marker=marks[pos])
+        status=self.tr(notice) if notice else (
+            self.tr('status.incomplete') if error else self.tr('status.no_changes'))
         self.bottom(im,status=status,footer=self.tr('footer.mark'))
         return ssd1327_gray(im) if gray else im
+
+    def render_multi(self,state,*,gray=False,searching=False):
+        """Existing production API: build rows from the live selection."""
+        count=len(state.topology.targets)
+        labels=[target.label for target in state.topology.targets]
+        labels.extend((self.tr('menu.review'),self.tr('menu.back')))
+        marks=[('✓' if target.key in state.draft else '□')
+               for target in state.topology.targets]
+        marks.extend(('>','<'))
+        return self._multi_pixels(
+            labels,marks,state.focus,count=count,draft_count=len(state.draft),
+            notice=state.notice,error=bool(state.topology.error),
+            searching=searching,gray=gray)
+
+    def render_multi_semantic(self,screen,state,*,gray=False,searching=False):
+        """Use semantic labels, focus and checkmarks; no controller actions."""
+        from .semantic_screen import SemanticScreen
+        if not isinstance(screen,SemanticScreen) or screen.kind!='menu':
+            raise ValueError('speaker menu SemanticScreen required')
+        count=len(state.topology.targets)
+        if len(screen.items)!=count+2:
+            raise ValueError('speaker menu length differs from controller')
+        if tuple(item.key for item in screen.items[:count])!=tuple(
+                target.key for target in state.topology.targets):
+            raise ValueError('speaker target identities differ')
+        if tuple(item.key for item in screen.items[count:])!=(
+                'menu.review','menu.back'):
+            raise ValueError('speaker action keys differ')
+        focus=[pos for pos,item in enumerate(screen.items) if item.focused]
+        if len(focus)!=1:
+            raise ValueError('speaker menu requires exactly one focus')
+        if focus[0]!=state.focus:
+            raise ValueError('speaker focus differs from controller')
+        labels=[item.label for item in screen.items]
+        marks=[('✓' if item.selected else '□') for item in screen.items[:count]]
+        marks.extend(('>','<'))
+        return self._multi_pixels(
+            labels,marks,focus[0],count=count,draft_count=len(state.draft),
+            notice=state.notice,error=bool(state.topology.error),
+            searching=searching,gray=gray)
 
     def render_volume(self,level,*,gray=False):
         """Short volume overlay: big number and a 0..100 bar."""
@@ -134,12 +164,32 @@ class MultiRenderer(Renderer):
         self.bottom(im,status=status,footer=self.tr('footer.select'),status_fill=fill)
         return ssd1327_gray(im) if gray else im
 
-    def render_power(self,focus,notice='',*,gray=False):
-        """Power menu: Zurück / Ausschalten / Neustarten. ``notice`` is a locale key."""
+    def _power_pixels(self, labels, focus, notice='', *, gray=False):
         t=self.theme
         im=Image.new('RGB',(128,128),t.background)
         self.shell(im,self.tr('menu.power'))
-        for pos,(key,mark) in enumerate((('menu.back','<'),('menu.poweroff','×'),('menu.reboot','↻'))):
-            self.menu_row(im,pos,self.tr(key),selected=pos==focus,marker=mark)
-        self.bottom(im,status=self.tr(notice or 'status.power_choose'),footer=self.tr('footer.select'))
+        for pos,(label,mark) in enumerate(zip(labels,('<','×','↻'))):
+            self.menu_row(im,pos,label,selected=pos==focus,marker=mark)
+        self.bottom(im,status=self.tr(notice or 'status.power_choose'),
+                    footer=self.tr('footer.select'))
         return ssd1327_gray(im) if gray else im
+
+    def render_power(self,focus,notice='',*,gray=False):
+        """Existing production POWER menu API."""
+        keys=('menu.back','menu.poweroff','menu.reboot')
+        return self._power_pixels([self.tr(key) for key in keys],
+                                  focus,notice,gray=gray)
+
+    def render_power_semantic(self,screen,notice='',*,gray=False):
+        """Read-only semantic POWER projection via the same pixel path."""
+        from .semantic_screen import SemanticScreen
+        if not isinstance(screen,SemanticScreen) or screen.kind!='menu':
+            raise ValueError('power menu SemanticScreen required')
+        if tuple(item.key for item in screen.items)!=(
+                'menu.back','menu.poweroff','menu.reboot'):
+            raise ValueError('wrong power action keys')
+        focus=[pos for pos,item in enumerate(screen.items) if item.focused]
+        if len(focus)!=1:
+            raise ValueError('power menu requires exactly one focus')
+        return self._power_pixels([item.label for item in screen.items],
+                                  focus[0],notice,gray=gray)
