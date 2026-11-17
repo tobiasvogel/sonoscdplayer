@@ -73,7 +73,7 @@ class CharacterLiveViewTests(unittest.TestCase):
         menu.connect_notices.post(Notice("status.player_offline", severity="error",
                                         duration_seconds=0), now=0)
         first = self.render(menu, now=0)
-        second = self.render(menu, now=3)
+        second = self.render(menu, now=6)
         self.assertIn("Player", "".join(first.lines))
         self.assertIn("Schliessen", "".join(second.lines))
         self.assertEqual(menu.section, "main")
@@ -109,7 +109,7 @@ class CharacterLiveViewTests(unittest.TestCase):
         entry.error = ("netsetup.failed", {})
         menu.wifi_entry.entry = entry
         before = (entry.text, entry.error, entry.position)
-        self.assertIn("fehlgeschlagen", "".join(self.render(menu, now=0).lines))
+        self.assertIn("Verbindung", "".join(self.render(menu, now=0).lines))
         self.assertIn("abcdefgh", "".join(self.render(menu, now=3).lines))
         self.assertIn("WLAN A", "".join(self.render(menu, now=6).lines))
         self.assertEqual((entry.text, entry.error, entry.position), before)
