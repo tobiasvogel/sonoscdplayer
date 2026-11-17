@@ -10,7 +10,8 @@ from PIL import Image
 from .menu_catalog import NAVIGATION_PAGES
 from .multi_render import MultiRenderer
 from .navigation_pages import NavigationRenderer
-from .semantic_screen import SemanticScreen
+from .semantic_screen import SemanticScreen, screen_from_notice
+from .notice_policy import NoticeTiming
 from .theme import ssd1327_gray
 
 
@@ -57,6 +58,12 @@ def render_graphic_semantic(screen: SemanticScreen, *, section: str,
             raise TypeError("expected NavigationRenderer")
         return nav.semantic_network_status(screen, language=language)
 
+    if section == "volume":
+        multi = MultiRenderer(language=language) if renderer is None else renderer
+        if not isinstance(multi, MultiRenderer):
+            raise TypeError("expected MultiRenderer")
+        return multi.render_volume_semantic(screen, gray=True)
+
     if section not in ("targets", "power", "language"):
         raise ValueError("no graphical semantic adapter for this section yet")
     if section == "targets" and state is None:
@@ -73,28 +80,55 @@ def render_graphic_semantic(screen: SemanticScreen, *, section: str,
 
 
 def graphic_frame_from_menu(menu, *, now: float):
-    """Opt-in parity view of navigation and selection overlays.
+    """Offscreen parity view; the existing OLED production path is untouched.
 
-    No generic fallback: a notice, WLAN setup or other unsupported overlay
-    is not silently rendered as the underlying menu.
+    Non-semantic D-224 WLAN screens intentionally reuse the original WLAN
+    renderer and controller. They are not claimed to be semantic renderers.
     """
     from .interactive_menu import InteractiveMenu
     if not isinstance(menu, InteractiveMenu):
         raise TypeError("expected InteractiveMenu")
+    if menu.shutdown_screen is not None:
+        raise ValueError("system screens are not part of the OLED preview")
+
     screen = menu.semantic_screen(now=now)
+
+    notice = (menu.connect_notices.current(now=now)
+              if menu._notice_previous_active is not None else None)
+    if notice is not None:
+        if screen is None or screen.kind != "notice":
+            raise ValueError("notice semantic state missing")
+        expected = screen_from_notice(notice, language=menu.language)
+        if (screen.severity != expected.severity or
+                screen.message.split("\\n", 1)[0] != expected.message):
+            raise ValueError("notice does not match semantic screen")
+        return menu._connect_renderer.render(
+            notice, language=menu.language, grayscale=True,
+            dismiss_hint=NoticeTiming().encoder_can_confirm(notice))
+
+    setup = menu.netsetup_snapshot()
+    if setup is not None and not menu.power_menu:
+        if screen is not None or menu.wifi_entry is None:
+            raise ValueError("inconsistent WLAN preview state")
+        return menu.wifi_entry.frame(menu.renderer, setup, now=now)
+
     if screen is None or screen.kind not in ("menu", "idle"):
         raise ValueError("no supported active semantic screen")
+
     if menu.power_menu:
         section = "power"
+    elif menu.volume_overlay_active(now=now):
+        section = "volume"
     elif menu.language_picker:
         section = "language"
     else:
         section = menu.section
+
     if section == "power":
         return render_graphic_semantic(
             screen, section=section, language=menu.language,
             renderer=menu.renderer, power_notice=menu.power_notice)
-    if section == "language":
+    if section in ("language", "volume"):
         return render_graphic_semantic(
             screen, section=section, language=menu.language,
             renderer=menu.renderer)
