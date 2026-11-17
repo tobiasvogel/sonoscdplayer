@@ -133,6 +133,27 @@ def _notice_rows(screen: SemanticScreen, width: int, height: int, *,
                   + [" " * width] * height)[:height])
 
 
+
+def character_page_count(screen: SemanticScreen,
+                         capabilities: DisplayCapabilities) -> int:
+    """Count non-menu pages for a caller-driven, read-only carousel.
+
+    Menu pages are driven by the controller's focus, not a second navigation
+    state. A notice may use automatic page cycling because it consumes normal
+    encoder input under the existing NoticeTiming policy.
+    """
+    if not isinstance(screen, SemanticScreen):
+        raise TypeError("expected SemanticScreen")
+    if not isinstance(capabilities, DisplayCapabilities) or capabilities.kind != "character":
+        raise ValueError("character capabilities required")
+    if screen.kind == "menu":
+        return 1
+    if screen.kind == "notice":
+        lines = _page_lines(screen.message or "", capabilities.columns)
+    else:
+        lines = [item for item in screen.items] or [screen.heading]
+    return max(1, (len(lines) + capabilities.rows - 1) // capabilities.rows)
+
 def render_character_screen(screen: SemanticScreen,
                             capabilities: DisplayCapabilities,
                             *, page: int = 0, scroll_offset: int = 0) -> CharacterFrame:
