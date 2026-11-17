@@ -77,7 +77,9 @@ class DisplayIntegrationTests(unittest.TestCase):
 
         menu._volume_until = 0
         screen = menu.semantic_screen(now=1)
-        self.assertEqual(screen.heading, menu.semantic_screen(now=1).heading)
+        self.assertEqual(screen.kind, "menu")
+        self.assertEqual(tuple(item.key for item in screen.items),
+                         tuple(menu.languages))
         self.assertEqual(tuple(item.intent for item in screen.items),
                          tuple("choose_language" for _ in menu.languages))
 
