@@ -41,7 +41,7 @@ class CharacterLayoutTests(unittest.TestCase):
         self.assertTrue(all(len(line) == 16 for line in frame.lines))
 
     def test_20x4_heading_and_three_menu_items(self):
-        screen = SemanticScreen("menu", heading="Netzwerk", items=(
+        screen = SemanticScreen("menu", heading="Netzwerk", items=tuple(
             ScreenItem(str(i), f"Eintrag{i}", focused=i == 3)
             for i in range(5)))
         frame = render_character_screen(screen, LCD20)
