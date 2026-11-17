@@ -100,7 +100,7 @@ def graphic_frame_from_menu(menu, *, now: float):
             raise ValueError("notice semantic state missing")
         expected = screen_from_notice(notice, language=menu.language)
         if (screen.severity != expected.severity or
-                screen.message.split("\\n", 1)[0] != expected.message):
+                screen.message.split("\n", 1)[0] != expected.message):
             raise ValueError("notice does not match semantic screen")
         return menu._connect_renderer.render(
             notice, language=menu.language, grayscale=True,
