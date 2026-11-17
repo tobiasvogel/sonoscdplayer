@@ -1,6 +1,50 @@
 [streaming]
 max_buffer_mib = 16
 
+# CD metadata: CD-TEXT (read once right after the TOC), then MusicBrainz.
+# A failed online lookup is tried once more after 2 minutes.
+[metadata]
+enabled = true
+read_cd_text = true
+online_lookup = true
+# Autoselect only when textual evidence clearly separates release candidates.
+auto_match = true
+
+[metadata.matching]
+# Heuristic agreement score (0..100), not a probability.
+confidence_threshold = 90
+# Require this lead over the second-ranked release.
+minimum_margin = 15
+# Minimum number of CD-TEXT track titles for ambiguous DiscIDs.
+minimum_track_titles = 3
+# Optional independent community language packs under src/metadata_rules/.
+# Not tied to the device's UI language.
+rule_languages = []
+# Exact trailing (...) or [...] descriptors. Extend in any language.
+# Soft terms reduce the match slightly when they differ.
+soft_suffixes = ["Sing mit", "TV Version"]
+# Protected terms never silently match a different edition/recording.
+protected_suffixes = ["Live", "Instrumental", "Remastered", "Deluxe"]
+
+# First external metadata provider; a one-shot request after local TOC.
+[metadata.musicbrainz]
+enabled = true
+timeout_seconds = 8
+
+[sonos]
+# Put before the album name that Sonos shows for a CD (track title, artist,
+# album and cover come from the CD metadata). Empty string: no prefix.
+album_prefix = "CD: "
+# Play from the Sonos queue (our item is appended last and removed again
+# afterwards): only then does the Sonos app show artist and album. Not used
+# while shuffle or repeat is on. false: set the stream directly (title only).
+use_queue = true
+
+[playback]
+# Like a CD player: after a track has played to its end, the next one
+# follows; after the last track the player stops. false: stop after each track.
+continue = true
+
 [audio_startup]
 prebuffer_before_sonos = true
 pcm_timeout_seconds = 45

@@ -1,0 +1,9 @@
+# Example community pack: German spelling variants (comparison only).
+aliases = [
+  ["fruehling", "frühling"],
+  ["schoene", "schöne"],
+  ["gruen", "grün"],
+  ["laebchuecheherz", "läbchuecheherz"],
+]
+soft_suffixes = []
+protected_suffixes = []

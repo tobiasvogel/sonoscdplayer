@@ -317,7 +317,29 @@ class Handler(BaseHTTPRequestHandler):
             self._headers(416, 0, content_range=f'bytes */{size}'); return None
         return start, min(end, size - 1), True
 
+    def _serve_cover(self, *, body):
+        server = self.server
+        if server.cover_route is None or urlsplit(self.path).path != server.cover_route:
+            return False
+        # Shows in the player journal whether Sonos fetches the album art at all.
+        server.stream.log(f'cover {self.command} client={self.client_address[0]}')
+        self.send_response(200)
+        self.send_header('Content-Type', 'image/jpeg')
+        self.send_header('Content-Length', str(len(server.cover_bytes)))
+        self.send_header('Cache-Control', 'max-age=86400')
+        self.send_header('Connection', 'close')
+        self.end_headers()
+        self.close_connection = True
+        if body:
+            try:
+                self.wfile.write(server.cover_bytes)
+            except OSError:
+                pass
+        return True
+
     def do_HEAD(self):
+        if self._serve_cover(body=False):
+            return
         span = self._request_span()
         if span is None: return
         start, end, partial = span
@@ -325,6 +347,8 @@ class Handler(BaseHTTPRequestHandler):
                       content_range=f'bytes {start}-{end}/{self.server.stream.expected + 44}' if partial else None)
 
     def do_GET(self):
+        if self._serve_cover(body=True):
+            return
         span = self._request_span()
         if span is None: return
         start, end, partial = span
@@ -395,14 +419,35 @@ class Handler(BaseHTTPRequestHandler):
             stream.ring.unregister(reader)
             self.server.release_get(stream, disconnected)
 
+MAX_COVER_BYTES = 2_000_000
+
+
+def load_cover(path):
+    """(route, bytes) for a cached cover file, or (None, None)."""
+    from sonos_metadata import cover_route
+    route = cover_route(path)
+    if route is None:
+        return None, None
+    try:
+        with open(path, 'rb') as handle:
+            data = handle.read(MAX_COVER_BYTES + 1)
+    except OSError:
+        return None, None
+    if not data or len(data) > MAX_COVER_BYTES:
+        return None, None
+    return route, data
+
+
 class Server(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
     ORPHAN_GRACE_SECONDS = 0.75
 
-    def __init__(self, addr, stream, track):
+    def __init__(self, addr, stream, track, cover=None):
         self.stream = stream
         self.route = f'/track/{track}.wav'
+        # Optional album art for Sonos: one JPEG, read once, served read-only.
+        self.cover_route, self.cover_bytes = load_cover(cover)
         self._generation_lock = threading.Lock()
         self._generation = 1
         self._streams = [stream]
@@ -544,6 +589,7 @@ def main():
     p.add_argument('--port', type=int, default=8765)
     p.add_argument('--write-timeout', type=float, default=30)
     p.add_argument('--initial-prebuffer-ms', type=int, default=0, help='PCM-Vorlauf vor erstem WAV-Byte; 0 = bisheriger Start')
+    p.add_argument('--cover', default=None, help='cached album-art JPEG to offer Sonos under /cover/<name>')
     a = p.parse_args()
     cfg = StreamingConfig.load(a.config)
     track = read_toc(a.device).get_track(a.track)
@@ -551,7 +597,7 @@ def main():
     # Reserve 58,800 PCM bytes WITHIN the configured 16 MiB, not on top of it.
     stream = Stream(track.pcm_bytes, cfg.capacity_bytes, command, a.write_timeout,
                     a.initial_prebuffer_ms, probe_cache=ProbeCache(CHUNK))
-    with Server((a.bind, a.port), stream, a.track) as server:
+    with Server((a.bind, a.port), stream, a.track, cover=a.cover) as server:
         print(f'Serving http://{a.bind}:{a.port}{server.route} '
               f'PCM={track.pcm_bytes} RAM={cfg.capacity_bytes} initial_prebuffer_ms={a.initial_prebuffer_ms}', flush=True)
         stream.start() # Start only AFTER server successfully binds.

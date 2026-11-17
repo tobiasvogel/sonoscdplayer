@@ -27,6 +27,11 @@ import tomllib
 from cd_toc import read_toc
 from disc_startup import inspect_initial_disc
 from disc_monitor import DiscMonitor
+from player_metadata import MetadataWorker, matching_policy_from_config
+from player_metadata import describe as describe_metadata
+from disc_metadata import read_cdtext
+from drive_access import drive_lock
+from sonos_metadata import album_prefix_from_config, use_queue_from_config
 from safe_drive_eject import eject_verified_idle
 from player_state import PlayerState, Mode
 from drive_power import DrivePowerManager, load_config
@@ -400,7 +405,29 @@ def eject_and_recover(controller, monitor, power):
     return result
 
 
-def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, target_store=None):
+def _current_disc(disc_monitor, drive_toc, drive_cdtext):
+    """Verified TOC and the CD-TEXT read with it (None when unknown)."""
+    if disc_monitor is not None:
+        return disc_monitor.loaded_toc, disc_monitor.loaded_cdtext
+    return drive_toc, drive_cdtext
+
+
+def read_startup_cdtext_locked(device, *, reader=read_cdtext, lock=drive_lock):
+    """Optional startup CD-TEXT; never wait for a busy drive or block READY.
+
+    The TOC has already been verified by inspect_initial_disc(). The lock
+    protects the follow-up cd-info operation; no read runs when lock is busy.
+    """
+    try:
+        with lock(device, blocking=False) as acquired:
+            if not acquired:
+                return None
+            return reader(device)
+    except Exception:
+        return None
+
+
+def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, target_store=None, metadata_worker=None, drive_cdtext=None):
     path = Path(socket_path).expanduser().absolute()
     if not path.parent.is_dir():
         raise ValueError('socket parent directory does not exist')
@@ -494,6 +521,11 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     publisher.publish(controller, power)
                     return reply
 
+                if metadata_worker is not None:
+                    current_toc, current_text = _current_disc(disc_monitor, drive_toc, drive_cdtext)
+                    if metadata_worker.observe(current_toc, current_text):
+                        controller.metadata_snapshot = None
+
                 # Volume control is passed only to volume requests, so the
                 # established command path stays unchanged for all others.
                 extra = ({'volume': volume} if isinstance(request, dict)
@@ -569,6 +601,13 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                             controller._joined or controller._group_uncertain
                         ),
                     )
+                if metadata_worker is not None:
+                    current_toc, current_text = _current_disc(disc_monitor, drive_toc, drive_cdtext)
+                    if metadata_worker.observe(current_toc, current_text):
+                        controller.metadata_snapshot = None
+                    if metadata_worker.poll(current_toc):
+                        controller.metadata_snapshot = metadata_worker.snapshot
+                        print(describe_metadata(controller.metadata_snapshot), flush=True)
                 publisher.publish(controller, power)
 
             busy = None
@@ -655,6 +694,7 @@ def run(argv=None):
         ap.error('config file not found')
     ctrl = None
     power = None
+    metadata_worker = None
     shutdown_policy = 'stop_owned'
     previous_sigterm = (install_sigterm_handler()
                         if threading.current_thread() is threading.main_thread() else None)
@@ -681,7 +721,47 @@ def run(argv=None):
                                         startup_prebuffer=startup_enabled,
                                         startup_timeout=float(startup_timeout)), route=routed_source_ip)
         ctrl.disc_status = disc_status
+        ctrl.album_prefix = album_prefix_from_config(settings)
+        ctrl.use_queue = use_queue_from_config(settings)
+        playback = settings.get('playback', {})
+        if not isinstance(playback, dict) or type(playback.get('continue', True)) is not bool:
+            raise ValueError('playback.continue must be true or false')
+        ctrl.auto_advance = playback.get('continue', True)
         ctrl.display_toc = toc  # existing verified TOC, read-only display metadata
+        # Metadata is strictly best-effort, never a prerequisite for playback.
+        # No CD commands in this worker; only cached TOC, local DB and network.
+        # CD-TEXT is read by the player itself, once, right after a verified TOC.
+        cdtext_reader = None
+        startup_cdtext = None
+        try:
+            meta = settings.get('metadata', {})
+            if not isinstance(meta, dict):
+                raise ValueError('metadata must be a TOML table')
+            if meta.get('enabled', True) is True:
+                musicbrainz = meta.get('musicbrainz', {})
+                if not isinstance(musicbrainz, dict):
+                    raise ValueError('metadata.musicbrainz must be a table')
+                timeout = musicbrainz.get('timeout_seconds', 8)
+                if type(timeout) not in (int, float) or not 1 <= timeout <= 30:
+                    raise ValueError('invalid metadata.musicbrainz.timeout_seconds')
+                # Do not make requests when online metadata is disabled.
+                online = (meta.get('online_lookup', True) is True
+                          and musicbrainz.get('enabled', True) is True)
+                if meta.get('read_cd_text', True) is True:
+                    cdtext_reader = read_cdtext
+                    if toc is not None:
+                        startup_cdtext = read_startup_cdtext_locked(device)
+                metadata_worker = MetadataWorker(
+                    cache_path=Path(ns.state_dir) / 'metadata.sqlite3',
+                    cover_dir=Path(ns.state_dir) / 'covers',
+                    online=online, timeout=timeout,
+                    matching_policy=matching_policy_from_config(meta),
+                    # The OLED shows no covers yet; Sonos shows album art.
+                    display_supports_cover=False, sonos_uses_cover=True)
+                metadata_worker.observe(toc, startup_cdtext)
+        except (OSError, ValueError) as exc:
+            print(f'[metadata] disabled: {type(exc).__name__}', flush=True)
+
         # Never issue start/keepalive motor commands when no readable disc was
         # selected. M0.19b will implement safe idle discovery and reloading.
         if toc is not None:
@@ -698,19 +778,23 @@ def run(argv=None):
             print(f'[drive] verified USB identity rebind: {new_device}', flush=True)
 
         monitor = (DiscMonitor(disc_status.device, identity,
-                               on_rebind=on_verified_rebind)
+                               on_rebind=on_verified_rebind, cdtext=cdtext_reader)
                    if disc_status.device is not None else None)
         if monitor is not None:
             monitor.loaded_toc = toc  # verified startup TOC, never stale
+            monitor.loaded_cdtext = startup_cdtext
         serve(ctrl, ns.socket, power=power, drive_id=identity,
               drive_toc=toc, disc_monitor=monitor,
-              target_store=TargetStore(ns.state_dir))
+              target_store=TargetStore(ns.state_dir),
+              metadata_worker=metadata_worker, drive_cdtext=startup_cdtext)
     except KeyboardInterrupt:
         print('\n[M0.12b-r7] shutdown requested', flush=True)
     except Exception as exc:
         print(f'[M0.12a] service failed: {type(exc).__name__}: {exc}', file=sys.stderr)
         return 1
     finally:
+        if metadata_worker is not None:
+            metadata_worker.close()
         if ctrl:
             result = ctrl.shutdown_owned(shutdown_policy)
             print(f'[M0.12b-r7] shutdown: {result}', flush=True)

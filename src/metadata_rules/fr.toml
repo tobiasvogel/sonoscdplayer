@@ -1,0 +1,4 @@
+# Example community pack: French qualifiers (no arbitrary word deletion).
+aliases = []
+soft_suffixes = ["Version française"]
+protected_suffixes = ["En direct"]

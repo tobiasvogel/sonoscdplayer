@@ -405,6 +405,8 @@ class RuntimeUnitRenderTests(unittest.TestCase):
                       units['sonoscdplayer-buttons.service'])
         oled = units['sonoscdplayer-oled.service']
         self.assertIn('--ui-target-rpc --ui-power-actions --ui-network-setup', oled)
+        # The cover mode comes from ui.toml, never fixed in the unit.
+        self.assertNotIn('--cover', oled)
         self.assertIn('AmbientCapabilities=CAP_NET_BIND_SERVICE', oled)
         for name in (POLKIT_RULE, NETWORK_RULE):
             rule = units[name]

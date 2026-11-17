@@ -3,7 +3,9 @@
 language = "de" # de | en
 
 [ui.cover]
-mode = "auto" # auto | on | off
+mode = "auto" # auto: use covers on cover-capable displays | on | off
+# One cached JPEG per release; no upscaling.
+max_dimension_px = 512 # 64..2048
 
 [ui.text_input]
 # Characters offered in addition to ASCII when typing a name on the device

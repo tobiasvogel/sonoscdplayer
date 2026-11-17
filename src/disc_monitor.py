@@ -31,7 +31,8 @@ class DiscMonitor:
 
     def __init__(self, device, identity, *, media=drive_media_status,
                  toc=None, path_exists=None, identity_reader=usb_identity,
-                 lock=drive_lock, recover=recovered_device, on_rebind=None):
+                 lock=drive_lock, recover=recovered_device, on_rebind=None,
+                 cdtext=None):
         from cd_toc import read_toc
         self.device = device
         self.identity = identity
@@ -45,6 +46,10 @@ class DiscMonitor:
         self._disconnected = False
         self._disconnect_error = None
         self.loaded_toc = None
+        # Optional CD-TEXT reader (device -> read_cdtext() tuple). Runs only
+        # here, under the drive lock right after the TOC, never during playback.
+        self.read_cdtext = cdtext
+        self.loaded_cdtext = None
 
     def poll(self, controller) -> bool:
         """Apply a verified idle observation; return whether status changed.
@@ -103,6 +108,7 @@ class DiscMonitor:
                     DiscMode.UNREADABLE, device=self.device,
                     error=f'audio TOC: {type(exc).__name__}: {exc}'))
             self.loaded_toc = disc
+            self.loaded_cdtext = self._read_cdtext()
             controller.state = controller.state.disc_loaded(
                 tuple(track.number for track in disc.tracks))
             return self._set_status(controller,
@@ -151,12 +157,22 @@ class DiscMonitor:
                 # TOC and a reset selection (track 1), never the old selection.
                 # The user's explicit PLAY remains the sole playback trigger.
                 self.loaded_toc = disc
+                # PLAY waits for nothing extra: no CD-TEXT on this path.
+                self.loaded_cdtext = None
                 controller.state = controller.state.disc_loaded(
                     tuple(t.number for t in disc.tracks))
                 self._set_status(controller,
                                  DiscStatus.ready(self.device, len(disc.tracks)))
                 return True
             return True
+
+    def _read_cdtext(self):
+        if self.read_cdtext is None:
+            return None
+        try:
+            return self.read_cdtext(self.device)
+        except Exception:
+            return None   # CD-TEXT is optional; never blocks READY
 
     def _recover_or_hold(self, controller):
         # Never guess a drive by /dev/srN or adopt a missing/duplicate serial.
@@ -202,6 +218,7 @@ class DiscMonitor:
     def _apply(self, controller, status):
         # Never leave an old track selection after removal or unknown media.
         self.loaded_toc = None
+        self.loaded_cdtext = None
         if controller.state.track_numbers:
             controller.state = controller.state.disc_removed()
         return self._set_status(controller, status)
