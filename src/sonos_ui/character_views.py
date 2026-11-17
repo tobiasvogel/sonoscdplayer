@@ -108,24 +108,12 @@ def character_frame_from_menu(menu, capabilities: DisplayCapabilities,
     if not isinstance(capabilities, DisplayCapabilities) or capabilities.kind != "character":
         raise ValueError("character display capabilities required")
     _page(now, 1)  # Validate the timestamp even for non-paged views.
+    # The controller is the common source of truth for all normal views.
+    # Only specialised WLAN screens remain in this character adapter.
+    semantic = menu.semantic_screen(now=now)
+    if semantic is not None:
+        return _render(semantic, capabilities, now)
     tr = Translator(menu.language).tr
-
-    if menu.shutdown_screen is not None:
-        keys = {"transition": "system.shutting_down",
-                "reboot": "system.restarting", "wait": "system.shutting_down",
-                "safe": "system.safe_to_unplug", "final": "system.please_wait",
-                "start": "system.starting"}
-        try:
-            text = tr(keys[menu.shutdown_screen])
-        except KeyError as exc:
-            raise ValueError("unknown system screen") from exc
-        return _render(SemanticScreen("notice", message=text, severity="info"),
-                       capabilities, now)
-
-    active_notice = (menu.connect_notices.current(now=now)
-                     if menu._notice_previous_active is not None else None)
-    if active_notice is not None:
-        return _notice_frame(active_notice, capabilities, now, menu.language)
 
     setup = menu.netsetup_snapshot()
     if setup is not None and not menu.power_menu:
@@ -154,44 +142,6 @@ def character_frame_from_menu(menu, capabilities: DisplayCapabilities,
                     language=menu.language, page=_page(now, 6))
             raise ValueError("unsupported WLAN controller mode")
         return _setup_frame(setup, capabilities, now, menu.language)
-
-    if menu.power_menu:
-        return render_character_screen(
-            power_menu_screen(menu.power_focus, language=menu.language),
-            capabilities, scroll_offset=int(now * 2) % 96)
-
-    if menu.volume_overlay_active(now=now):
-        return _render(SemanticScreen(
-            "idle", items=(ScreenItem("volume", tr("menu.volume"),
-                                     value=str(menu._volume_level)),)),
-            capabilities, now)
-
-    if menu.language_picker:
-        return render_character_screen(
-            language_menu_screen(tuple(menu.languages), menu.language_focus,
-                                 language=menu.language),
-            capabilities, scroll_offset=int(now * 2) % 96)
-    if menu.active:
-        if menu.section in ("main", "network", "settings"):
-            return render_character_screen(
-                navigation_screen(menu.section, menu.menu_focus,
-                                  language=menu.language), capabilities,
-                scroll_offset=int(now * 2) % 96)
-        if menu.section == "network_status":
-            return _render(network_status_screen(menu.network_snapshot,
-                                                language=menu.language),
-                           capabilities, now)
-        if menu.section == "targets":
-            if menu._target_pending:
-                return _notice_frame(Notice("status.target_pending"),
-                                     capabilities, now, menu.language)
-            if menu.state.notice and menu.state.notice != "menu.back":
-                return _notice_frame(Notice(menu.state.notice),
-                                     capabilities, now, menu.language)
-            return render_character_screen(
-                speaker_selection_screen(menu.state, language=menu.language),
-                capabilities, scroll_offset=int(now * 2) % 96)
-        raise ValueError("unknown active menu section")
 
     if not isinstance(base_screen, SemanticScreen) or base_screen.kind not in (
             "idle", "playback"):
