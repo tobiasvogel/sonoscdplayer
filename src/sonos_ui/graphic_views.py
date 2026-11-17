@@ -57,19 +57,19 @@ def render_graphic_semantic(screen: SemanticScreen, *, section: str,
             raise TypeError("expected NavigationRenderer")
         return nav.semantic_network_status(screen, language=language)
 
+    if section not in ("targets", "power", "language"):
+        raise ValueError("no graphical semantic adapter for this section yet")
+    if section == "targets" and state is None:
+        raise ValueError("speaker state required")
+
     multi = MultiRenderer(language=language) if renderer is None else renderer
     if not isinstance(multi, MultiRenderer):
         raise TypeError("expected MultiRenderer")
     if section == "targets":
-        if state is None:
-            raise ValueError("speaker state required")
         return multi.render_multi_semantic(screen, state, searching=searching, gray=True)
     if section == "power":
         return multi.render_power_semantic(screen, notice=power_notice, gray=True)
-    if section == "language":
-        return _language_pixels(screen, multi)
-
-    raise ValueError("no graphical semantic adapter for this section yet")
+    return _language_pixels(screen, multi)
 
 
 def graphic_frame_from_menu(menu, *, now: float):
