@@ -5,6 +5,12 @@ max_buffer_mib = 16
 [metadata]
 enabled = true
 read_cd_text = true
+online_lookup = true
+
+# First external metadata provider; a one-shot request after local TOC.
+[metadata.musicbrainz]
+enabled = true
+timeout_seconds = 8
 
 [audio_startup]
 prebuffer_before_sonos = true
