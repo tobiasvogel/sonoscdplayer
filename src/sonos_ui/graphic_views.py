@@ -16,8 +16,10 @@ from .theme import ssd1327_gray
 
 def _language_pixels(screen: SemanticScreen, renderer: MultiRenderer):
     """Preserve the existing language-picker layout, without any input logic."""
-    if screen.kind != "menu" or not screen.items:
-        raise ValueError("language picker requires menu items")
+    from .i18n import available_languages
+    if screen.kind != "menu" or tuple(item.key for item in screen.items) != tuple(
+            available_languages()):
+        raise ValueError("language picker items do not match available languages")
     focus = [i for i, item in enumerate(screen.items) if item.focused]
     if len(focus) != 1:
         raise ValueError("language picker needs exactly one focused item")
