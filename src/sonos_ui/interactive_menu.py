@@ -138,6 +138,11 @@ class InteractiveMenu:
         self._network_worker.start()
 
     def _navigation_event(self, name, event, now):
+        """Resolve a focused menu key before executing its existing action.
+
+        The catalog owns presentation order; the controller alone owns effects.
+        Unknown keys are rejected, never interpreted as a fallback/back action.
+        """
         if name == 'encoder' and event in ('left', 'right'):
             page = NAVIGATION_PAGES.get(self.section)
             choices = page[1] if page is not None else None
@@ -152,42 +157,57 @@ class InteractiveMenu:
             self.section = 'network'
             self.menu_focus = 0
             return True
-        if self.section not in ('main', 'network', 'settings'):
+        page = NAVIGATION_PAGES.get(self.section)
+        if page is None:
             return False
-        if self.section == 'main':
-            if self.menu_focus == 0:
+        choices = page[1]
+        if not 0 <= self.menu_focus < len(choices):
+            return False
+        action = choices[self.menu_focus]
+        section = self.section
+
+        if section == 'main':
+            if action == 'menu.targets':
                 self._targets_return = 'main'
                 self.section = 'targets'
                 self.state = replace(self.state, focus=0)
                 self._discover_if_empty(now)
-            elif self.menu_focus == 1:
+            elif action == 'menu.network':
                 self.section = 'network'
                 self.menu_focus = 0
-            elif self.menu_focus == 2:
+            elif action == 'menu.settings':
                 self.section = 'settings'
                 self.menu_focus = 0
-            else:
+            elif action == 'menu.back':
                 self.active = False
-        elif self.section == 'network':
-            if self.menu_focus == 0:
+            else:
+                return False
+        elif section == 'network':
+            if action == 'network.status':
                 self._open_network_status(now)
-            elif self.menu_focus == 1:
+            elif action == 'network.setup':
                 if self.network_setup is not None:
                     self._start_network_setup(now)
                 else:
                     self._connect_event('settings', now)
-            else:
+            elif action == 'menu.back':
                 self.section = 'main'
-                self.menu_focus = 1
-        elif self.section == 'settings':
-            if self.menu_focus == 0:
+                self.menu_focus = NAVIGATION_PAGES['main'][1].index('menu.network')
+            else:
+                return False
+        elif section == 'settings':
+            if action == 'menu.language':
                 self.language_picker = True
                 self.language_focus = self.languages.index(self.language)
-            elif self.menu_focus == 1:
+            elif action == 'menu.rescan':
                 self._request_scan(now)
-            else:
+            elif action == 'menu.back':
                 self.section = 'main'
-                self.menu_focus = 2
+                self.menu_focus = NAVIGATION_PAGES['main'][1].index('menu.settings')
+            else:
+                return False
+        else:
+            return False
         return True
 
     def _open_targets(self, now):
