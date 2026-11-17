@@ -9,7 +9,7 @@ The player can join a new Wi-Fi network without a keyboard, screen or SSH access
 | Hold CONNECT for 10 seconds | Starts the setup (a countdown appears from 5 seconds) |
 | Hold CONNECT for 3–10 seconds, release | Opens the network menu with **Set up Wi-Fi** selected |
 | Menu **Network → Set up Wi-Fi** | Starts the setup |
-| Hold CONNECT for 10 seconds again | Ends the setup |
+| Hold CONNECT for 10 seconds again | Ends the setup (the countdown reads "Setup ends in …"; releasing earlier keeps the setup running) and returns to the screen shown before it |
 | Press the encoder on the hotspot screen | Ends the hotspot and shows the network list on the display (see [Entering on the device](#entering-on-the-device)) |
 | No input for 15 minutes | The setup ends by itself |
 

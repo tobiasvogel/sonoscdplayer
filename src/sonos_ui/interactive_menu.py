@@ -236,6 +236,11 @@ class InteractiveMenu:
         """CONNECT >= 10 s or menu: start, or cancel a running setup."""
         if self.network_setup.active:
             self.network_setup.cancel()
+            # Drop the cancel countdown together with the screen it remembered
+            # (the setup screen), so the end notice returns to what was shown
+            # before the setup started.
+            self.connect_notices.clear(now=now)
+            self._notice_previous_active = None
             if self._netsetup_was_active is not None:
                 self.active = self._netsetup_was_active
                 self._netsetup_was_active = None
@@ -260,6 +265,8 @@ class InteractiveMenu:
             return False
         if self.network_setup is not None and action == 'setup_requested':
             return self._start_network_setup(now)
+        if self.netsetup_snapshot() is not None:
+            return self._connect_during_setup(action, now)
         if self.network_setup is not None and action == 'settings':
             # CONNECT 3-10 s: the network menu with "Set up Wi-Fi".
             self.connect_notices.clear(now=now)
@@ -277,6 +284,22 @@ class InteractiveMenu:
         self.connect_notices.show(action, now=now)
         self.active = True
         return True
+
+    def _connect_during_setup(self, action, now):
+        """CONNECT held while the setup runs: only the way out (10 s) counts."""
+        if action.startswith('warning_') and action[8:] in ('1', '2', '3', '4', '5'):
+            if self._notice_previous_active is None:
+                self._notice_previous_active = self.active
+            self.connect_notices.post(Notice('netsetup.cancel_warning', severity='warning',
+                                             params={'seconds': int(action[8:])}, priority=80,
+                                             duration_seconds=0, dismissible=False), now=now)
+            return True
+        if action in ('status', 'settings'):
+            # Released before 10 s: the setup simply continues.
+            changed = self.connect_notices.clear(now=now)
+            self._restore_after_notice()
+            return bool(changed)
+        return False
 
     def _restore_after_notice(self):
         if self._notice_previous_active is not None:

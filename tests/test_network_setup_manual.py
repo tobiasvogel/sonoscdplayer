@@ -253,5 +253,49 @@ class MenuManualTests(unittest.TestCase):
         self.assertIsNone(self.menu.wifi_entry.mode)
 
 
+class CancelByConnectTests(unittest.TestCase):
+    """CONNECT held again during a running setup (bug report 17.11.)."""
+
+    def setUp(self):
+        self.session, _clock, _webs = make_session(ManualNm())
+        self.menu = InteractiveMenu(discover=lambda **_: None, network_setup=self.session)
+
+    def hold(self, actions):
+        for action in actions:
+            self.menu.event('connect', action, now=time.monotonic())
+            self.session.join()
+            self.menu.poll(now=time.monotonic())
+
+    def start_from_idle(self):
+        # A normal start: hint at 3 s, countdown, request at 10 s.
+        self.hold(['settings_hint', 'warning_5', 'warning_1', 'setup_requested'])
+        self.assertEqual(self.session.snapshot().state, 'hotspot')
+
+    def test_countdown_says_the_setup_ends(self):
+        self.start_from_idle()
+        self.hold(['settings_hint', 'warning_3'])
+        notice = self.menu.connect_notices.current(now=time.monotonic())
+        self.assertEqual((notice.key, notice.params['seconds']), ('netsetup.cancel_warning', 3))
+        self.assertEqual(self.session.snapshot().state, 'hotspot')
+
+    def test_cancel_returns_to_overview_not_speaker_selection(self):
+        self.start_from_idle()
+        self.assertFalse(self.menu._netsetup_was_active)
+        self.hold(['settings_hint', 'warning_5', 'warning_1', 'setup_requested'])
+        self.assertIsNone(self.menu.netsetup_snapshot())
+        self.assertEqual(self.menu.connect_notices.current(now=time.monotonic()).key,
+                         'netsetup.cancelled')
+        self.menu.poll(now=time.monotonic() + 10)   # end notice expired
+        self.assertFalse(self.menu.active)
+
+    def test_release_before_ten_seconds_keeps_setup(self):
+        self.start_from_idle()
+        self.hold(['settings_hint', 'warning_4', 'settings'])
+        self.assertEqual(self.session.snapshot().state, 'hotspot')
+        self.assertIsNone(self.menu.connect_notices.current(now=time.monotonic()))
+        self.assertEqual(self.menu.section, 'targets')     # network menu not opened
+        self.menu.frame(lambda image: image)
+
+
 if __name__ == '__main__':
     unittest.main()

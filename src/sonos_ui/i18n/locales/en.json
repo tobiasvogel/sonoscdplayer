@@ -119,6 +119,7 @@
   "netsetup.no_wifi": "No Wi-Fi device found",
   "netsetup.hotspot_failed": "Could not start the hotspot",
   "netsetup.blocked": "Stop playback first",
+  "netsetup.cancel_warning": "Setup ends in {seconds} seconds",
   "netsetup.cancelled": "Wi-Fi setup ended",
   "netsetup.manual_hint": "Press: enter manually",
   "netsetup.scanning": "Searching Wi-Fi …",

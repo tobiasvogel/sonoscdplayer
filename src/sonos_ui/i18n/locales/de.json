@@ -119,6 +119,7 @@
   "netsetup.no_wifi": "Kein WLAN-Gerät gefunden",
   "netsetup.hotspot_failed": "Hotspot konnte nicht gestartet werden",
   "netsetup.blocked": "Zuerst die Wiedergabe stoppen",
+  "netsetup.cancel_warning": "Einrichtung endet in {seconds} Sekunden",
   "netsetup.cancelled": "WLAN-Einrichtung beendet",
   "netsetup.manual_hint": "Drücken: manuell eingeben",
   "netsetup.scanning": "Suche WLANs …",
