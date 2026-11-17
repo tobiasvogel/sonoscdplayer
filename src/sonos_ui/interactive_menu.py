@@ -744,7 +744,7 @@ class InteractiveMenu:
         if notice is not None:
             screen = screen_from_notice(notice, language=self.language)
             if NoticeTiming().encoder_can_confirm(notice):
-                return SemanticScreen('notice', message=screen.message + '\\n' +
+                return SemanticScreen('notice', message=screen.message + '\n' +
                                       Translator(self.language).tr('notice.dismiss_hint'),
                                       severity=screen.severity)
             return screen
