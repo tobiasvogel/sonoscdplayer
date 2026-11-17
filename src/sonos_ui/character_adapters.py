@@ -166,7 +166,8 @@ def wifi_choice_screen(controller, snapshot, *, language: str = "de") -> Semanti
     The current controller includes RESCAN, HIDDEN and BACK after networks.
     Its item order is authoritative, never a renderer-specific menu.
     """
-    from .wifi_entry import WifiEntryController, RESCAN, HIDDEN, BACK
+    from . import wifi_entry
+    from .wifi_entry import WifiEntryController, HIDDEN, BACK
     from network_setup.session import SetupSnapshot
     if not isinstance(controller, WifiEntryController) or not isinstance(snapshot, SetupSnapshot):
         raise TypeError("expected WLAN UI controller and setup snapshot")
@@ -178,7 +179,7 @@ def wifi_choice_screen(controller, snapshot, *, language: str = "de") -> Semanti
         raise ValueError("invalid WLAN menu focus")
     items = []
     for index, choice in enumerate(choices):
-        if choice is RESCAN:
+        if choice is getattr(wifi_entry, "RESCAN", None):
             key, label, selected, intent = (
                 "wifi:rescan", tr("netsetup.rescan"), False, "rescan_networks")
         elif choice is HIDDEN:
