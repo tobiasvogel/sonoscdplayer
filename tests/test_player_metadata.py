@@ -97,8 +97,10 @@ class MetadataWorkerTests(unittest.TestCase):
         toc = FakeToc('a')
         self.worker.observe(toc)
         self.executor.finish(0)
-        self.assertFalse(self.worker.poll(toc))
-        self.assertIsNone(self.worker.snapshot)
+        self.assertTrue(self.worker.poll(toc))
+        self.assertEqual(self.worker.snapshot['match_status'], 'toc')
+        self.assertEqual(self.worker.snapshot['lookup_status'], 'error')
+        self.assertIsNotNone(self.worker._retry_at)
 
 
     def test_service_matching_policy_configuration(self):

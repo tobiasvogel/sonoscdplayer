@@ -80,7 +80,11 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                  policy, identify, lookup):
     identity = identify(toc)
     local = local_metadata_from_cdtext(toc, cdtext)
-    cached = cache.get(identity)
+    # Database corruption and permissions must not hide already-read CD-TEXT.
+    try:
+        cached = cache.get(identity)
+    except Exception:
+        cached = None
     lookup_status = None
     if cached is not None:
         effective = _prefer_cdtext(local, cached.local)
@@ -90,18 +94,33 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
     else:
         effective, release_id, match, score = local, None, 'toc', None
         if online:
-            result = lookup(identity, track_count=len(toc.tracks),
-                            timeout_seconds=timeout)
-            lookup_status = result.status
-            if result.status in ('unique', 'ambiguous'):
-                decision = decide_release(local, result, policy)
-                release_id = decision.selected_release_id
-                match, score = decision.status, decision.score
-                effective = merged_metadata(local, decision)
-                # Do not persist failed/ambiguous-only lookups as final matches.
-                if release_id:
-                    cache.put(identity, effective, release_id=release_id,
-                              match_method=match, confidence_score=score)
+            # The remote provider is optional. Its exceptions have the same
+            # retry semantics as a structured 'error' result (D-227).
+            try:
+                result = lookup(identity, track_count=len(toc.tracks),
+                                timeout_seconds=timeout)
+                lookup_status = result.status
+            except Exception:
+                result = None
+                lookup_status = 'error'
+            if result is not None and result.status in ('unique', 'ambiguous'):
+                # Bad external data must not remove the local metadata either.
+                try:
+                    decision = decide_release(local, result, policy)
+                    merged = merged_metadata(local, decision)
+                except Exception:
+                    lookup_status = 'error'
+                else:
+                    release_id = decision.selected_release_id
+                    match, score = decision.status, decision.score
+                    effective = merged
+                    if release_id:
+                        try:
+                            cache.put(identity, effective, release_id=release_id,
+                                      match_method=match, confidence_score=score)
+                        except Exception:
+                            # Metadata remains available even with read-only DB.
+                            pass
     # Cover mode off suppresses even cached files in the UI.
     cover = _cover_file(cover_cache, release_id, cover_policy)
     return {

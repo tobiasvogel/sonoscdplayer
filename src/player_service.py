@@ -29,6 +29,7 @@ from disc_startup import inspect_initial_disc
 from disc_monitor import DiscMonitor
 from player_metadata import MetadataWorker, matching_policy_from_config
 from disc_metadata import read_cdtext
+from drive_access import drive_lock
 from sonos_metadata import album_prefix_from_config
 from safe_drive_eject import eject_verified_idle
 from player_state import PlayerState, Mode
@@ -410,6 +411,21 @@ def _current_disc(disc_monitor, drive_toc, drive_cdtext):
     return drive_toc, drive_cdtext
 
 
+def read_startup_cdtext_locked(device, *, reader=read_cdtext, lock=drive_lock):
+    """Optional startup CD-TEXT; never wait for a busy drive or block READY.
+
+    The TOC has already been verified by inspect_initial_disc(). The lock
+    protects the follow-up cd-info operation; no read runs when lock is busy.
+    """
+    try:
+        with lock(device, blocking=False) as acquired:
+            if not acquired:
+                return None
+            return reader(device)
+    except Exception:
+        return None
+
+
 def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, target_store=None, metadata_worker=None, drive_cdtext=None):
     path = Path(socket_path).expanduser().absolute()
     if not path.parent.is_dir():
@@ -727,10 +743,7 @@ def run(argv=None):
                 if meta.get('read_cd_text', True) is True:
                     cdtext_reader = read_cdtext
                     if toc is not None:
-                        try:
-                            startup_cdtext = read_cdtext(device)
-                        except Exception:
-                            startup_cdtext = None
+                        startup_cdtext = read_startup_cdtext_locked(device)
                 metadata_worker = MetadataWorker(
                     cache_path=Path(ns.state_dir) / 'metadata.sqlite3',
                     cover_dir=Path(ns.state_dir) / 'covers',
