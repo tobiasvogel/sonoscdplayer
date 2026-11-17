@@ -62,7 +62,16 @@ class RemainingGraphicParityTests(unittest.TestCase):
                            dismissible=dismissible, duration_seconds=0), now=0)
                 with self.subTest(language=language, dismissible=dismissible):
                     self.assert_preview_parity(menu, now=1)
-                    self.assertEqual(menu.semantic_screen(now=1).kind, "notice")
+                    semantic = menu.semantic_screen(now=1)
+                    self.assertEqual(semantic.kind, "notice")
+                    from sonos_ui.semantic_screen import screen_from_notice
+                    from sonos_ui.notice_policy import NoticeTiming
+                    from sonos_ui.i18n import Translator
+                    notice = menu.connect_notices.current(now=1)
+                    expected = screen_from_notice(notice, language=language).message
+                    if NoticeTiming().encoder_can_confirm(notice):
+                        expected += "\n" + Translator(language).tr("notice.dismiss_hint")
+                    self.assertEqual(semantic.message, expected)
                     self.assertEqual(menu.section, "main")
 
     def test_hotspot_and_wifi_choices_pixel_parity(self):
