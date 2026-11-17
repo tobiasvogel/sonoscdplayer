@@ -54,7 +54,8 @@ def _fit(text: str, width: int, *, offset: int = 0) -> str:
 def _page_lines(message: str, width: int) -> list[str]:
     """Word-aware wrap, preserving deliberate newlines and long tokens."""
     result = []
-    for raw in message.split("\n"):\n        raw = portable_text(raw)
+    for raw in message.split("\n"):
+        raw = portable_text(raw)
         if not raw:
             result.append("")
             continue
