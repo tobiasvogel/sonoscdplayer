@@ -709,6 +709,77 @@ class InteractiveMenu:
             self.state = replace(self.state, notice='')
         return True
 
+    def semantic_screen(self, *, now):
+        """Read-only semantic snapshot of the active non-WLAN menu.
+
+        Navigation and selectable overlays share this snapshot with every
+        renderer. WLAN text input and hotspot presentation still need their
+        specialised projections; they are deliberately not duplicated here.
+        No encoder dispatch, player writes or mutations occur.
+        """
+        from .character_adapters import (
+            navigation_screen, speaker_selection_screen, power_menu_screen,
+            language_menu_screen, network_status_screen,
+        )
+        from .semantic_screen import ScreenItem, SemanticScreen, screen_from_notice
+
+        if self.shutdown_screen is not None:
+            keys = {
+                'transition': 'system.shutting_down',
+                'wait': 'system.shutting_down',
+                'reboot': 'system.restarting',
+                'final': 'system.please_wait',
+                'safe': 'system.safe_to_unplug',
+                'start': 'system.starting',
+            }
+            try:
+                key = keys[self.shutdown_screen]
+            except KeyError as exc:
+                raise ValueError('unknown shutdown screen') from exc
+            return SemanticScreen('notice', message=Translator(self.language).tr(key),
+                                  severity='info')
+
+        notice = (self.connect_notices.current(now=now)
+                  if self._notice_previous_active is not None else None)
+        if notice is not None:
+            screen = screen_from_notice(notice, language=self.language)
+            if NoticeTiming().encoder_can_confirm(notice):
+                return SemanticScreen('notice', message=screen.message + '\\n' +
+                                      Translator(self.language).tr('notice.dismiss_hint'),
+                                      severity=screen.severity)
+            return screen
+
+        # WLAN setup has higher precedence than power, except for the
+        # existing power-menu override. Its screen remains in the D-224 adapter.
+        if self.netsetup_snapshot() is not None and not self.power_menu:
+            return None
+
+        if self.power_menu:
+            return power_menu_screen(self.power_focus, language=self.language)
+        if self.volume_overlay_active(now=now):
+            return SemanticScreen('idle', items=(
+                ScreenItem('volume', Translator(self.language).tr('menu.volume'),
+                           value=str(self._volume_level)),))
+        if self.language_picker:
+            return language_menu_screen(tuple(self.languages), self.language_focus,
+                                        language=self.language)
+        if not self.active:
+            return None
+        if self.section in NAVIGATION_PAGES:
+            return navigation_screen(self.section, self.menu_focus,
+                                     language=self.language)
+        if self.section == 'network_status':
+            return network_status_screen(self.network_snapshot, language=self.language)
+        if self.section == 'targets':
+            if self._target_pending:
+                return screen_from_notice(Notice('status.target_pending'),
+                                          language=self.language)
+            if self.state.notice and self.state.notice != 'menu.back':
+                return screen_from_notice(Notice(self.state.notice),
+                                          language=self.language)
+            return speaker_selection_screen(self.state, language=self.language)
+        raise ValueError('unknown active menu section')
+
     def frame(self, image_to_frame):
         if self.shutdown_screen is not None:
             if self._shutdown_frame is None:
