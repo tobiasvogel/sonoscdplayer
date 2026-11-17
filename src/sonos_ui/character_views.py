@@ -1,0 +1,187 @@
+"""Read-only character display projection of the existing OLED menu priorities.
+
+This module does not route input or own a second state machine. Callers supply
+a monotonic timestamp and the same InteractiveMenu instance used by the OLED.
+Automatic pagination is *display only*: encoder presses remain governed by
+InteractiveMenu.event and NoticeTiming. The productive OLED path is untouched.
+"""
+from __future__ import annotations
+
+from .character_adapters import (
+    language_menu_screen, navigation_screen, network_status_screen,
+    power_menu_screen, speaker_selection_screen, text_entry_frame,
+    wifi_choice_screen,
+)
+from .character_layout import character_page_count, render_character_screen
+from .display_capabilities import DisplayCapabilities
+from .i18n import Translator
+from .notice import Notice, notice_text
+from .notice_policy import NoticeTiming
+from .semantic_screen import ScreenItem, SemanticScreen, screen_from_notice
+
+PAGE_SECONDS = 3.0
+
+
+def _page(now: float, count: int) -> int:
+    if not isinstance(now, (int, float)) or not 0 <= now < float("inf"):
+        raise ValueError("now must be finite and nonnegative")
+    return int(now // PAGE_SECONDS) % count
+
+
+def _render(screen, capabilities, now):
+    return render_character_screen(
+        screen, capabilities,
+        page=_page(now, character_page_count(screen, capabilities)))
+
+
+def _notice_frame(notice: Notice, capabilities, now, language):
+    tr = Translator(language).tr
+    screen = screen_from_notice(notice, language=language)
+    # A notice only advertises confirmation when the live policy permits it.
+    if NoticeTiming().encoder_can_confirm(notice):
+        screen = SemanticScreen(
+            "notice", message=screen.message + "\n" + tr("notice.dismiss_hint"),
+            severity=screen.severity)
+    return _render(screen, capabilities, now)
+
+
+def _setup_frame(snapshot, capabilities, now, language):
+    tr = Translator(language).tr
+    if snapshot.state == "hotspot":
+        # SSID, password and address remain available in separate rotating
+        # views even on 16x2. Never log or store the hotspot password here.
+        fields = (
+            ScreenItem("ssid", tr("netsetup.network"),
+                       value=snapshot.hotspot_ssid),
+            ScreenItem("password", tr("netsetup.password"),
+                       value=snapshot.password),
+            ScreenItem("address", tr("netsetup.open"),
+                       value=snapshot.url.replace("http://", "")),
+            ScreenItem("remaining", "Zeit",
+                       value=tr("netsetup.remaining",
+                                minutes=max(1, (snapshot.remaining + 59) // 60))),
+            ScreenItem("manual", tr("netsetup.manual_hint")),
+            ScreenItem("cancel", tr("netsetup.cancel_hint")),
+        )
+        return _render(SemanticScreen("idle", heading=tr("netsetup.title"),
+                                     items=fields), capabilities, now)
+    key = {
+        "preparing": "netsetup.preparing",
+        "scanning": "netsetup.scanning",
+        "unavailable": ("netsetup.no_wifi" if snapshot.error == "no_wifi"
+                        else "netsetup.hotspot_failed"),
+    }.get(snapshot.state)
+    if key is not None:
+        text = tr(key)
+    elif snapshot.state in ("connecting", "connected"):
+        key = "netsetup.connecting" if snapshot.state == "connecting" else "netsetup.connected"
+        text = tr(key, ssid=snapshot.target)
+    else:
+        raise ValueError("unsupported WLAN setup state")
+    return _render(SemanticScreen("notice", message=text,
+                                 severity="error" if snapshot.state == "unavailable"
+                                 else "info"), capabilities, now)
+
+
+def character_frame_from_menu(menu, capabilities: DisplayCapabilities,
+                              *, now: float, base_screen: SemanticScreen | None = None):
+    """Mirror active InteractiveMenu screen precedence without processing input.
+
+    An inactive menu requires a caller-provided idle/playback screen from the
+    existing view model; it is unsafe to invent album/track information.
+    """
+    from .interactive_menu import InteractiveMenu
+
+    if not isinstance(menu, InteractiveMenu):
+        raise TypeError("expected InteractiveMenu")
+    if not isinstance(capabilities, DisplayCapabilities) or capabilities.kind != "character":
+        raise ValueError("character display capabilities required")
+    _page(now, 1)  # Validate the timestamp even for non-paged views.
+    tr = Translator(menu.language).tr
+
+    if menu.shutdown_screen is not None:
+        keys = {"transition": "system.shutting_down",
+                "reboot": "system.restarting", "wait": "system.shutting_down",
+                "safe": "system.safe_to_unplug", "final": "system.please_wait",
+                "start": "system.starting"}
+        try:
+            text = tr(keys[menu.shutdown_screen])
+        except KeyError as exc:
+            raise ValueError("unknown system screen") from exc
+        return _render(SemanticScreen("notice", message=text, severity="info"),
+                       capabilities, now)
+
+    active_notice = (menu.connect_notices.current(now=now)
+                     if menu._notice_previous_active is not None else None)
+    if active_notice is not None:
+        return _notice_frame(active_notice, capabilities, now, menu.language)
+
+    setup = menu.netsetup_snapshot()
+    if setup is not None and not menu.power_menu:
+        if setup.state == "choosing":
+            wifi = menu.wifi_entry
+            if wifi is None:
+                raise ValueError("no WLAN entry controller")
+            if wifi.mode == "list":
+                if wifi.list_notice:
+                    # Keep the actionable list visible on alternate views.
+                    if _page(now, 2) == 0:
+                        return _notice_frame(
+                            Notice(wifi.list_notice, severity="error"),
+                            capabilities, now, menu.language)
+                return render_character_screen(
+                    wifi_choice_screen(wifi, setup, language=menu.language),
+                    capabilities)
+            if wifi.mode in ("ssid", "password"):
+                if wifi.entry is None:
+                    raise ValueError("WLAN entry state missing")
+                return text_entry_frame(
+                    wifi.entry, capabilities,
+                    title=tr("netsetup.ssid_title" if wifi.mode == "ssid"
+                             else "netsetup.password_title"),
+                    subtitle=wifi.target if wifi.mode == "password" else "",
+                    language=menu.language, page=_page(now, 6))
+            raise ValueError("unsupported WLAN controller mode")
+        return _setup_frame(setup, capabilities, now, menu.language)
+
+    if menu.power_menu:
+        return render_character_screen(
+            power_menu_screen(menu.power_focus, language=menu.language),
+            capabilities)
+
+    if menu.volume_overlay_active(now=now):
+        return _render(SemanticScreen(
+            "idle", items=(ScreenItem("volume", tr("menu.volume"),
+                                     value=str(menu._volume_level)),)),
+            capabilities, now)
+
+    if menu.language_picker:
+        return render_character_screen(
+            language_menu_screen(tuple(menu.languages), menu.language_focus,
+                                 language=menu.language),
+            capabilities)
+    if menu.active:
+        if menu.section in ("main", "network", "settings"):
+            return render_character_screen(
+                navigation_screen(menu.section, menu.menu_focus,
+                                  language=menu.language), capabilities)
+        if menu.section == "network_status":
+            return _render(network_status_screen(menu.network_snapshot,
+                                                language=menu.language),
+                           capabilities, now)
+        if menu.section == "targets":
+            if menu._target_pending:
+                return _notice_frame(Notice("status.target_pending"),
+                                     capabilities, now, menu.language)
+            if menu.state.notice and menu.state.notice != "menu.back":
+                return _notice_frame(Notice(menu.state.notice),
+                                     capabilities, now, menu.language)
+            return render_character_screen(
+                speaker_selection_screen(menu.state, language=menu.language),
+                capabilities)
+        raise ValueError("unknown active menu section")
+
+    if not isinstance(base_screen, SemanticScreen) or base_screen.kind not in (
+            "idle", "playback"):
+        raise ValueError("inactive menu requires an idle/playback base screen")
+    return _render(base_screen, capabilities, now)
