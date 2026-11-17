@@ -77,6 +77,9 @@ def text_entry_frame(entry: TextEntry, capabilities: DisplayCapabilities,
         # Errors temporarily occupy the first row, not the selected action.
         lines = [fit(diagnostic) if entry.error else fit(tail),
                  fit("> " + choice)]
+    elif height == 3:
+        lines = [fit(title), fit(diagnostic) if entry.error else fit(tail),
+                 fit("> " + choice)]
     else:
         lines = [fit(title), fit(tail), fit(diagnostic),
                  fit("> " + choice)]
