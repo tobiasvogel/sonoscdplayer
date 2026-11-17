@@ -15,13 +15,14 @@ import tomllib
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 from cd_toc import read_toc
-from config_paths import player_config
+from config_paths import player_config, ui_config
 from disc_musicbrainz import identity_from_toc, lookup_disc
 from disc_metadata import read_cdtext, build_local_metadata
 from disc_matching import MatchingPolicy, decide_release, merged_metadata
 from metadata_language_rules import load_language_rules
 from disc_cache import DiscCache
-from disc_covers import CoverCache, CoverPolicy
+from disc_covers import CoverCache
+from cover_preferences import read_cover_preferences
 from disc_startup import optical_devices
 from drive_access import drive_lock
 
@@ -83,18 +84,6 @@ def matching_settings(path):
 
 
 
-def cover_settings(path):
-    with path.open('rb') as handle:
-        config = tomllib.load(handle)
-    metadata = config.get('metadata', {})
-    values = metadata.get('cover_art', {})
-    if not isinstance(values, dict):
-        raise ValueError('[metadata.cover_art] must be a table')
-    return CoverPolicy(
-        enabled=values.get('enabled', False),
-        max_dimension_px=values.get('max_dimension_px', 512))
-
-
 def probe_cache(identity, cache_path):
     if cache_path is None:
         return None
@@ -105,6 +94,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--device', default='auto')
     parser.add_argument('--config', type=Path, default=player_config())
+    parser.add_argument('--ui-config', type=Path, default=ui_config(), help='Cover preferences from ui.toml')
     parser.add_argument('--offline', action='store_true', help='DiscID only, without network')
     parser.add_argument('--cache-db', type=Path, help='Opt-in local SQLite metadata cache')
     parser.add_argument('--cover-dir', type=Path, help='Explicit directory for cached cover JPEGs')
@@ -114,7 +104,9 @@ def main(argv=None):
     try:
         enabled, online, timeout = read_settings(args.config)
         read_text, matching_policy = matching_settings(args.config)
-        cover_policy = cover_settings(args.config)
+        cover_preferences = read_cover_preferences(args.ui_config)
+        cover_policy = cover_preferences.download_policy(
+            display_supports_cover=bool(args.fetch_cover and args.cover_dir))
         if not enabled:
             print('Metadata disabled by configuration', file=sys.stderr)
             return 2
