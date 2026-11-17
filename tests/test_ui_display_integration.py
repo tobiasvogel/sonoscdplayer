@@ -153,6 +153,48 @@ class DisplayIntegrationTests(unittest.TestCase):
                 self.assertEqual(menu.section, "targets")
                 self.assertEqual(menu.state.notice, notice)
 
+    def test_target_feedback_does_not_override_higher_priority_notice(self):
+        """Global notice always wins over the special OLED target footer."""
+        from dataclasses import replace
+        menu = InteractiveMenu()
+        menu.active, menu.section = True, "targets"
+        menu.state = replace(menu.state, notice="status.target_rejected")
+        menu._target_pending = True
+        menu._notice_previous_active = False
+        menu.connect_notices.post(
+            Notice("status.player_offline", severity="error",
+                   duration_seconds=0), now=0)
+        self.assertEqual(menu.semantic_screen(now=1).kind, "notice")
+        with patch("sonos_ui.interactive_menu.time.monotonic", return_value=1):
+            legacy = menu.frame(lambda image: image)
+            preview = graphic_frame_from_menu(menu, now=1)
+        self.assertEqual(legacy.tobytes(), preview.tobytes())
+
+    def test_target_feedback_rejects_unrelated_semantic_notice(self):
+        """Never render the underlying target menu over an unknown overlay."""
+        from dataclasses import replace
+        from sonos_ui.semantic_screen import screen_from_notice
+        menu = InteractiveMenu()
+        menu.active, menu.section = True, "targets"
+        menu.state = replace(menu.state, notice="status.target_rejected")
+        unexpected = screen_from_notice(Notice("status.player_offline"))
+        with patch.object(menu, "semantic_screen", return_value=unexpected):
+            with self.assertRaises(ValueError):
+                graphic_frame_from_menu(menu, now=1)
+
+    def test_target_feedback_preview_never_sends_sonos_commands(self):
+        """Speaker ACK/rejection presentation must not invoke any controller action."""
+        from dataclasses import replace
+        menu = InteractiveMenu()
+        menu.active, menu.section = True, "targets"
+        menu.state = replace(menu.state, notice="status.target_rejected")
+        with patch.object(menu, "_send_target") as send, \\
+             patch.object(menu, "_discover_if_empty") as discover:
+            graphic_frame_from_menu(menu, now=1)
+            character_frame_from_menu(menu, LCD16, now=1)
+            send.assert_not_called()
+            discover.assert_not_called()
+
     def test_character_and_graphic_paths_do_not_add_display_inputs(self):
         """Neither projection confirms a notice or selects a speaker."""
         menu = InteractiveMenu()
