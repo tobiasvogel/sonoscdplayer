@@ -71,8 +71,11 @@ def _setup_frame(snapshot, capabilities, now, language):
                 ScreenItem("name", label),
                 ScreenItem("value", value or " "),
                 ScreenItem("cancel", tr("netsetup.cancel_hint"))))
+        # Keep an action-only instruction anchored at its beginning.
+        # Scroll long values (SSID/URL) and the manual-entry hint instead.
+        offset = int(now * 2) % 96 if value else 0
         return render_character_screen(
-            screen, capabilities, scroll_offset=int(now * 2) % 96)
+            screen, capabilities, scroll_offset=offset)
     key = {
         "preparing": "netsetup.preparing",
         "scanning": "netsetup.scanning",
