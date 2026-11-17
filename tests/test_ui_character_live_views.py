@@ -129,11 +129,20 @@ class CharacterLiveViewTests(unittest.TestCase):
         controller = wifi_entry.WifiEntryController(SnapshotSession(snap))
         controller.mode = "list"
         controller.focus = 1
-        with patch.object(wifi_entry, "RESCAN", rescan, create=True):
-            with patch.object(controller, "items",
-                              return_value=[snap.networks[0], rescan,
-                                            wifi_entry.HIDDEN, wifi_entry.BACK]):
-                screen = wifi_choice_screen(controller, snap)
+        # The original feature-branch base predates the new locale key
+        # on main. Simulate both parts of main's change: menu item AND locale.
+        from sonos_ui.i18n.translator import catalog
+        def current_main_catalog(language):
+            return {**catalog(language),
+                    "netsetup.rescan": ("Netzwerke suchen" if language == "de"
+                                        else "Scan networks")}
+        with patch("sonos_ui.i18n.translator.catalog",
+                   side_effect=current_main_catalog):
+            with patch.object(wifi_entry, "RESCAN", rescan, create=True):
+                with patch.object(controller, "items",
+                                  return_value=[snap.networks[0], rescan,
+                                                wifi_entry.HIDDEN, wifi_entry.BACK]):
+                    screen = wifi_choice_screen(controller, snap)
         self.assertEqual(len(screen.items), 4)
         self.assertEqual(screen.items[1].key, "wifi:rescan")
         self.assertEqual(screen.items[1].intent, "rescan_networks")
