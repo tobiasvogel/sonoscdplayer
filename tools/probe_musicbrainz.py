@@ -59,11 +59,18 @@ def matching_settings(path):
     if type(read_text) is not bool:
         raise ValueError('metadata.read_cd_text must be boolean')
     defaults = MatchingPolicy()
+    def suffix_list(name, fallback):
+        supplied = values.get(name, list(fallback))
+        if type(supplied) is not list or any(type(item) is not str for item in supplied):
+            raise ValueError(f'metadata.matching.{name} must be a list of strings')
+        return tuple(supplied)
     policy = MatchingPolicy(
         auto_match=metadata.get('auto_match', defaults.auto_match),
         confidence_threshold=values.get('confidence_threshold', defaults.confidence_threshold),
         minimum_margin=values.get('minimum_margin', defaults.minimum_margin),
-        minimum_track_titles=values.get('minimum_track_titles', defaults.minimum_track_titles))
+        minimum_track_titles=values.get('minimum_track_titles', defaults.minimum_track_titles),
+        soft_suffixes=suffix_list('soft_suffixes', defaults.soft_suffixes),
+        protected_suffixes=suffix_list('protected_suffixes', defaults.protected_suffixes))
     return read_text, policy
 
 

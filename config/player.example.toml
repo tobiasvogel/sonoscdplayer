@@ -16,6 +16,11 @@ confidence_threshold = 90
 minimum_margin = 15
 # Minimum number of CD-TEXT track titles for ambiguous DiscIDs.
 minimum_track_titles = 3
+# Exact trailing (...) or [...] descriptors. Extend in any language.
+# Soft terms reduce the match slightly when they differ.
+soft_suffixes = ["Sing mit", "TV Version"]
+# Protected terms never silently match a different edition/recording.
+protected_suffixes = ["Live", "Instrumental", "Remastered", "Deluxe"]
 
 # First external metadata provider; a one-shot request after local TOC.
 [metadata.musicbrainz]

@@ -104,5 +104,35 @@ class MatchingTests(unittest.TestCase):
                 MatchingPolicy(**policy)
 
 
+    def test_protected_version_never_auto_matches_ambiguous(self):
+        local = make_local(('Lied vom Fruehling (Live)', 'Schoene Blumen',
+                            'Alles ist gruen', 'Das Schlusslied'),
+                           album='Frühlingslieder', artist='Kinderchor')
+        decision = self.decide(self.correct, self.wrong, local=local)
+        self.assertEqual(decision.status, 'manual')
+        self.assertIn('protected', decision.reason)
+
+    def test_user_added_multilingual_soft_suffixes(self):
+        policy = MatchingPolicy(soft_suffixes=('Sing mit', 'TV Version', 'Version française'))
+        local = make_local(('Lied vom Fruehling (Version française)',
+                            'Schoene Blumen', 'Alles ist gruen', 'Das Schlusslied'))
+        decision = self.decide(self.correct, self.wrong, local=local, policy=policy)
+        self.assertEqual(decision.status, 'confidence')
+
+    def test_suffix_only_at_end(self):
+        from disc_matching import _split_qualifier
+        policy = MatchingPolicy()
+        self.assertEqual(_split_qualifier('Live and Let Die', policy),
+                         ('Live and Let Die', None, None))
+        self.assertEqual(_split_qualifier('Song (Live)', policy),
+                         ('Song', 'live', 'protected'))
+
+    def test_conflicting_lists_invalid(self):
+        with self.assertRaises(ValueError):
+            MatchingPolicy(soft_suffixes=('Live',))
+        with self.assertRaises(ValueError):
+            MatchingPolicy(protected_suffixes=('Live', 'LIVE'))
+
+
 if __name__ == '__main__':
     unittest.main()
