@@ -118,6 +118,22 @@ def graphic_frame_from_menu(menu, *, now: float):
             raise ValueError("inconsistent WLAN preview state")
         return menu.wifi_entry.frame(menu.renderer, setup, now=now)
 
+    # The OLED speaker widget deliberately keeps its selection rows and
+    # status footer during target ACK/rejection. Character screens instead
+    # show a full-screen semantic notice. Preserve both established layouts
+    # without pretending that the target notice is a semantic OLED menu.
+    if menu.active and menu.section == "targets" and (
+            menu._target_pending or
+            (menu.state.notice and menu.state.notice != "menu.back")):
+        from .notice import Notice
+        key = ("status.target_pending" if menu._target_pending
+               else menu.state.notice)
+        expected = screen_from_notice(Notice(key), language=menu.language)
+        if screen != expected:
+            raise ValueError("speaker feedback does not match semantic state")
+        return menu.renderer.render_multi(
+            menu.state, gray=True, searching=menu.searching())
+
     if screen is None or screen.kind not in ("menu", "idle"):
         raise ValueError("no supported active semantic screen")
 
