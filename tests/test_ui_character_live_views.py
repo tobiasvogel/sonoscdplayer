@@ -77,7 +77,7 @@ class CharacterLiveViewTests(unittest.TestCase):
         self.assertIn("Player", "".join(first.lines))
         self.assertIn("Schliessen", "".join(second.lines))
         self.assertEqual(menu.section, "main")
-        self.assertTrue(menu.connect_notices.current(now=4) is not None)
+        self.assertTrue(menu.connect_notices.current(now=7) is not None)
 
     def test_16x2_hotspot_shows_credentials_and_cancel(self):
         snap = SetupSnapshot(state="hotspot", hotspot_ssid="SonosCDPlayer-ABCD",
