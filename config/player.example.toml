@@ -1,6 +1,11 @@
 [streaming]
 max_buffer_mib = 16
 
+# META-01A: local TOC and CD-TEXT detection; no internet access.
+[metadata]
+enabled = true
+read_cd_text = true
+
 [audio_startup]
 prebuffer_before_sonos = true
 pcm_timeout_seconds = 45
