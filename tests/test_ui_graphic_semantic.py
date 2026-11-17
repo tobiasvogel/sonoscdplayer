@@ -97,8 +97,9 @@ class GraphicSemanticParityTests(unittest.TestCase):
         menu.section = "main"
         menu._volume_level = 42
         menu._volume_until = 10
-        with self.assertRaises(ValueError):
-            graphic_frame_from_menu(menu, now=0)
+        with patch("sonos_ui.interactive_menu.time.monotonic", return_value=0):
+            self.assertEqual(menu.frame(lambda image: image).tobytes(),
+                             graphic_frame_from_menu(menu, now=0).tobytes())
 
 
 
