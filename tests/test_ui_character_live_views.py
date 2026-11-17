@@ -116,6 +116,30 @@ class CharacterLiveViewTests(unittest.TestCase):
         frame20 = self.render(menu, now=0, caps=LCD20)
         self.assertIn("abcdefgh", "".join(frame20.lines))
 
+    def test_rescan_projection_when_current_main_controller_provides_it(self):
+        # main added RESCAN after this branch was created. Mirror the live
+        # choice order without importing a symbol absent on the older base.
+        from unittest.mock import patch
+        import sonos_ui.wifi_entry as wifi_entry
+        from sonos_ui.character_adapters import wifi_choice_screen
+        rescan = object()
+        snap = SetupSnapshot(state="choosing",
+                             networks=(SimpleNamespace(ssid="WLAN A",
+                                                       secure=True, signal=80),))
+        controller = wifi_entry.WifiEntryController(SnapshotSession(snap))
+        controller.mode = "list"
+        controller.focus = 1
+        with patch.object(wifi_entry, "RESCAN", rescan, create=True):
+            with patch.object(controller, "items",
+                              return_value=[snap.networks[0], rescan,
+                                            wifi_entry.HIDDEN, wifi_entry.BACK]):
+                screen = wifi_choice_screen(controller, snap)
+        self.assertEqual(len(screen.items), 4)
+        self.assertEqual(screen.items[1].key, "wifi:rescan")
+        self.assertEqual(screen.items[1].intent, "rescan_networks")
+        self.assertTrue(screen.items[1].focused)
+        validate_frame(LCD16, render_character_screen(screen, LCD16))
+
     def test_status_and_shutdown_and_volume_priority(self):
         menu = InteractiveMenu()
         menu.active = True
