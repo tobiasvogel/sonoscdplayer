@@ -3,7 +3,7 @@ import unittest
 
 from sonos_ui.character_layout import portable_text, render_character_screen
 from sonos_ui.character_adapters import (
-    navigation_screen, render_navigation, text_entry_frame,
+    navigation_screen, render_navigation, text_entry_frame,\n    speaker_selection_screen, power_menu_screen, language_menu_screen,\n    wifi_choice_screen, network_status_screen,
 )
 from sonos_ui.display_backend import validate_frame
 from sonos_ui.display_capabilities import DisplayCapabilities, SSD1327_CAPABILITIES
