@@ -51,7 +51,7 @@ class CharacterLayoutTests(unittest.TestCase):
         msg = "Dies ist ein sehr langer Hinweis mit vielen Woertern, der weitergeht"
         screen = SemanticScreen("notice", message=msg, severity="warning")
         first = render_character_screen(screen, LCD16, page=0)
-        next_page = render_character_screen(screen, LCD16, page=1)
+        next_page = render_character_screen(screen, LCD16, page=2)
         self.assertNotEqual(first, next_page)
         self.assertIn("Dies ist ein sehr", first.lines[0])
         self.assertIn("weitergeht", "".join(next_page.lines))
