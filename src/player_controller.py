@@ -26,7 +26,8 @@ from sonos_ui.playback_progress import verified_progress
 import sonos_group
 from sonos_parallel_test import detect_drive, stream_lines, wait_reader
 from metadata_status import status_metadata
-from sonos_metadata import DEFAULT_ALBUM_PREFIX, cover_route, track_didl
+from sonos_metadata import (DEFAULT_ALBUM_PREFIX, cover_route, didl_item, playing_from_queue,
+                            queue_allowed, queue_item_is_ours, remove_queue_item, track_didl)
 
 
 class ProcessServer:
@@ -151,6 +152,8 @@ class Controller:
         self.display_toc = None  # validated startup/idle TOC; never read disc for display
         self.metadata_snapshot = None  # asynchronously loaded, TOC-qualified display info
         self.album_prefix = DEFAULT_ALBUM_PREFIX  # [sonos] album_prefix, before the album name
+        self.use_queue = True        # [sonos] use_queue: play from the queue to show artist/album
+        self._queue_entry = None     # (1-based position, url) of our own queue item
         self.stopped_since = None
         self.status_hook = None  # optional read-only snapshot publisher
         self.disc_status = None  # optional M0.19 independent disc observation
@@ -318,15 +321,23 @@ class Controller:
             elif transport == 'STOPPED' and self.seen_playing:
                 # Do not call this a natural end if the URI has changed.
                 info = player.get_current_track_info()
+                group_proof_url = self.owned_url
                 if info.get('uri') != self.owned_url:
-                    self._fail('Sonos URI changed before STOPPED')
-                    return
+                    # At the end of the queue Sonos jumps back to its first
+                    # entry. Still a natural end if our item is untouched in
+                    # the queue that is playing; otherwise fail closed.
+                    if not (self._queue_entry is not None and playing_from_queue(player)
+                            and queue_item_is_ours(player, *self._queue_entry)):
+                        self._fail('Sonos URI changed before STOPPED')
+                        return
+                    group_proof_url = None   # proven through our queue item
                 url = self.owned_url
                 self.state = self.state.natural_end()
+                self._drop_queue_entry(player)
                 self.owned_url = None
                 self.player = None
                 self.server.close()
-                self._release_group(owned_url=url)
+                self._release_group(owned_url=group_proof_url)
                 print('[M0.11d] STOPPED observed; local server closed', flush=True)
             elif transport == 'TRANSITIONING':
                 self.stopped_since = None
@@ -357,6 +368,12 @@ class Controller:
                 self._display_progress_poll_at = None
         except Exception as exc:
             self._fail(f'ownership/status check failed: {type(exc).__name__}: {exc}')
+
+    def _drop_queue_entry(self, player):
+        """After our own verified stop/end: remove our queue item if still ours."""
+        entry, self._queue_entry = self._queue_entry, None
+        if entry is not None:
+            remove_queue_item(player, entry)
 
     def verify_existing(self):
         if self.player is None:
@@ -438,7 +455,13 @@ class Controller:
                          if cover_path else None)
             didl = track_didl(url, meta, self.state.selected_track,
                               album_prefix=self.album_prefix, cover_url=cover_url)
-            if didl is not None:
+            if didl is not None and self.use_queue and queue_allowed(player):
+                # Appended last, so Sonos stops after our track instead of
+                # continuing with the user's queue. Nothing else is touched.
+                position = player.add_to_queue(didl_item(didl))
+                self._queue_entry = (position, url)
+                player.play_from_queue(position - 1)
+            elif didl is not None:
                 player.play_uri(url, meta=didl)
             else:
                 player.play_uri(url, title=f'SonosCDPlayer Track {self.state.selected_track}')
@@ -499,6 +522,7 @@ class Controller:
         self._ownership(player, expected)
         self._ownership(player, expected)
         player.stop()  # only destructive action
+        self._drop_queue_entry(player)
         old_url = self.owned_url
         self.state = self.state.natural_end()
         self.owned_url, self.player = None, None
@@ -523,6 +547,7 @@ class Controller:
                 raise ValueError('startup recovery only when Sonos is already STOPPED')
             old_url = self.owned_url
             self.state = self.state.natural_end()
+            self._drop_queue_entry(player)
             self.owned_url, self.player = None, None
             self.seen_playing = False
             self.start_monotonic, self.stopped_since = None, None
@@ -667,6 +692,7 @@ class Controller:
         except Exception as exc:
             return {'action': 'not_stopped',
                     'reason': f'{type(exc).__name__}: {exc}'}
+        self._drop_queue_entry(player)
         old_url = self.owned_url
         self.last_transport = 'STOPPED'
         self.state = self.state.natural_end()

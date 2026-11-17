@@ -35,6 +35,10 @@ timeout_seconds = 8
 # Put before the album name that Sonos shows for a CD (track title, artist,
 # album and cover come from the CD metadata). Empty string: no prefix.
 album_prefix = "CD: "
+# Play from the Sonos queue (our item is appended last and removed again
+# afterwards): only then does the Sonos app show artist and album. Not used
+# while shuffle or repeat is on. false: set the stream directly (title only).
+use_queue = true
 
 [audio_startup]
 prebuffer_before_sonos = true

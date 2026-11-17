@@ -31,7 +31,7 @@ from player_metadata import MetadataWorker, matching_policy_from_config
 from player_metadata import describe as describe_metadata
 from disc_metadata import read_cdtext
 from drive_access import drive_lock
-from sonos_metadata import album_prefix_from_config
+from sonos_metadata import album_prefix_from_config, use_queue_from_config
 from safe_drive_eject import eject_verified_idle
 from player_state import PlayerState, Mode
 from drive_power import DrivePowerManager, load_config
@@ -722,6 +722,7 @@ def run(argv=None):
                                         startup_timeout=float(startup_timeout)), route=routed_source_ip)
         ctrl.disc_status = disc_status
         ctrl.album_prefix = album_prefix_from_config(settings)
+        ctrl.use_queue = use_queue_from_config(settings)
         ctrl.display_toc = toc  # existing verified TOC, read-only display metadata
         # Metadata is strictly best-effort, never a prerequisite for playback.
         # No CD commands in this worker; only cached TOC, local DB and network.

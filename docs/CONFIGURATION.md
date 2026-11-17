@@ -74,7 +74,7 @@ When the player knows the CD (CD-TEXT or MusicBrainz), Sonos shows the track tit
 album_prefix = "CD: "   # empty string: no prefix
 ```
 
-Names that arrive while a track is already playing appear from the next track on; a running track is never restarted for them. The cover is offered to Sonos by the player's stream server. With `[ui.cover] mode = "auto"` covers are downloaded because Sonos shows them; `"off"` switches covers off everywhere.
+Names that arrive while a track is already playing appear from the next track on; a running track is never restarted for them. The Sonos app shows artist and album only for music played from the Sonos queue. The player therefore appends its track at the end of the queue, plays it from there and removes it again after the track (only if that entry is still its own; the rest of the queue is never touched). While shuffle or repeat is on, or with `use_queue = false` under `[sonos]`, the stream is set directly and the app shows the title only. The Sonos app does not show the cover for this stream, even though the speaker receives its address. The cover is offered to Sonos by the player's stream server. With `[ui.cover] mode = "auto"` covers are downloaded because Sonos shows them; `"off"` switches covers off everywhere.
 
 ## Boot setup
 
