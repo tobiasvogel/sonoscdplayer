@@ -33,7 +33,9 @@ class NoticeRenderer:
         self.icon_root = Path(icon_root)
 
     def render(self, notice: Notice, *, language="de", size=(128, 128),
-               grayscale=False):
+               grayscale=False, dismiss_hint=False):
+        """dismiss_hint adds a bottom line telling how to close a notice
+        that does not disappear by itself."""
         width, height = size
         if not (isinstance(width, int) and isinstance(height, int)
                 and width >= 64 and height >= 64):
@@ -57,6 +59,17 @@ class NoticeRenderer:
 
         top = margin + icon_size + 7
         bottom = height - margin
+        if dismiss_hint:
+            from .i18n import Translator
+            hint_font = font(8)
+            hint = Translator(language).tr("notice.dismiss_hint")
+            box = draw.textbbox((0, 0), hint, font=hint_font)
+            hint_top = height - margin - (box[3] - box[1])
+            draw.line((margin, hint_top - 4, width - margin, hint_top - 4),
+                      fill=self.theme.muted)
+            draw.text(((width - (box[2] - box[0])) // 2 - box[0], hint_top - box[1]),
+                      hint, fill=self.theme.secondary, font=hint_font)
+            bottom = hint_top - 7
         available_width = width - 2 * margin
         text_font = font(max(8, min(12, width // 12)))
         lines = []

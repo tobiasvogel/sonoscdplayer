@@ -17,7 +17,8 @@ class ConnectNoticeView:
         if action == 'status':
             notice = Notice('network.status_preview', duration_seconds=0, priority=20)
         elif action == 'settings_hint':
-            notice = Notice('network.settings_hint', duration_seconds=0, priority=25)
+            notice = Notice('network.settings_hint', duration_seconds=0, priority=25,
+                            dismissible=False)  # shown while the button is held
         elif action == 'settings':
             notice = Notice('network.settings_preview', duration_seconds=0, priority=30)
         elif action == 'setup_requested':

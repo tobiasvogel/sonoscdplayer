@@ -17,6 +17,7 @@ from .selection_plan import plan_from_applied
 from .connect_notice import ConnectNoticeView
 from .notice import Notice
 from .notice_render import NoticeRenderer
+from .notice_policy import NoticeTiming
 from .navigation_pages import NavigationRenderer, MAIN_ITEMS, NETWORK_ITEMS, SETTINGS_ITEMS
 from .network_status import NetworkStatus, read_network_status
 
@@ -655,7 +656,8 @@ class InteractiveMenu:
                          if self._notice_previous_active is not None else None)
         if active_notice is not None:
             return image_to_frame(self._connect_renderer.render(
-                active_notice, language=self.language, grayscale=True))
+                active_notice, language=self.language, grayscale=True,
+                dismiss_hint=NoticeTiming().encoder_can_confirm(active_notice)))
         netsetup = self.netsetup_snapshot()
         if netsetup is not None and not self.power_menu:
             return image_to_frame(self.renderer.render_netsetup(netsetup, gray=True))
