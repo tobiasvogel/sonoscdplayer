@@ -85,10 +85,18 @@ class GraphicSemanticParityTests(unittest.TestCase):
             graphic_frame_from_menu(menu, now=0)
         menu.active = True
         menu.section = "targets"
-        with self.assertRaises(ValueError):
-            graphic_frame_from_menu(menu, now=0)
+        with patch("sonos_ui.render.MARQUEE_CLOCK.elapsed", return_value=0):
+            self.assertEqual(menu.frame(lambda image: image).tobytes(),
+                             graphic_frame_from_menu(menu, now=0).tobytes())
         menu.section = "main"
         menu.power_menu = True
+        with patch("sonos_ui.render.MARQUEE_CLOCK.elapsed", return_value=0):
+            self.assertEqual(menu.frame(lambda image: image).tobytes(),
+                             graphic_frame_from_menu(menu, now=0).tobytes())
+        menu.power_menu = False
+        menu.section = "main"
+        menu._volume_level = 42
+        menu._volume_until = 10
         with self.assertRaises(ValueError):
             graphic_frame_from_menu(menu, now=0)
 
