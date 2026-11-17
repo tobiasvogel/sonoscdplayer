@@ -99,8 +99,14 @@ def graphic_frame_from_menu(menu, *, now: float):
         if screen is None or screen.kind != "notice":
             raise ValueError("notice semantic state missing")
         expected = screen_from_notice(notice, language=menu.language)
+        can_confirm = NoticeTiming().encoder_can_confirm(notice)
+        expected_message = expected.message
+        if can_confirm:
+            from .i18n import Translator
+            expected_message += "\n" + Translator(menu.language).tr(
+                "notice.dismiss_hint")
         if (screen.severity != expected.severity or
-                screen.message.split("\n", 1)[0] != expected.message):
+                screen.message != expected_message):
             raise ValueError("notice does not match semantic screen")
         return menu._connect_renderer.render(
             notice, language=menu.language, grayscale=True,
