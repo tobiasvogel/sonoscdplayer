@@ -108,6 +108,19 @@ class MultiRenderer(Renderer):
             d.rounded_rectangle((10,76,10+round(107*level/100),84),radius=2,fill=t.accent)
         return ssd1327_gray(im) if gray else im
 
+    def render_volume_semantic(self, screen, *, gray=False):
+        """Read-only OLED volume projection from the shared semantic value."""
+        from .semantic_screen import SemanticScreen
+        if not isinstance(screen, SemanticScreen) or screen.kind != 'idle':
+            raise ValueError('volume SemanticScreen required')
+        if len(screen.items) != 1 or screen.items[0].key != 'volume':
+            raise ValueError('unexpected volume fields')
+        value = screen.items[0].value
+        if (value is None or not value.isascii() or not value.isdecimal()
+                or str(int(value)) != value or not 0 <= int(value) <= 100):
+            raise ValueError('volume must be an integer from 0 to 100')
+        return self.render_volume(int(value), gray=gray)
+
     def render_netsetup(self,snap,*,gray=False,footer=None):
         """WLAN setup (D-223): hotspot name, password and address, or progress."""
         t=self.theme
