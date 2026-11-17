@@ -134,5 +134,51 @@ class MatchingTests(unittest.TestCase):
             MatchingPolicy(protected_suffixes=('Live', 'LIVE'))
 
 
+    def test_unicode_multilingual_comparisons(self):
+        from disc_matching import _normalize
+        self.assertEqual(_normalize('Café'), _normalize('Cafe\u0301'))
+        self.assertEqual(_normalize('Canción'), _normalize('Cancion'))
+        self.assertEqual(_normalize('Straße'), _normalize('STRASSE'))
+        self.assertEqual(_normalize('Ｎｅｗ　Ｙｏｒｋ'), 'new york')
+        self.assertNotEqual(_normalize('ガラス'), _normalize('カラス'))
+        self.assertEqual(_normalize('ｶﾞﾗｽ'), _normalize('ガラス'))
+        self.assertNotEqual(_normalize('Москва'), _normalize('Moskva'))
+
+    def test_explicit_german_pack_word_aliases(self):
+        from metadata_language_rules import load_language_rules
+        rules = load_language_rules(('de',))
+        self.assertEqual(rules.normalize('Fruehling und schöne Blumen'),
+                         rules.normalize('Frühling und schoene Blumen'))
+        self.assertNotEqual(rules.normalize('Fruehling'), rules.normalize('Sommer'))
+
+    def test_language_packs_not_tied_to_ui_locale(self):
+        from metadata_language_rules import load_language_rules
+        from disc_matching import _split_qualifier
+        policy = MatchingPolicy(language_rules=load_language_rules(('fr',)))
+        self.assertEqual(_split_qualifier('Chanson (Version française)', policy)[2], 'soft')
+        self.assertEqual(_split_qualifier('Chanson (En direct)', policy)[2], 'protected')
+        self.assertIsNone(_split_qualifier('Chanson (En direct)', MatchingPolicy())[2])
+
+    def test_japanese_album_matching_without_language_pack(self):
+        local = make_local(('はるのうた', '青い空', '花の道', 'ありがとう'),
+                           album='春の歌', artist='子ども合唱団')
+        right = candidate('right', '春の歌', '子ども合唱団',
+                          ('はるのうた', '青い空', '花の道', 'ありがとう'))
+        wrong = candidate('wrong', '夏の夜', '別の歌手',
+                          ('遠い海', '赤い空', '旅の道', 'さようなら'))
+        decision = self.decide(wrong, right, local=local)
+        self.assertEqual(decision.selected_release_id, 'right')
+
+    def test_spanish_accents_without_language_pack(self):
+        local = make_local(('Corazón', 'Canción de otoño', 'Niñez', 'La última'),
+                           album='Música para todos', artist='Los Niños')
+        right = candidate('right', 'Musica para todos', 'Los Ninos',
+                          ('Corazon', 'Cancion de otono', 'Ninez', 'La ultima'))
+        wrong = candidate('wrong', 'Ritmos lejanos', 'Otra banda',
+                          ('Otro', 'Nuevo', 'Danza', 'Final'))
+        decision = self.decide(right, wrong, local=local)
+        self.assertEqual(decision.selected_release_id, 'right')
+        self.assertEqual(merged_metadata(local, decision), local)
+
 if __name__ == '__main__':
     unittest.main()

@@ -16,6 +16,9 @@ confidence_threshold = 90
 minimum_margin = 15
 # Minimum number of CD-TEXT track titles for ambiguous DiscIDs.
 minimum_track_titles = 3
+# Optional independent community language packs under src/metadata_rules/.
+# Not tied to the device's UI language.
+rule_languages = []
 # Exact trailing (...) or [...] descriptors. Extend in any language.
 # Soft terms reduce the match slightly when they differ.
 soft_suffixes = ["Sing mit", "TV Version"]

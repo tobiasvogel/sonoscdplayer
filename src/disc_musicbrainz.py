@@ -116,7 +116,7 @@ def parse_release_candidates(data, *, track_count):
 
 @dataclass(frozen=True)
 class LookupResult:
-    status: str  # unique | ambiguous | not_found | offline | error
+    status: str  # unique | ambiguous | not_found | offline | unavailable | error
     releases: tuple[ReleaseCandidate, ...] = ()
     error: str | None = None
 
@@ -148,6 +148,9 @@ def lookup_disc(identity: DiscIdentity, *, track_count: int, timeout_seconds=8,
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             return LookupResult('not_found')
+        if exc.code in (429, 502, 503, 504):
+            # Do not automatically retry a temporarily overloaded service.
+            return LookupResult('unavailable', error=f'MusicBrainz temporarily unavailable (HTTP {exc.code})')
         return LookupResult('error', error=f'MusicBrainz HTTP {exc.code}')
     except (urllib.error.URLError, TimeoutError, socket.timeout, OSError):
         return LookupResult('offline', error='MusicBrainz unreachable')

@@ -11,6 +11,7 @@ import unicodedata
 
 from disc_metadata import LocalDiscMetadata
 from disc_musicbrainz import LookupResult, ReleaseCandidate
+from metadata_language_rules import LanguageRules, normalize_key
 
 
 # Only exact, final parenthesized/bracketed descriptors are configurable.
@@ -19,8 +20,7 @@ _TRAILING_DESCRIPTOR = re.compile(r'\s*[\[(]\s*([^\]\)]+?)\s*[\])]\s*$')
 
 
 def _clean_descriptor(value: str) -> str:
-    normalized = unicodedata.normalize('NFKC', value).casefold()
-    return ' '.join(normalized.split())
+    return normalize_key(value)
 
 
 def _validate_descriptors(name: str, values: tuple[str, ...]) -> tuple[str, ...]:
@@ -48,6 +48,7 @@ class MatchingPolicy:
     soft_suffixes: tuple[str, ...] = ('Sing mit', 'TV Version')
     # A different recording/edition qualifier blocks ambiguous auto-selection.
     protected_suffixes: tuple[str, ...] = ('Live', 'Instrumental', 'Remastered', 'Deluxe')
+    language_rules: LanguageRules = LanguageRules()
 
     def __post_init__(self):
         for name in ('confidence_threshold', 'minimum_margin'):
@@ -60,7 +61,10 @@ class MatchingPolicy:
             raise ValueError('auto_match must be boolean')
         soft = _validate_descriptors('soft_suffixes', self.soft_suffixes)
         protected = _validate_descriptors('protected_suffixes', self.protected_suffixes)
-        if set(soft) & set(protected):
+        if not isinstance(self.language_rules, LanguageRules):
+            raise ValueError('language_rules must be a validated rule pack')
+        if set(soft + self.language_rules.soft_suffixes) & set(
+                protected + self.language_rules.protected_suffixes):
             raise ValueError('suffix lists must not overlap')
 
 
@@ -85,33 +89,29 @@ class MatchDecision:
     reason: str
 
 
-def _normalize(text: str | None) -> str:
-    if not text:
-        return ''
-    # Only normalize comparison keys. The source data is never rewritten.
-    text = text.casefold().replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue').replace('ß', 'ss')
-    text = unicodedata.normalize('NFKD', text)
-    text = ''.join(c for c in text if not unicodedata.combining(c))
-    text = re.sub(r'[^\w]+', ' ', text, flags=re.UNICODE)
-    return ' '.join(text.split())
+def _normalize(text: str | None, rules: LanguageRules = LanguageRules()) -> str:
+    """Script-safe Unicode keys and optional whole-token community aliases."""
+    return rules.normalize(text)
 
 
-def _similarity(left: str | None, right: str | None) -> float:
-    a, b = _normalize(left), _normalize(right)
+def _similarity(left: str | None, right: str | None,
+                rules: LanguageRules = LanguageRules()) -> float:
+    a, b = _normalize(left, rules), _normalize(right, rules)
     if not a or not b:
         return 0.0
     return SequenceMatcher(None, a, b, autojunk=False).ratio()
 
 
-
 def _split_qualifier(text: str | None, policy: MatchingPolicy) -> tuple[str, str | None, str | None]:
-    value = text or ''
+    value = unicodedata.normalize('NFKC', text or '')
     match = _TRAILING_DESCRIPTOR.search(value)
     if match:
         descriptor = _clean_descriptor(match.group(1))
-        if descriptor in (_clean_descriptor(x) for x in policy.soft_suffixes):
+        if descriptor in (_clean_descriptor(x) for x in (
+                policy.soft_suffixes + policy.language_rules.soft_suffixes)):
             return value[:match.start()], descriptor, 'soft'
-        if descriptor in (_clean_descriptor(x) for x in policy.protected_suffixes):
+        if descriptor in (_clean_descriptor(x) for x in (
+                policy.protected_suffixes + policy.language_rules.protected_suffixes)):
             return value[:match.start()], descriptor, 'protected'
     return value, None, None
 
@@ -124,10 +124,10 @@ def _compare_titles(left: str | None, right: str | None,
     incompatible = (a_kind == 'protected' or b_kind == 'protected') and (
         a_kind != b_kind or a_term != b_term)
     if incompatible:
-        return min(_similarity(a, b), 0.65), True
+        return min(_similarity(a, b, policy.language_rules), 0.65), True
     if not a or not b:
         return 0.0, False
-    base = _similarity(a, b)
+    base = _similarity(a, b, policy.language_rules)
     if a_kind == 'soft' or b_kind == 'soft':
         # Treat descriptor differences as weak evidence, not exact equivalence.
         if a_term != b_term:
@@ -138,8 +138,9 @@ def _compare_titles(left: str | None, right: str | None,
 
 def score_release(local: LocalDiscMetadata, release: ReleaseCandidate, policy: MatchingPolicy = MatchingPolicy()) -> ScoredRelease:
     """25 artist + 20 album + 45 tracks + 10 exact medium structure."""
-    artist = round(25 * _similarity(local.artist, release.artist))
-    album_similarity, album_conflict = _compare_titles(local.album, release.title, policy)
+    artist = round(25 * _similarity(local.artist, release.artist,
+                                    policy.language_rules))
+    album_similarity, _album_conflict = _compare_titles(local.album, release.title, policy)
     album = round(20 * album_similarity)
     local_titles = [(index, t.title) for index, t in enumerate(local.tracks) if t.title]
     matching_structure = len(release.track_titles) == len(local.tracks) and len(local.tracks) > 0

@@ -19,6 +19,7 @@ from config_paths import player_config
 from disc_musicbrainz import identity_from_toc, lookup_disc
 from disc_metadata import read_cdtext, build_local_metadata
 from disc_matching import MatchingPolicy, decide_release, merged_metadata
+from metadata_language_rules import load_language_rules
 from disc_startup import optical_devices
 from drive_access import drive_lock
 
@@ -64,13 +65,18 @@ def matching_settings(path):
         if type(supplied) is not list or any(type(item) is not str for item in supplied):
             raise ValueError(f'metadata.matching.{name} must be a list of strings')
         return tuple(supplied)
+    languages = values.get('rule_languages', [])
+    if type(languages) is not list or any(type(x) is not str for x in languages):
+        raise ValueError('metadata.matching.rule_languages must be a list of tags')
+    language_rules = load_language_rules(tuple(languages))
     policy = MatchingPolicy(
         auto_match=metadata.get('auto_match', defaults.auto_match),
         confidence_threshold=values.get('confidence_threshold', defaults.confidence_threshold),
         minimum_margin=values.get('minimum_margin', defaults.minimum_margin),
         minimum_track_titles=values.get('minimum_track_titles', defaults.minimum_track_titles),
         soft_suffixes=suffix_list('soft_suffixes', defaults.soft_suffixes),
-        protected_suffixes=suffix_list('protected_suffixes', defaults.protected_suffixes))
+        protected_suffixes=suffix_list('protected_suffixes', defaults.protected_suffixes),
+        language_rules=language_rules)
     return read_text, policy
 
 
