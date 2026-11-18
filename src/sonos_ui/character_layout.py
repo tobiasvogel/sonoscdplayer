@@ -122,9 +122,22 @@ def _info_rows(screen: SemanticScreen, width: int, height: int, *,
     return tuple((lines + [" " * width] * height)[:height])
 
 
+def _notice_text(screen: SemanticScreen) -> str:
+    """Notice text; a notice's footer (how to close it) is appended."""
+    message = screen.message or ""
+    if screen.kind == "notice" and screen.footer:
+        message += "\n" + screen.footer
+    return message
+
+
+def _shows_notice(screen: SemanticScreen) -> bool:
+    """A notice, or a menu with feedback: too small for list plus status line."""
+    return screen.kind == "notice" or (screen.kind == "menu" and bool(screen.message))
+
+
 def _notice_rows(screen: SemanticScreen, width: int, height: int, *,
                  page: int) -> tuple[str, ...]:
-    lines = _page_lines(screen.message or "", width)
+    lines = _page_lines(_notice_text(screen), width)
     if type(page) is not int or page < 0:
         raise ValueError("page must be nonnegative")
     start = min(page * height, max(0, len(lines) - height))
@@ -146,10 +159,10 @@ def character_page_count(screen: SemanticScreen,
         raise TypeError("expected SemanticScreen")
     if not isinstance(capabilities, DisplayCapabilities) or capabilities.kind != "character":
         raise ValueError("character capabilities required")
-    if screen.kind == "menu":
+    if _shows_notice(screen):
+        lines = _page_lines(_notice_text(screen), capabilities.columns)
+    elif screen.kind == "menu":
         return 1
-    if screen.kind == "notice":
-        lines = _page_lines(screen.message or "", capabilities.columns)
     else:
         lines = [item for item in screen.items] or [screen.heading]
     return max(1, (len(lines) + capabilities.rows - 1) // capabilities.rows)
@@ -173,10 +186,10 @@ def render_character_screen(screen: SemanticScreen,
         raise ValueError("scroll_offset must be nonnegative")
     if type(page) is not int or page < 0:
         raise ValueError("page must be nonnegative")
-    if screen.kind == "menu":
-        rows = _menu_rows(screen, width, height, offset=scroll_offset)
-    elif screen.kind == "notice":
+    if _shows_notice(screen):
         rows = _notice_rows(screen, width, height, page=page)
+    elif screen.kind == "menu":
+        rows = _menu_rows(screen, width, height, offset=scroll_offset)
     else:
         rows = _info_rows(screen, width, height, page=page, offset=scroll_offset)
     frame = CharacterFrame(rows)

@@ -368,7 +368,7 @@ class VolumeOverlayTests(unittest.TestCase):
         self.assertEqual(frames[-1].size, (128, 128))
         menu.event('power', 'short')
         self.assertTrue(menu.power_menu)
-        menu.renderer.render_power = lambda *a, **k: 'power-frame'
+        menu.renderer.power_pixels = lambda *a, **k: 'power-frame'
         menu.event('volume', '43')
         self.assertEqual(menu.frame(lambda im: im), 'power-frame')
 

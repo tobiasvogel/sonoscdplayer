@@ -37,33 +37,28 @@ def wrap_lines(value,width,size,*,max_lines=4):
 
 
 class MultiRenderer(Renderer):
-    def render_multi(self,state,*,gray=False,searching=False):
+    def multi_pixels(self, heading, subheading, labels, marks, focus, *,
+                     placeholder='', status='', footer='', gray=False):
+        """Speaker list from translated texts (one mark per row)."""
         t=self.theme
         im=Image.new('RGB',(128,128),t.background)
-        self.shell(im,self.tr('menu.targets'))
-        self.text(im,(6,16),self.tr('status.targets',selected=len(state.draft),total=len(state.topology.targets)),fill=t.secondary,size=8,width=116,height=10)
-        count=len(state.topology.targets)
-        if not count:
+        self.shell(im,heading)
+        self.text(im,(6,16),subheading,fill=t.secondary,size=8,width=116,height=10)
+        if placeholder:
             # Below the two rows (apply/back) that remain without speakers.
-            key='status.scan_running' if searching else 'status.no_targets'
-            self.text(im,(7,74),self.tr(key),fill=t.secondary,size=9,width=115,height=15)
-        rows=self.menu_window(count+2,state.focus)
-        for slot,pos in enumerate(rows):
-            focus=pos==state.focus
-            if pos==count:
-                name=self.tr('menu.review')
-                check='>'
-            elif pos==count+1:
-                name=self.tr('menu.back')
-                check='<'
-            else:
-                target=state.topology.targets[pos]
-                name=target.label
-                check='✓' if target.key in state.draft else '□'
-            self.menu_row(im,slot,name,selected=focus,marker=check)
-        status=self.tr(state.notice) if state.notice else (self.tr('status.incomplete') if state.topology.error else self.tr('status.no_changes'))
-        self.bottom(im,status=status,footer=self.tr('footer.mark'))
+            self.text(im,(7,74),placeholder,fill=t.secondary,size=9,width=115,height=15)
+        for slot,pos in enumerate(self.menu_window(len(labels),focus)):
+            self.menu_row(im,slot,labels[pos],selected=pos==focus,marker=marks[pos])
+        self.bottom(im,status=status,footer=footer)
         return ssd1327_gray(im) if gray else im
+
+    def render_multi(self,state,*,gray=False,searching=False):
+        """Speaker list from the live MultiSelection."""
+        from .semantic_views import speaker_selection_screen
+        from .graphic_views import render_screen
+        screen=speaker_selection_screen(state,language=self.translator.language,
+                                        searching=searching)
+        return render_screen(screen,renderer=self,gray=gray)
 
     def render_volume(self,level,*,gray=False):
         """Short volume overlay: big number and a 0..100 bar."""
@@ -134,12 +129,30 @@ class MultiRenderer(Renderer):
         self.bottom(im,status=status,footer=self.tr('footer.select'),status_fill=fill)
         return ssd1327_gray(im) if gray else im
 
-    def render_power(self,focus,notice='',*,gray=False):
-        """Power menu: Zurück / Ausschalten / Neustarten. ``notice`` is a locale key."""
+    def power_pixels(self, heading, labels, focus, *, status, footer, gray=False):
+        """POWER menu from translated texts: back / power off / restart."""
         t=self.theme
         im=Image.new('RGB',(128,128),t.background)
-        self.shell(im,self.tr('menu.power'))
-        for pos,(key,mark) in enumerate((('menu.back','<'),('menu.poweroff','×'),('menu.reboot','↻'))):
-            self.menu_row(im,pos,self.tr(key),selected=pos==focus,marker=mark)
-        self.bottom(im,status=self.tr(notice or 'status.power_choose'),footer=self.tr('footer.select'))
+        self.shell(im,heading)
+        for pos,(label,mark) in enumerate(zip(labels,('<','×','↻'))):
+            self.menu_row(im,pos,label,selected=pos==focus,marker=mark)
+        self.bottom(im,status=status,footer=footer)
         return ssd1327_gray(im) if gray else im
+
+    def render_power(self,focus,notice='',*,gray=False):
+        """POWER menu. ``notice`` is a locale key."""
+        from .semantic_views import power_menu_screen
+        from .graphic_views import render_screen
+        screen=power_menu_screen(focus,notice=notice,language=self.translator.language)
+        return render_screen(screen,renderer=self,gray=gray)
+
+    def language_pixels(self, heading, labels, focus, *, status, footer):
+        """Language picker (unquantized, as the OLED has always drawn it)."""
+        t=self.theme
+        im=Image.new('RGB',(128,128),t.background)
+        self.shell(im,heading)
+        # 128px OLED: keep focused language visible even with many files.
+        for slot,index in enumerate(self.menu_window(len(labels),focus)):
+            self.menu_row(im,slot,labels[index],selected=index==focus)
+        self.bottom(im,status=status,footer=footer)
+        return im
