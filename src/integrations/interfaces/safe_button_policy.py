@@ -50,6 +50,11 @@ def plan_playpause(status, target):
     elif mode == 'PAUSED':
         if owned is True and active is True:
             return 'resume'
+    elif mode == 'ERROR':
+        # A released error (nothing of ours left on Sonos): PLAY tries again.
+        # The player clears the error only if its session is fully released.
+        if owned is False and active is False and selection.get('selected') is True:
+            return 'play-selected'
     return None
 
 
@@ -75,6 +80,11 @@ def plan_stop(status, target):
     if not all(isinstance(part, dict) for part in (player, sonos, stream)):
         return None
     if sonos.get('group_cleanup_pending') is not False:
+        return None
+    if player.get('mode') == 'ERROR':
+        # STOP acknowledges a released error; never a Sonos write.
+        if sonos.get('owned') is False and stream.get('active') is False:
+            return 'reset'
         return None
     if selection.get('selected') is not True:
         return None

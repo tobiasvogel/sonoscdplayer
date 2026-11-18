@@ -293,6 +293,30 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(r['state']['player']['mode'],'STOPPED')
         self.assertEqual(self.target.stops,0)
 
+    def test_play_selected_retries_after_released_error(self):
+        """18.11.: PLAY on the device after a player error tries again."""
+        from player_target_selection import SelectedTarget
+        selection = SelectedTarget(verify=lambda uid: True)
+        selection._uid = 'TEST_SPEAKER'
+        self.ctrl.play('TEST_SPEAKER')
+        self.ctrl._fail('resume failed')
+        self.assertTrue(self.ctrl.can_reset())
+        self.target.transport = 'STOPPED'
+        r = handle_command(self.ctrl, {'command': 'play-selected'}, selection)
+        self.assertTrue(r['ok'], r)
+        self.assertEqual(r['state']['player']['mode'], 'STARTING')
+        self.assertEqual(self.target.stops, 0)
+
+    def test_play_selected_does_not_clear_an_unreleased_error(self):
+        from player_target_selection import SelectedTarget
+        selection = SelectedTarget(verify=lambda uid: True)
+        selection._uid = 'TEST_SPEAKER'
+        self.ctrl.play('TEST_SPEAKER')
+        self.ctrl.state = self.ctrl.state.failed('still attached')   # server still up
+        self.assertFalse(self.ctrl.can_reset())
+        self.assertFalse(handle_command(self.ctrl, {'command': 'play-selected'}, selection)['ok'])
+        self.assertEqual(self.ctrl.state.mode.value, 'ERROR')
+
     def test_reset_refuses_active_and_stopped_state(self):
         self.assertFalse(handle_command(self.ctrl,{'command':'reset'})['ok'])
         self.ctrl.play('TEST_SPEAKER')

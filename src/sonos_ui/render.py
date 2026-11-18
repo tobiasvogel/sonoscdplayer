@@ -161,7 +161,9 @@ class Renderer:
             status = self.tr('status.stopped')
         else:
             status = self.tr('status.ready') if m.speaker else self.tr('status.choose_target')
-        self.bottom(canvas,status=status,footer=self.tr('footer.open_menu'),
+        # After a player error PLAY tries again and STOP clears it.
+        footer = self.tr('footer.error_retry') if m.disc_phase == 'ERROR' else self.tr('footer.open_menu')
+        self.bottom(canvas,status=status,footer=footer,
                     status_fill=t.playing if m.speaker else t.warning)
 
     def playback(self,canvas,m,elapsed):

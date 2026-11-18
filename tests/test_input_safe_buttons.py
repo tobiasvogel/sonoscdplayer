@@ -75,9 +75,22 @@ class SafeButtonPolicyTests(unittest.TestCase):
                 snapshot(mode, owned=owned, active=active, pending=True), target()))
 
     def test_transitional_error_and_no_disc_modes_fail_closed(self):
-        for mode in ('STARTING', 'ERROR', 'NO_DISC', 'UNKNOWN'):
+        for mode in ('STARTING', 'NO_DISC', 'UNKNOWN'):
             with self.subTest(mode=mode):
                 self.assertIsNone(plan_playpause(snapshot(mode), target()))
+
+    def test_released_error_play_retries_and_stop_clears(self):
+        """18.11.: a player error must be resolvable at the device."""
+        self.assertEqual(plan_playpause(snapshot('ERROR'), target()), 'play-selected')
+        self.assertEqual(plan_stop(snapshot('ERROR'), target()), 'reset')
+        self.assertEqual(plan_stop(snapshot('ERROR'), target(False)), 'reset')
+        for owned, active, pending in ((True, False, False), (False, True, False),
+                                       (False, False, True)):
+            with self.subTest(owned=owned, active=active, pending=pending):
+                still = snapshot('ERROR', owned=owned, active=active, pending=pending)
+                self.assertIsNone(plan_playpause(still, target()))
+                self.assertIsNone(plan_stop(still, target()))
+        self.assertIsNone(plan_playpause(snapshot('ERROR'), target(False)))
 
     def test_rejected_or_malformed_status_never_authorizes(self):
         invalid = [None, [], {}, {'ok': False}, {'ok': True},
@@ -382,6 +395,13 @@ class ExecuteTests(unittest.TestCase):
                          target_executor=Safe(), dispatcher=Legacy())
         self.assertEqual(safe, ['playpause', 'stop', 'next'])
         self.assertEqual(legacy, [])
+
+    def test_stop_sends_reset_for_released_error(self):
+        sends = []
+        log = run_one(lambda path, command: status_reply('ERROR') if command == 'status'
+                      else target(), lambda *args: sends.append(args), action='stop')
+        self.assertEqual(sends, [('/not-a-socket', 'reset', None)])
+        self.assertEqual(log, ['selected-target execute: reset acknowledged'])
 
     def test_stop_one_shot_with_no_uid(self):
         sends = []

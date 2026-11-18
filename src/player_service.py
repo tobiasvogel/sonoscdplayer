@@ -136,6 +136,9 @@ def handle_command(controller, request, selection=None, eject=None, volume=None)
                 raise ValueError('no confirmed target')
             # This is the ONLY new route for group PLAY. It requires a separate
             # explicit command; selecting targets cannot start music.
+            if controller.state.mode == Mode.ERROR and controller.can_reset():
+                # PLAY after a released error: clear it and try again.
+                controller.reset()
             controller.play(selection.uid_for_explicit_action(),
                             members=selection.members_for_explicit_action())
             return response(controller, ok=True)
@@ -281,7 +284,7 @@ def disc_allows_new_play(controller, request, monitor):
     """
     return (monitor is None or not isinstance(request, dict)
             or request.get('command') not in ('play', 'play-selected', 'playpause')
-            or controller.state.mode != Mode.STOPPED
+            or controller.state.mode not in (Mode.STOPPED, Mode.ERROR)
             or monitor.validate_before_play(controller))
 
 
@@ -481,7 +484,8 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 # DiscMonitor's existing PLAY-boundary TOC validation.
                 if not wake_before_new_play(
                     power, disc_monitor, request,
-                    stopped=(power is not None and controller.state.mode == Mode.STOPPED),
+                    # A released ERROR is retried like STOPPED (wake the drive first).
+                    stopped=(power is not None and controller.state.mode in (Mode.STOPPED, Mode.ERROR)),
                     publish_wake=lambda: publisher.publish(
                         controller, power
                     ),

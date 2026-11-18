@@ -14,7 +14,7 @@ except ImportError:
     from safe_button_preview import read_snapshot
 
 
-SAFE_COMMANDS = frozenset(('play-selected', 'pause', 'resume', 'stop', 'next', 'previous', 'eject'))
+SAFE_COMMANDS = frozenset(('play-selected', 'pause', 'resume', 'stop', 'reset', 'next', 'previous', 'eject'))
 
 
 class SelectedTargetExecutor:

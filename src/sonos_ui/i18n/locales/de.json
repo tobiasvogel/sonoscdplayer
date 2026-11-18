@@ -32,6 +32,7 @@
   "menu.language_en": "English",
   "menu.language_preview": "Sprache: {name}",
   "footer.open_menu": "Drücken: Menü",
+  "footer.error_retry": "PLAY: erneut · STOP: OK",
   "footer.turn_press": "Drehen / Drücken",
   "footer.mark": "Drücken: Markieren",
   "footer.confirm": "Drücken: Übernehmen",

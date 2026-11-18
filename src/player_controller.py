@@ -694,6 +694,12 @@ class Controller:
             return
         self._stop_owned()
 
+    def can_reset(self):
+        """ERROR whose local session is fully released (see reset())."""
+        return (self.state.mode == Mode.ERROR and not self.server.alive()
+                and not self.owned_url and self.player is None
+                and not self._joined and not self._group_uncertain)
+
     def reset(self):
         """Clear an already locally released ERROR; never contact or command Sonos."""
         if self.state.mode != Mode.ERROR:

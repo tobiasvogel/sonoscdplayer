@@ -32,6 +32,7 @@
   "menu.language_en": "English",
   "menu.language_preview": "Language: {name}",
   "footer.open_menu": "Press: Menu",
+  "footer.error_retry": "PLAY: retry · STOP: OK",
   "footer.turn_press": "Turn / Press",
   "footer.mark": "Press: Mark",
   "footer.confirm": "Press: Apply",
