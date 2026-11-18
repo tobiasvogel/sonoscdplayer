@@ -173,6 +173,18 @@ class QueueTests(unittest.TestCase):
         self.c.refresh()
         self.assertEqual(self.c.state.mode, Mode.ERROR)
 
+    def test_startup_failure_removes_our_block(self):
+        self.make(QueuePlayer())
+        self.c.play()
+        self.p.transport = 'STOPPED'                    # Sonos never started
+        for later in (30, 36):
+            with patch('player_controller.time.monotonic',
+                       return_value=self.c.start_monotonic + later):
+                self.c.refresh()
+        self.assertEqual(self.c.state.mode, Mode.ERROR)
+        self.assertEqual(self.p.uris(), [FOREIGN])
+        self.assertIsNone(self.c._queue_block)
+
     def test_shuffle_repeat_or_off_uses_direct_uri(self):
         for player, use_queue in ((QueuePlayer(mode='SHUFFLE'), True),
                                   (QueuePlayer(mode='REPEAT_ALL'), True),

@@ -17,6 +17,10 @@ PCM_FRAME_BYTES = 4  # 16-bit stereo
 MIB = 1024 * 1024
 
 
+class ReaderRemoved(ValueError):
+    """The reader was removed (unknown or preempted); its request must end."""
+
+
 class BufferErrorBase(Exception):
     pass
 
@@ -139,6 +143,10 @@ class PCMRing:
             self._cv.notify_all()
             return reader_id
 
+    def reader_ids(self) -> tuple[int, ...]:
+        with self._cv:
+            return tuple(self._readers)
+
     def unregister(self, reader_id: int) -> None:
         with self._cv:
             self._readers.pop(reader_id, None)
@@ -207,7 +215,7 @@ class PCMRing:
         with self._cv:
             while True:
                 if reader_id not in self._readers:
-                    raise ValueError("unknown reader")
+                    raise ReaderRemoved("unknown reader")
                 offset = self._readers[reader_id]
                 if offset < self._start:
                     raise DataExpired("reader data expired")
@@ -237,7 +245,7 @@ class PCMRing:
         with self._cv:
             while True:
                 if reader_id not in self._readers:
-                    raise ValueError("unknown reader")
+                    raise ReaderRemoved("unknown reader")
                 offset = self._readers[reader_id]
                 if offset < self._start:
                     raise DataExpired("reader fell behind oldest retained data")

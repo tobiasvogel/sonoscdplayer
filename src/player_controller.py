@@ -497,9 +497,20 @@ class Controller:
         self.state = self.state.failed(message)
         print(f'[M0.11d] ERROR: {message}; no Sonos STOP sent', flush=True)
         url = self.owned_url
+        player = self.player
         self.owned_url = None
         self.player = None
         self.server.close()
+        if self._queue_block is not None:
+            # Our disc block must not stay behind in the Sonos queue. Each
+            # entry is checked before removal, so this never touches the
+            # user's own entries; if Sonos is unreachable it stays as is.
+            try:
+                if player is not None:
+                    remove_queue_block(player, self._queue_block)
+            except Exception as cleanup:
+                print(f'[M0.11d] queue cleanup after error failed: {cleanup}', flush=True)
+            self._queue_block = None
         # An error here may mean the topology, URI or transport could not be
         # verified. Never issue unjoin on an ambiguous observation.
         if self._joined:

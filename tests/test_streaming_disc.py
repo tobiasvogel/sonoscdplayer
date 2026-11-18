@@ -70,6 +70,34 @@ class DiscServerTests(unittest.TestCase):
         status, data = request(server.server_port, '/track/2.wav')
         self.assertEqual((status, data[44:]), (200, FILL[2] * SIZES[2]))
 
+    def test_abandoned_request_does_not_block_the_wanted_track(self):
+        """Sonos loads the queue's first entry, then seeks to the selected one
+        (18.11.): the abandoned request must not hold the switch."""
+        import socket
+        server = self.start(track=3, delay=1.5)
+        server.SWITCH_WAIT_SECONDS = 1.0
+        abandoned = socket.create_connection(('127.0.0.1', server.server_port))
+        abandoned.sendall(b'GET /track/1.wav HTTP/1.1\r\nHost: x\r\n\r\n')
+        deadline = time.monotonic() + 5
+        while server.track != 1 and time.monotonic() < deadline:
+            time.sleep(0.02)
+        self.assertEqual(server.track, 1)
+        abandoned.close()                       # Sonos moved on before any PCM
+        status, data = request(server.server_port, '/track/3.wav')
+        self.assertEqual((status, data[44:]), (200, FILL[3] * SIZES[3]))
+        self.assertEqual(server.track, 3)
+
+    def test_streaming_reader_is_not_preempted(self):
+        server = self.start()
+        stream = server.stream
+        reader = stream.attach(0)
+        stream.http_begin(reader, 'sonos')
+        stream.http_sent(reader, CHUNK)
+        self.assertEqual(stream.preempt_unstarted(), 0)
+        self.assertIn(reader, stream.ring.reader_ids())
+        stream.http_end(reader)
+        stream.ring.unregister(reader)
+
     def test_head_of_another_track_does_not_switch(self):
         server = self.start()
         status, _ = request(server.server_port, '/track/3.wav', method='HEAD')
@@ -80,9 +108,12 @@ class DiscServerTests(unittest.TestCase):
         server = self.start()
         DiscServer.SWITCH_WAIT_SECONDS, saved = 0.3, DiscServer.SWITCH_WAIT_SECONDS
         self.addCleanup(setattr, DiscServer, 'SWITCH_WAIT_SECONDS', saved)
-        held = server.stream.ring.register(0)           # a client still on track 1
+        held = server.stream.ring.register(0)           # a client still streaming track 1
+        server.stream.http_begin(held, 'sonos')
+        server.stream.http_sent(held, CHUNK)
         self.assertEqual(request(server.server_port, '/track/2.wav')[0], 409)
         self.assertEqual(server.track, 1)
+        server.stream.http_end(held)
         server.stream.ring.unregister(held)
         status, data = request(server.server_port, '/track/2.wav')
         self.assertEqual((status, data[44:]), (200, FILL[2] * SIZES[2]))

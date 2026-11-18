@@ -16,7 +16,7 @@ import time
 from urllib.parse import urlsplit
 from cd_toc import read_toc
 from drive_access import drive_lock
-from ram_ring import PCMRing, StreamingConfig, BufferTimeout, BufferClosed, DataExpired
+from ram_ring import PCMRing, StreamingConfig, BufferTimeout, BufferClosed, DataExpired, ReaderRemoved
 
 SECTOR = 2352
 CHUNK = 2352 * 25  # 58,800 bytes, 1/3s PCM
@@ -166,6 +166,26 @@ class Stream:
                 self.ring.unregister(self.anchor)
                 self.anchor = None
             return reader
+
+    def preempt_unstarted(self):
+        """Remove HTTP readers that have not sent any PCM yet.
+
+        Sonos abandons such requests when it moves to another queue entry
+        (e.g. it loads the queue's first entry, then seeks to the selected
+        one). Their handlers would otherwise wait for PCM that nobody wants
+        and block the switch. Readers already streaming are left alone.
+        """
+        with self.lock:
+            anchor = self.anchor
+        with self._diag_lock:
+            streaming = {rid for rid, info in self._http_clients.items() if info['sent'] > 0}
+        removed = [rid for rid in self.ring.reader_ids()
+                   if rid != anchor and rid not in streaming]
+        for rid in removed:
+            self.ring.unregister(rid)
+        if removed:
+            self.log(f'GET preempted readers={len(removed)} before any PCM was sent')
+        return len(removed)
 
     def cancel_orphan(self):
         """Request cooperative reader shutdown; never start a second CD process here."""
@@ -421,6 +441,9 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError) as exc:
             disconnected = True
             stream.log(f'GET disconnect sent={sent}: {type(exc).__name__}')
+        except ReaderRemoved:
+            disconnected = True
+            stream.log(f'GET dropped sent={sent}: another track was requested')
         except (BufferClosed, BufferTimeout, DataExpired) as exc:
             stream.log(f'GET stream error sent={sent}: {type(exc).__name__}: {exc}')
         finally:
@@ -672,6 +695,7 @@ class DiscServer(Server):
         Caller holds the generation lock. Never overlaps two CD readers.
         """
         current = self.stream
+        current.preempt_unstarted()
         anchored = 1 if current.anchor is not None else 0
         if current.ring.stats['readers'] - anchored > 0:
             return None                      # an HTTP client still reads it
