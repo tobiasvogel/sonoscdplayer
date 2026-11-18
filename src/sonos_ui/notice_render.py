@@ -36,17 +36,26 @@ class NoticeRenderer:
                grayscale=False, dismiss_hint=False):
         """dismiss_hint adds a bottom line telling how to close a notice
         that does not disappear by itself."""
+        hint = ""
+        if dismiss_hint:
+            from .i18n import Translator
+            hint = Translator(language).tr("notice.dismiss_hint")
+        return self.render_text(notice_text(notice, language), notice.severity,
+                                size=size, grayscale=grayscale, hint=hint)
+
+    def render_text(self, message, severity, *, size=(128, 128),
+                    grayscale=False, hint=""):
+        """Draw an already translated notice; ``hint`` is the optional bottom line."""
         width, height = size
         if not (isinstance(width, int) and isinstance(height, int)
                 and width >= 64 and height >= 64):
             raise ValueError("notice display must be at least 64x64")
-        message = notice_text(notice, language)
         image = Image.new("RGB", (width, height), self.theme.background)
         draw = ImageDraw.Draw(image)
-        tone = getattr(self.theme, COLOR[notice.severity])
+        tone = getattr(self.theme, COLOR[severity])
         margin = max(4, width // 24)
         icon_size = min(40, max(16, height // 3), width // 3)
-        icon_path = icon_file(notice.severity, grayscale, self.icon_root)
+        icon_path = icon_file(severity, grayscale, self.icon_root)
         if icon_path is not None:
             with Image.open(icon_path) as source:
                 artwork = ImageOps.contain(source.convert("RGBA"),
@@ -59,10 +68,8 @@ class NoticeRenderer:
 
         top = margin + icon_size + 7
         bottom = height - margin
-        if dismiss_hint:
-            from .i18n import Translator
+        if hint:
             hint_font = font(8)
-            hint = Translator(language).tr("notice.dismiss_hint")
             box = draw.textbbox((0, 0), hint, font=hint_font)
             hint_top = height - margin - (box[3] - box[1])
             draw.line((margin, hint_top - 4, width - margin, hint_top - 4),

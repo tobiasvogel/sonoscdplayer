@@ -1,165 +1,83 @@
-"""ARC-DISPLAY-01C.4/5: opt-in semantic OLED parity projection.
+"""ARC-DISPLAY-01D: draw a SemanticScreen on the 128x128 SSD1327 OLED.
 
-The productive InteractiveMenu.frame path is not switched to this module.
-The legacy SSD1327 widgets remain the pixel reference.
+InteractiveMenu.semantic_screen() decides WHAT is shown (and in which order
+overlays win); this module only decides HOW it looks on this display. The
+widgets are the existing Modern Hi-Fi ones, so the pixels do not change.
 """
 from __future__ import annotations
 
-from PIL import Image
+from .semantic_screen import SemanticScreen
 
-from .menu_catalog import NAVIGATION_PAGES
-from .multi_render import MultiRenderer
-from .navigation_pages import NavigationRenderer
-from .semantic_screen import SemanticScreen, screen_from_notice
-from .notice_policy import NoticeTiming
-from .theme import ssd1327_gray
+_TARGET_MARKS = {"review_target": ">", "back": "<"}
 
 
-def _language_pixels(screen: SemanticScreen, renderer: MultiRenderer):
-    """Preserve the existing language-picker layout, without any input logic."""
-    from .i18n import available_languages
-    if screen.kind != "menu" or tuple(item.key for item in screen.items) != tuple(
-            available_languages()):
-        raise ValueError("language picker items do not match available languages")
-    focus = [i for i, item in enumerate(screen.items) if item.focused]
-    if len(focus) != 1:
-        raise ValueError("language picker needs exactly one focused item")
-    t = renderer.theme
-    im = Image.new("RGB", (128, 128), t.background)
-    renderer.shell(im, renderer.tr("menu.language"))
-    for slot, index in enumerate(renderer.menu_window(len(screen.items), focus[0])):
-        renderer.menu_row(im, slot, screen.items[index].label,
-                          selected=index == focus[0])
-    renderer.bottom(im, status=renderer.tr("status.local_only"),
-                    footer=renderer.tr("footer.confirm"))
-    # Existing InteractiveMenu.frame passes the unquantized language image.
-    return im
+def _focus(screen: SemanticScreen) -> int:
+    for index, item in enumerate(screen.items):
+        if item.focused:
+            return index
+    raise ValueError("menu needs a focused item")
 
 
-def render_graphic_semantic(screen: SemanticScreen, *, section: str,
-                            language: str = "de", renderer=None,
-                            state=None, searching=False, power_notice=""):
-    """Render only explicitly supported common screens with legacy pixels."""
+def render_screen(screen: SemanticScreen, *, renderer, navigation_renderer=None,
+                  notice_renderer=None, gray: bool = True):
+    """Pixels for one semantic screen.
+
+    ``renderer`` is the MultiRenderer of the menu; the navigation and notice
+    renderers are created on demand when not given.
+    """
     if not isinstance(screen, SemanticScreen):
         raise TypeError("expected SemanticScreen")
-
-    if section in NAVIGATION_PAGES:
-        _, keys = NAVIGATION_PAGES[section]
-        if screen.kind != "menu" or tuple(item.key for item in screen.items) != keys:
-            raise ValueError("semantic navigation does not match catalog")
-        nav = NavigationRenderer() if renderer is None else renderer
-        if not isinstance(nav, NavigationRenderer):
-            raise TypeError("expected NavigationRenderer")
-        return nav.semantic_menu(screen, language=language)
-
-    if section == "network_status":
-        nav = NavigationRenderer() if renderer is None else renderer
-        if not isinstance(nav, NavigationRenderer):
-            raise TypeError("expected NavigationRenderer")
-        return nav.semantic_network_status(screen, language=language)
-
-    if section == "volume":
-        multi = MultiRenderer(language=language) if renderer is None else renderer
-        if not isinstance(multi, MultiRenderer):
-            raise TypeError("expected MultiRenderer")
-        return multi.render_volume_semantic(screen, gray=True)
-
-    if section not in ("targets", "power", "language"):
-        raise ValueError("no graphical semantic adapter for this section yet")
-    if section == "targets" and state is None:
-        raise ValueError("speaker state required")
-
-    multi = MultiRenderer(language=language) if renderer is None else renderer
-    if not isinstance(multi, MultiRenderer):
-        raise TypeError("expected MultiRenderer")
-    if section == "targets":
-        return multi.render_multi_semantic(screen, state, searching=searching, gray=True)
-    if section == "power":
-        return multi.render_power_semantic(screen, notice=power_notice, gray=True)
-    return _language_pixels(screen, multi)
+    view = screen.view
+    if view == "navigation":
+        from .navigation_pages import NavigationRenderer
+        nav = navigation_renderer or NavigationRenderer(language=renderer.translator.language)
+        return nav.menu_pixels(screen.heading,
+                               [(item.key, item.label) for item in screen.items],
+                               _focus(screen), status=screen.status, footer=screen.footer)
+    if view == "network_status":
+        from .navigation_pages import NavigationRenderer
+        nav = navigation_renderer or NavigationRenderer(language=renderer.translator.language)
+        return nav.status_pixels(screen.heading,
+                                 [(item.label, item.value or "") for item in screen.items],
+                                 status=screen.status, footer=screen.footer)
+    if view == "targets":
+        marks = [_TARGET_MARKS.get(item.intent) or ("✓" if item.selected else "□")
+                 for item in screen.items]
+        return renderer.multi_pixels(
+            screen.heading, screen.subheading, [item.label for item in screen.items],
+            marks, _focus(screen), placeholder=screen.placeholder,
+            status=screen.status, footer=screen.footer, gray=gray)
+    if view == "power":
+        return renderer.power_pixels(screen.heading, [item.label for item in screen.items],
+                                     _focus(screen), status=screen.status,
+                                     footer=screen.footer, gray=gray)
+    if view == "language":
+        return renderer.language_pixels(screen.heading,
+                                        [item.label for item in screen.items],
+                                        _focus(screen), status=screen.status,
+                                        footer=screen.footer)
+    if view == "volume":
+        return renderer.render_volume(int(screen.items[0].value), gray=gray)
+    if view == "notice":
+        from .notice_render import NoticeRenderer
+        notices = notice_renderer or NoticeRenderer()
+        return notices.render_text(screen.message, screen.severity, grayscale=gray,
+                                   hint=screen.footer)
+    raise ValueError(f"no OLED widget for view {view!r}")
 
 
 def graphic_frame_from_menu(menu, *, now: float):
-    """Offscreen parity view; the existing OLED production path is untouched.
+    """The OLED image of an InteractiveMenu (shutdown screens excluded).
 
-    Non-semantic D-224 WLAN screens intentionally reuse the original WLAN
-    renderer and controller. They are not claimed to be semantic renderers.
+    WLAN setup still has its own D-224 renderer; an inactive menu without
+    overlay shows the speaker list, as before.
     """
-    from .interactive_menu import InteractiveMenu
-    if not isinstance(menu, InteractiveMenu):
-        raise TypeError("expected InteractiveMenu")
-    if menu.shutdown_screen is not None:
-        raise ValueError("system screens are not part of the OLED preview")
-
     screen = menu.semantic_screen(now=now)
-
-    notice = (menu.connect_notices.current(now=now)
-              if menu._notice_previous_active is not None else None)
-    if notice is not None:
-        if screen is None or screen.kind != "notice":
-            raise ValueError("notice semantic state missing")
-        expected = screen_from_notice(notice, language=menu.language)
-        can_confirm = NoticeTiming().encoder_can_confirm(notice)
-        expected_message = expected.message
-        if can_confirm:
-            from .i18n import Translator
-            expected_message += "\n" + Translator(menu.language).tr(
-                "notice.dismiss_hint")
-        if (screen.severity != expected.severity or
-                screen.message != expected_message):
-            raise ValueError("notice does not match semantic screen")
-        return menu._connect_renderer.render(
-            notice, language=menu.language, grayscale=True,
-            dismiss_hint=NoticeTiming().encoder_can_confirm(notice))
-
+    if screen is not None:
+        return render_screen(screen, renderer=menu.renderer,
+                             navigation_renderer=menu._navigation_renderer,
+                             notice_renderer=menu._connect_renderer)
     setup = menu.netsetup_snapshot()
     if setup is not None and not menu.power_menu:
-        if screen is not None or menu.wifi_entry is None:
-            raise ValueError("inconsistent WLAN preview state")
         return menu.wifi_entry.frame(menu.renderer, setup, now=now)
-
-    # The OLED speaker widget deliberately keeps its selection rows and
-    # status footer during target ACK/rejection. Character screens instead
-    # show a full-screen semantic notice. Preserve both established layouts
-    # without pretending that the target notice is a semantic OLED menu.
-    if menu.active and menu.section == "targets" and (
-            menu._target_pending or
-            (menu.state.notice and menu.state.notice != "menu.back")):
-        from .notice import Notice
-        key = ("status.target_pending" if menu._target_pending
-               else menu.state.notice)
-        expected = screen_from_notice(Notice(key), language=menu.language)
-        if screen != expected:
-            raise ValueError("speaker feedback does not match semantic state")
-        return menu.renderer.render_multi(
-            menu.state, gray=True, searching=menu.searching())
-
-    if screen is None or screen.kind not in ("menu", "idle"):
-        raise ValueError("no supported active semantic screen")
-
-    if menu.power_menu:
-        section = "power"
-    elif menu.volume_overlay_active(now=now):
-        section = "volume"
-    elif menu.language_picker:
-        section = "language"
-    else:
-        section = menu.section
-
-    if section == "power":
-        return render_graphic_semantic(
-            screen, section=section, language=menu.language,
-            renderer=menu.renderer, power_notice=menu.power_notice)
-    if section in ("language", "volume"):
-        return render_graphic_semantic(
-            screen, section=section, language=menu.language,
-            renderer=menu.renderer)
-    if section == "targets":
-        return render_graphic_semantic(
-            screen, section=section, language=menu.language,
-            renderer=menu.renderer, state=menu.state, searching=menu.searching())
-    if section in NAVIGATION_PAGES or section == "network_status":
-        return render_graphic_semantic(
-            screen, section=section, language=menu.language,
-            renderer=menu._navigation_renderer)
-    raise ValueError("preview does not support this active screen")
+    return menu.renderer.render_multi(menu.state, gray=True, searching=menu.searching())

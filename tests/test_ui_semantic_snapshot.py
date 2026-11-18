@@ -86,7 +86,8 @@ class SemanticSnapshotTests(unittest.TestCase):
         notice = menu.semantic_screen(now=0)
         self.assertEqual(notice.kind, "notice")
         self.assertIn("Player", notice.message)
-        self.assertIn("Schliessen", notice.message)
+        self.assertNotIn("Schliessen", notice.message)
+        self.assertIn("Schliessen", notice.footer)   # how to close it
         self.assertEqual(menu.section, "main")
         self.assertEqual(character_frame_from_menu(menu, LCD16, now=3),
                          render_character_screen(menu.semantic_screen(now=3), LCD16,

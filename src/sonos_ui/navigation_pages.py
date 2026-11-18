@@ -1,14 +1,14 @@
-"""OLED-only navigation pages; no network, GPIO or player side effects."""
 from PIL import Image
+
 from .render import Renderer
 from .theme import ssd1327_gray
 
-from .menu_catalog import MAIN_ITEMS, NETWORK_ITEMS, SETTINGS_ITEMS
+from .menu_catalog import MAIN_ITEMS, NETWORK_ITEMS, SETTINGS_ITEMS  # noqa: F401
 
 
 class NavigationRenderer(Renderer):
-    def _menu_pixels(self, heading, items, focus, *, language):
-        """One pixel layout for legacy navigation and semantic navigation."""
+    def menu_pixels(self, heading, items, focus, *, status, footer):
+        """Navigation page from translated texts: items are (key, label)."""
         t = self.theme
         image = Image.new("RGB", (128, 128), t.background)
         self.shell(image, heading)
@@ -17,37 +17,19 @@ class NavigationRenderer(Renderer):
             marker = "<" if key == "menu.back" else ">"
             self.menu_row(image, slot, label, selected=index == focus,
                           marker=marker)
-        from .i18n import Translator
-        tr = Translator(language).tr
-        self.bottom(image, status=tr("status.local_only"),
-                    footer=tr("footer.select"))
+        self.bottom(image, status=status, footer=footer)
         return ssd1327_gray(image)
 
     def page(self, heading, items, focus, *, language="de"):
-        """Existing OLED API kept intact for production callers."""
+        """Navigation page from locale keys."""
         from .i18n import Translator
         tr = Translator(language).tr
-        return self._menu_pixels(tr(heading), [(key, tr(key)) for key in items],
-                                 focus, language=language)
+        return self.menu_pixels(tr(heading), [(key, tr(key)) for key in items],
+                                focus, status=tr("status.local_only"),
+                                footer=tr("footer.select"))
 
-    def semantic_menu(self, screen, *, language="de"):
-        """Render a navigation SemanticScreen using the identical pixel path.
-
-        The semantic item keys control marker choice, not execution. Only
-        navigation pages are accepted here; other UI kinds need their own
-        specialised graphical widgets.
-        """
-        from .semantic_screen import SemanticScreen
-        if not isinstance(screen, SemanticScreen) or screen.kind != "menu":
-            raise ValueError("semantic navigation menu required")
-        if sum(item.focused for item in screen.items) != 1:
-            raise ValueError("navigation menu needs exactly one focused item")
-        return self._menu_pixels(
-            screen.heading, [(item.key, item.label) for item in screen.items],
-            next(i for i, item in enumerate(screen.items) if item.focused),
-            language=language)
-
-    def _status_pixels(self, heading, fields, *, language):
+    def status_pixels(self, heading, fields, *, status, footer):
+        """Read-only label/value page from translated texts."""
         t = self.theme
         image = Image.new("RGB", (128, 128), t.background)
         self.shell(image, heading)
@@ -57,14 +39,11 @@ class NavigationRenderer(Renderer):
                       width=116, height=11)
             self.text(image, (9, y + 11), value, fill=t.primary, size=10,
                       bold=True, width=113, height=13)
-        from .i18n import Translator
-        tr = Translator(language).tr
-        self.bottom(image, status=tr("network.readonly"),
-                    footer=tr("footer.select"))
+        self.bottom(image, status=status, footer=footer)
         return ssd1327_gray(image)
 
     def network_status(self, snapshot, *, language="de"):
-        """Existing OLED API kept intact for production callers."""
+        """Network status page from a NetworkStatus snapshot."""
         from .i18n import Translator
         tr = Translator(language).tr
         fields = (
@@ -72,20 +51,6 @@ class NavigationRenderer(Renderer):
             ("network.wifi", "network.state." + snapshot.wifi),
             ("network.preferred", "network.preferred." + snapshot.preferred),
         )
-        return self._status_pixels(
+        return self.status_pixels(
             tr("network.status"), [(tr(key), tr(value)) for key, value in fields],
-            language=language)
-
-    def semantic_network_status(self, screen, *, language="de"):
-        """Render the common read-only network-status screen."""
-        from .semantic_screen import SemanticScreen
-        if not isinstance(screen, SemanticScreen) or screen.kind != "idle":
-            raise ValueError("semantic network status required")
-        if tuple(item.key for item in screen.items) != (
-                "network.ethernet", "network.wifi", "network.preferred"):
-            raise ValueError("unexpected network-status fields")
-        if any(item.value is None for item in screen.items):
-            raise ValueError("network-status values required")
-        return self._status_pixels(
-            screen.heading, [(item.label, item.value) for item in screen.items],
-            language=language)
+            status=tr("network.readonly"), footer=tr("footer.select"))

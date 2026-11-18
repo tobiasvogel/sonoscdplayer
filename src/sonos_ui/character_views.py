@@ -3,7 +3,8 @@
 This module does not route input or own a second state machine. Callers supply
 a monotonic timestamp and the same InteractiveMenu instance used by the OLED.
 Automatic pagination is *display only*: encoder presses remain governed by
-InteractiveMenu.event and NoticeTiming. The productive OLED path is untouched.
+InteractiveMenu.event and NoticeTiming. Which screen is shown is decided by
+InteractiveMenu.semantic_screen(), the same source the OLED draws from.
 """
 from __future__ import annotations
 
@@ -13,7 +14,8 @@ from .display_capabilities import DisplayCapabilities
 from .i18n import Translator
 from .notice import Notice
 from .notice_policy import NoticeTiming
-from .semantic_screen import ScreenItem, SemanticScreen, screen_from_notice
+from .semantic_screen import ScreenItem, SemanticScreen
+from .semantic_views import notice_screen
 
 PAGE_SECONDS = 3.0
 
@@ -32,13 +34,9 @@ def _render(screen, capabilities, now):
 
 
 def _notice_frame(notice: Notice, capabilities, now, language):
-    tr = Translator(language).tr
-    screen = screen_from_notice(notice, language=language)
     # A notice only advertises confirmation when the live policy permits it.
-    if NoticeTiming().encoder_can_confirm(notice):
-        screen = SemanticScreen(
-            "notice", message=screen.message + "\n" + tr("notice.dismiss_hint"),
-            severity=screen.severity)
+    screen = notice_screen(notice, language=language,
+                           dismissable=NoticeTiming().encoder_can_confirm(notice))
     return _render(screen, capabilities, now)
 
 

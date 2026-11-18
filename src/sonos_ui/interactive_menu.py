@@ -21,11 +21,10 @@ from .notice_policy import NoticeTiming
 from .text_input import DEFAULT_EXTRA_CHARACTERS
 from .wifi_entry import WifiEntryController
 from .navigation_pages import NavigationRenderer
-from .menu_catalog import NAVIGATION_PAGES
+from .menu_catalog import NAVIGATION_PAGES, POWER_ITEMS
 from .network_status import NetworkStatus, read_network_status
 
 
-POWER_ITEMS = ('back', 'poweroff', 'reboot')
 # After a player-acknowledged "Auswahl übernehmen" the menu closes and a
 # success notice stays visible this long.
 ACCEPTED_NOTICE_SECONDS = 1.0
@@ -341,7 +340,7 @@ class InteractiveMenu:
         elif (name, event) == ('encoder', 'left'):
             self.power_focus = max(0, self.power_focus - 1)
         elif (name, event) == ('encoder_sw', 'pressed'):
-            choice = POWER_ITEMS[self.power_focus]
+            choice = POWER_ITEMS[self.power_focus].removeprefix('menu.')
             if choice == 'back':
                 return self._close_power()
             self._power_busy = True
@@ -710,74 +709,57 @@ class InteractiveMenu:
         return True
 
     def semantic_screen(self, *, now):
-        """Read-only semantic snapshot of the active non-WLAN menu.
+        """What the display shows now, for every display type.
 
-        Navigation and selectable overlays share this snapshot with every
-        renderer. WLAN text input and hotspot presentation still need their
-        specialised projections; they are deliberately not duplicated here.
-        No encoder dispatch, player writes or mutations occur.
+        This is the ONLY place that decides which screen wins:
+        shutdown > notice > WLAN setup > POWER > volume > language > menu.
+        WLAN setup returns None (its screens have their own D-224 renderer),
+        as does an inactive menu without overlay. Read-only: no input,
+        no player writes.
         """
-        from .character_adapters import (
-            navigation_screen, speaker_selection_screen, power_menu_screen,
-            language_menu_screen, network_status_screen,
-        )
-        from .semantic_screen import ScreenItem, SemanticScreen, screen_from_notice
+        from . import semantic_views as views
 
         if self.shutdown_screen is not None:
-            keys = {
-                'transition': 'system.shutting_down',
-                'wait': 'system.shutting_down',
-                'reboot': 'system.restarting',
-                'final': 'system.please_wait',
-                'safe': 'system.safe_to_unplug',
-                'start': 'system.starting',
-            }
-            try:
-                key = keys[self.shutdown_screen]
-            except KeyError as exc:
-                raise ValueError('unknown shutdown screen') from exc
-            return SemanticScreen('notice', message=Translator(self.language).tr(key),
-                                  severity='info')
+            return views.system_screen(self.shutdown_screen, language=self.language)
 
         notice = (self.connect_notices.current(now=now)
                   if self._notice_previous_active is not None else None)
         if notice is not None:
-            screen = screen_from_notice(notice, language=self.language)
-            if NoticeTiming().encoder_can_confirm(notice):
-                return SemanticScreen('notice', message=screen.message + '\n' +
-                                      Translator(self.language).tr('notice.dismiss_hint'),
-                                      severity=screen.severity)
-            return screen
+            return views.notice_screen(
+                notice, language=self.language,
+                dismissable=NoticeTiming().encoder_can_confirm(notice))
 
-        # WLAN setup has higher precedence than power, except for the
-        # existing power-menu override. Its screen remains in the D-224 adapter.
+        # POWER is the only overlay that may cover the WLAN setup.
         if self.netsetup_snapshot() is not None and not self.power_menu:
             return None
-
         if self.power_menu:
-            return power_menu_screen(self.power_focus, language=self.language)
+            return views.power_menu_screen(self.power_focus, notice=self.power_notice,
+                                           language=self.language)
         if self.volume_overlay_active(now=now):
-            return SemanticScreen('idle', items=(
-                ScreenItem('volume', Translator(self.language).tr('menu.volume'),
-                           value=str(self._volume_level)),))
+            return views.volume_screen(self._volume_level, language=self.language)
         if self.language_picker:
-            return language_menu_screen(tuple(self.languages), self.language_focus,
-                                        language=self.language)
+            return views.language_menu_screen(tuple(self.languages), self.language_focus,
+                                              language=self.language)
         if not self.active:
             return None
         if self.section in NAVIGATION_PAGES:
-            return navigation_screen(self.section, self.menu_focus,
-                                     language=self.language)
+            return views.navigation_screen(self.section, self.menu_focus,
+                                           language=self.language)
         if self.section == 'network_status':
-            return network_status_screen(self.network_snapshot, language=self.language)
+            return views.network_status_screen(self.network_snapshot,
+                                               language=self.language)
         if self.section == 'targets':
+            screen = views.speaker_selection_screen(self.state, language=self.language,
+                                                    searching=self.searching())
+            # Speaker feedback: the OLED keeps the list and shows it in the
+            # status line; small displays show it instead of the list.
             if self._target_pending:
-                return screen_from_notice(Notice('status.target_pending'),
-                                          language=self.language)
+                return views.with_feedback(screen, Notice('status.target_pending'),
+                                           language=self.language)
             if self.state.notice and self.state.notice != 'menu.back':
-                return screen_from_notice(Notice(self.state.notice),
-                                          language=self.language)
-            return speaker_selection_screen(self.state, language=self.language)
+                return views.with_feedback(screen, Notice(self.state.notice),
+                                           language=self.language)
+            return screen
         raise ValueError('unknown active menu section')
 
     def frame(self, image_to_frame):
@@ -786,39 +768,5 @@ class InteractiveMenu:
                 from system_screen import screen_image
                 self._shutdown_frame = image_to_frame(screen_image(self.shutdown_screen, self.language))
             return self._shutdown_frame
-        active_notice = (self.connect_notices.current(now=time.monotonic())
-                         if self._notice_previous_active is not None else None)
-        if active_notice is not None:
-            return image_to_frame(self._connect_renderer.render(
-                active_notice, language=self.language, grayscale=True,
-                dismiss_hint=NoticeTiming().encoder_can_confirm(active_notice)))
-        netsetup = self.netsetup_snapshot()
-        if netsetup is not None and not self.power_menu:
-            return image_to_frame(self.wifi_entry.frame(self.renderer, netsetup,
-                                                        now=time.monotonic()))
-        if self.power_menu:
-            return image_to_frame(self.renderer.render_power(
-                self.power_focus, self.power_notice, gray=True))
-        if self.volume_overlay_active():
-            return image_to_frame(self.renderer.render_volume(self._volume_level, gray=True))
-        if self.language_picker:
-            from PIL import Image, ImageDraw
-            t=self.renderer.theme
-            im=Image.new('RGB',(128,128),t.background)
-            self.renderer.shell(im,self.renderer.tr('menu.language'))
-            # 128px OLED: keep focused language visible even with many files.
-            for slot, index in enumerate(self.renderer.menu_window(len(self.languages), self.language_focus)):
-                label=self.renderer.translator.language_name(self.languages[index])
-                self.renderer.menu_row(im, slot, label, selected=index==self.language_focus)
-            self.renderer.bottom(im,status=self.renderer.tr('status.local_only'),
-                                 footer=self.renderer.tr('footer.confirm'))
-            return image_to_frame(im)
-        if self.section in NAVIGATION_PAGES:
-            heading, items = NAVIGATION_PAGES[self.section]
-            return image_to_frame(self._navigation_renderer.page(
-                heading, items, self.menu_focus, language=self.language))
-        if self.section == 'network_status':
-            return image_to_frame(self._navigation_renderer.network_status(
-                self.network_snapshot, language=self.language))
-        return image_to_frame(self.renderer.render_multi(self.state,gray=True,
-                                                         searching=self.searching()))
+        from .graphic_views import graphic_frame_from_menu
+        return image_to_frame(graphic_frame_from_menu(self, now=time.monotonic()))

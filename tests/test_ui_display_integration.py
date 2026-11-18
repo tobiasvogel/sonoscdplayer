@@ -1,8 +1,7 @@
 """ARC-DISPLAY-01C.7: integrated display priority and read-only boundaries.
 
-These tests intentionally do not enable the semantic SSD1327 production path.
-They cover the existing shared controller, the offscreen OLED preview and
-the 16x2 character projection without creating a second input controller.
+Since 01D the SSD1327 frame is drawn from the same semantic screen as the
+16x2 character projection; there is no second input controller.
 """
 import unittest
 from unittest.mock import patch
@@ -125,7 +124,7 @@ class DisplayIntegrationTests(unittest.TestCase):
                          "network.status")
 
     def test_target_feedback_keeps_legacy_oled_footer_and_semantic_notice(self):
-        """Pending/rejected targets keep OLED rows but character notices."""
+        """Speaker feedback: OLED keeps rows and status line, LCD shows it full-screen."""
         from dataclasses import replace
         from sonos_ui.multi_target import Target, Topology
         target = Target("speaker-opaque", "Wohnzimmer",
@@ -142,7 +141,8 @@ class DisplayIntegrationTests(unittest.TestCase):
                 menu._target_pending = pending
                 menu.state = replace(menu.state, notice=notice)
                 semantic = menu.semantic_screen(now=1)
-                self.assertEqual(semantic.kind, "notice")
+                self.assertEqual((semantic.kind, semantic.view), ("menu", "targets"))
+                self.assertTrue(semantic.message)
                 with patch("sonos_ui.render.MARQUEE_CLOCK.elapsed", return_value=0):
                     original = menu.frame(lambda image: image)
                     preview = graphic_frame_from_menu(menu, now=1)
@@ -150,6 +150,7 @@ class DisplayIntegrationTests(unittest.TestCase):
                                  (preview.mode, preview.tobytes()))
                 character = character_frame_from_menu(menu, LCD16, now=1)
                 self.assertNotIn("speaker-opaque", "".join(character.lines))
+                self.assertNotIn("Wohnzimmer", "".join(character.lines))
                 self.assertEqual(menu.section, "targets")
                 self.assertEqual(menu.state.notice, notice)
 
@@ -170,17 +171,19 @@ class DisplayIntegrationTests(unittest.TestCase):
             preview = graphic_frame_from_menu(menu, now=1)
         self.assertEqual(legacy.tobytes(), preview.tobytes())
 
-    def test_target_feedback_rejects_unrelated_semantic_notice(self):
-        """Never render the underlying target menu over an unknown overlay."""
+    def test_oled_draws_whatever_the_semantic_screen_says(self):
+        """The OLED never decides precedence itself (single source, 01D)."""
         from dataclasses import replace
+        from sonos_ui.notice_render import NoticeRenderer
         from sonos_ui.semantic_screen import screen_from_notice
         menu = InteractiveMenu()
         menu.active, menu.section = True, "targets"
         menu.state = replace(menu.state, notice="status.target_rejected")
-        unexpected = screen_from_notice(Notice("status.player_offline"))
-        with patch.object(menu, "semantic_screen", return_value=unexpected):
-            with self.assertRaises(ValueError):
-                graphic_frame_from_menu(menu, now=1)
+        other = screen_from_notice(Notice("status.player_offline", severity="error"))
+        with patch.object(menu, "semantic_screen", return_value=other):
+            drawn = graphic_frame_from_menu(menu, now=1)
+        expected = NoticeRenderer().render_text(other.message, "error", grayscale=True)
+        self.assertEqual(drawn.tobytes(), expected.tobytes())
 
     def test_target_feedback_preview_never_sends_sonos_commands(self):
         """Speaker ACK/rejection presentation must not invoke any controller action."""

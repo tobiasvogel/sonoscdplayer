@@ -40,17 +40,35 @@ class ScreenItem:
 
 @dataclass(frozen=True)
 class SemanticScreen:
+    """Everything a display needs to draw one screen, already translated.
+
+    ``view`` names the screen ("navigation", "targets", "power", ...) so a
+    graphical display can pick its widget; a text display may ignore it.
+    ``subheading``, ``placeholder`` (shown when a list has no entries),
+    ``status`` and ``footer`` are optional lines; displays without room
+    for them may leave them out. On a menu, ``message``/``severity`` carry
+    short feedback (e.g. a rejected speaker choice) that small displays
+    show instead of the menu and large displays show in the status line.
+    """
     kind: ScreenKind
     heading: str = ""
     items: tuple[ScreenItem, ...] = ()
     message: str | None = None
     severity: Severity | None = None
+    view: str = ""
+    subheading: str = ""
+    placeholder: str = ""
+    status: str = ""
+    footer: str = ""
 
     def __post_init__(self):
         if self.kind not in ("idle", "playback", "menu", "notice"):
             raise ValueError("invalid screen kind")
         if not isinstance(self.heading, str) or not isinstance(self.items, tuple):
             raise ValueError("invalid screen heading or items")
+        if not all(isinstance(v, str) for v in (
+                self.view, self.subheading, self.placeholder, self.status, self.footer)):
+            raise ValueError("screen text fields must be text")
         if any(not isinstance(item, ScreenItem) for item in self.items):
             raise ValueError("screen items must be ScreenItem instances")
         keys = [item.key for item in self.items]
@@ -65,8 +83,13 @@ class SemanticScreen:
                 raise ValueError("notice severity is required")
             if self.items:
                 raise ValueError("notice cannot contain menu items")
+        elif self.kind == "menu" and self.message is not None:
+            if not isinstance(self.message, str) or not self.message:
+                raise ValueError("menu feedback must be text")
+            if self.severity not in ("info", "success", "warning", "error"):
+                raise ValueError("menu feedback needs a severity")
         elif self.message is not None or self.severity is not None:
-            raise ValueError("only a notice may carry message or severity")
+            raise ValueError("only a notice or menu feedback may carry message or severity")
 
 
 def screen_from_display_model(model: DisplayModel) -> SemanticScreen:
@@ -105,4 +128,4 @@ def screen_from_notice(notice: Notice, *, language: str = "de") -> SemanticScree
     if not isinstance(notice, Notice):
         raise TypeError("expected Notice")
     return SemanticScreen(kind="notice", message=notice_text(notice, language),
-                          severity=notice.severity)
+                          severity=notice.severity, view="notice")
