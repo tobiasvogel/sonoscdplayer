@@ -417,12 +417,14 @@ def main(argv=None):
             sender = lambda uid: submit_target(uid, socket_path=args.socket)
             group_sender = lambda uid, members: submit_target(
                 uid, members=members, socket_path=args.socket)
-            from sonos_ui.target_rpc_client import read_target
+            from sonos_ui.target_rpc_client import read_target, reset_disc
             current_target = lambda: read_target(socket_path=args.socket)
+            disc_reset = lambda: reset_disc(socket_path=args.socket)
         else:
             sender = None
             group_sender = None
             current_target = None
+            disc_reset = None
         power_action = None
         if args.ui_power_actions:
             from power_action import PowerRequester
@@ -441,7 +443,8 @@ def main(argv=None):
                                current_target=current_target,
                                on_language_change=ui_state.save_language,
                                network_setup=network_setup,
-                               text_extra_characters=ui_config.extra_characters)
+                               text_extra_characters=ui_config.extra_characters,
+                               disc_reset=disc_reset)
         receiver_context = EventReceiver(args.ui_events_socket)
     def stop_on_sigterm(_signum, _frame):
         # systemd's normal SIGTERM must run finally and release SPI/GPIO.

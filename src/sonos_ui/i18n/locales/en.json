@@ -157,5 +157,10 @@
   "netsetup.web.invalid_ssid": "Please choose a network or enter a name.",
   "netsetup.web.invalid_password": "The password must be 8 to 63 characters long (or empty for an open network).",
   "netsetup.web.not_ready": "Setup is not ready right now. Please wait a moment and reload the page.",
-  "netsetup.web.connecting": "Connecting to {ssid} … You can close this page; the result appears on the display."
+  "netsetup.web.connecting": "Connecting to {ssid} … You can close this page; the result appears on the display.",
+  "menu.reset_disc": "Reset CD entry",
+  "menu.reset_disc_question": "Reset CD entry?",
+  "menu.reset_disc_confirm": "Reset",
+  "status.disc_reset_done": "CD entry reset\nLooking up the data again",
+  "status.disc_reset_failed": "Reset not possible"
 }

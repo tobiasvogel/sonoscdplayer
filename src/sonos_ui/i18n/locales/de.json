@@ -157,5 +157,10 @@
   "netsetup.web.invalid_ssid": "Bitte ein Netzwerk wählen oder einen Namen eingeben.",
   "netsetup.web.invalid_password": "Das Passwort muss 8 bis 63 Zeichen lang sein (oder leer bei offenem Netzwerk).",
   "netsetup.web.not_ready": "Die Einrichtung ist gerade nicht bereit. Bitte kurz warten und die Seite neu laden.",
-  "netsetup.web.connecting": "Verbinde mit {ssid} … Diese Seite kann geschlossen werden; das Ergebnis erscheint auf dem Display."
+  "netsetup.web.connecting": "Verbinde mit {ssid} … Diese Seite kann geschlossen werden; das Ergebnis erscheint auf dem Display.",
+  "menu.reset_disc": "CD-Eintrag zurücksetzen",
+  "menu.reset_disc_question": "CD-Eintrag zurücksetzen?",
+  "menu.reset_disc_confirm": "Zurücksetzen",
+  "status.disc_reset_done": "CD-Eintrag zurückgesetzt\nDaten werden neu gesucht",
+  "status.disc_reset_failed": "Zurücksetzen nicht möglich"
 }

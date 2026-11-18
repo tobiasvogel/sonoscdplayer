@@ -42,7 +42,7 @@ VOLUME_OVERLAY_SECONDS = 2.0
 
 
 class InteractiveMenu:
-    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None, network_reader=read_network_status, current_target=None, on_language_change=None, network_setup=None, text_extra_characters=DEFAULT_EXTRA_CHARACTERS):
+    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None, network_reader=read_network_status, current_target=None, on_language_change=None, network_setup=None, text_extra_characters=DEFAULT_EXTRA_CHARACTERS, disc_reset=None):
         self.state = MultiSelection()
         self.language = Translator(language).language
         self.languages = available_languages()
@@ -58,6 +58,11 @@ class InteractiveMenu:
         self.renderer = MultiRenderer(language=self.language)
         self._target_rpc = target_rpc
         self._group_target_rpc = group_target_rpc
+        # disc_reset() -> True: forget the inserted CD's metadata (D-050);
+        # runs on a worker thread, never on the display loop.
+        self._disc_reset = disc_reset
+        self._disc_reset_busy = False
+        self._disc_reset_result = None
         self._target_pending = False
         self._target_result = None
         self._target_generation = 0
@@ -200,11 +205,22 @@ class InteractiveMenu:
                 self.language_focus = self.languages.index(self.language)
             elif action == 'menu.rescan':
                 self._request_scan(now)
+            elif action == 'menu.reset_disc':
+                self.section = 'reset_disc'
+                self.menu_focus = 0                     # "Back" preselected
             elif action == 'menu.back':
                 self.section = 'main'
                 self.menu_focus = NAVIGATION_PAGES['main'][1].index('menu.settings')
             else:
                 return False
+        elif section == 'reset_disc':
+            back_to = NAVIGATION_PAGES['settings'][1].index('menu.reset_disc')
+            if action == 'menu.reset_disc_confirm':
+                self._start_disc_reset(now)
+            elif action != 'menu.back':
+                return False
+            self.section = 'settings'
+            self.menu_focus = back_to
         else:
             return False
         return True
@@ -220,6 +236,24 @@ class InteractiveMenu:
         self.language_picker = False
         self._discover_if_empty(now)
         return True
+
+    def _start_disc_reset(self, now):
+        if self._disc_reset is None:
+            self._show_notice(Notice('status.disc_reset_failed', severity='warning',
+                                     duration_seconds=SCAN_RESULT_SECONDS), now)
+            return
+        if self._disc_reset_busy:
+            return
+        self._disc_reset_busy = True
+
+        def work():
+            try:
+                ok = self._disc_reset() is True
+            except Exception:
+                ok = False
+            with self._lock:
+                self._disc_reset_result = ok
+        threading.Thread(target=work, name='ui-disc-reset', daemon=True).start()
 
     def searching(self):
         """A speaker search is running in the background."""
@@ -460,6 +494,15 @@ class InteractiveMenu:
             self._power_result = None
             network_result = self._network_pending
             self._network_pending = None
+            reset_result = self._disc_reset_result
+            self._disc_reset_result = None
+        if reset_result is not None:
+            self._disc_reset_busy = False
+            self._show_notice(Notice('status.disc_reset_done' if reset_result else
+                                     'status.disc_reset_failed',
+                                     severity='success' if reset_result else 'warning',
+                                     duration_seconds=SCAN_RESULT_SECONDS), now)
+            changed = True
         if self._shutdown_deadline is not None and now >= self._shutdown_deadline:
             self.shutdown_screen = None
             self._shutdown_deadline = None

@@ -45,7 +45,7 @@ class SharedMenuCatalogTests(unittest.TestCase):
         self.assertEqual(NETWORK_ITEMS, (
             'network.status', 'network.setup', 'menu.back'))
         self.assertEqual(SETTINGS_ITEMS, (
-            'menu.language', 'menu.rescan', 'menu.back'))
+            'menu.language', 'menu.rescan', 'menu.reset_disc', 'menu.back'))
 
 
 

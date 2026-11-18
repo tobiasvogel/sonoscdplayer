@@ -11,7 +11,7 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from disc_cache import DiscCache, DEFAULT_DB_PATH
-from disc_covers import CoverCache, DEFAULT_COVER_DIR
+from disc_covers import CoverBudgetFull, CoverCache, DEFAULT_COVER_DIR
 import time
 
 from disc_metadata import local_metadata_from_cdtext
@@ -74,6 +74,8 @@ def _cover_file(cover_cache, release_id, cover_policy):
         return None, 'off'
     try:
         path = cover_cache.get_or_download(release_id, policy=cover_policy)
+    except CoverBudgetFull:
+        return None, 'budget_full'
     except Exception as exc:
         return None, 'failed:' + type(exc).__name__
     # None from the cache = no front image at the Cover Art Archive or download failed.
@@ -240,6 +242,21 @@ class MetadataWorker:
             self._retried = toc
             self._retry_at = self._clock() + self._retry_seconds
         self._result = value
+        return True
+
+    def reset_current(self):
+        """Forget the stored entry of the inserted CD and look it up again (D-050).
+
+        Only this disc's metadata entry is removed; covers stay (they belong
+        to a release and may be shared). CD-TEXT read at insertion is kept.
+        """
+        toc = self._last_toc
+        if toc is None:
+            raise ValueError('no disc inserted')
+        self._cache.delete(self._identify(toc))
+        self._result = None
+        self._retry_at, self._retried = None, None
+        self._submit(toc)
         return True
 
     @property

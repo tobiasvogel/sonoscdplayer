@@ -6,6 +6,10 @@ language = "de" # de | en
 mode = "auto" # auto: use covers on cover-capable displays | on | off
 # One cached JPEG per release; no upscaling.
 max_dimension_px = 512 # 64..2048
+jpeg_quality = 85      # 40..95
+# Total size of stored covers. When full, stored covers are kept and new
+# ones are not stored (shown again once space is freed).
+budget_mb = 100        # 1..10000
 
 [ui.text_input]
 # Characters offered in addition to ASCII when typing a name on the device

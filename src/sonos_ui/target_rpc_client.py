@@ -60,3 +60,23 @@ def read_target(*, socket_path=DEFAULT_SOCKET, timeout=2.0):
             isinstance(uid,str) and uid and len(uid)<=128 for uid in speakers):
         raise RuntimeError('invalid target report')
     return frozenset(speakers)
+
+
+def reset_disc(*, socket_path=DEFAULT_SOCKET, timeout=4.0):
+    """Ask the player to forget the inserted CD's stored metadata (D-050)."""
+    with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as sock:
+        sock.settimeout(timeout)
+        sock.connect(str(socket_path))
+        sock.sendall(b'{"command":"reset-disc"}\n')
+        response=bytearray()
+        while b'\n' not in response and len(response)<=16384:
+            chunk=sock.recv(4096)
+            if not chunk:
+                break
+            response.extend(chunk)
+    if b'\n' not in response or len(response)>16384:
+        raise RuntimeError('invalid player response')
+    reply=json.loads(response.split(b'\n',1)[0])
+    if not isinstance(reply,dict) or reply.get('ok') is not True:
+        raise RuntimeError('player rejected the reset')
+    return True

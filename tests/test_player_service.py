@@ -641,6 +641,42 @@ class ResponsiveStatusTest(unittest.TestCase):
         self.assertEqual(p.read()['state']['player']['mode'],'STOPPED')
 
 
+class ResetDiscCommandTests(unittest.TestCase):
+    """D-050: the menu's "Reset CD entry" goes to the metadata worker only."""
+    def run_service(self, metadata_worker):
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        path = str(Path(td.name) / 'control.sock')
+        threading.Thread(target=lambda: serve(BlockingController(), path, poll_seconds=0.03,
+                                              metadata_worker=metadata_worker),
+                         daemon=True).start()
+        for _ in range(200):
+            if Path(path).exists():
+                break
+            time.sleep(0.01)
+        return path
+
+    def test_reset_goes_to_the_worker(self):
+        class Worker:
+            resets = 0
+            snapshot = None
+            def observe(self, toc, text=None): return False
+            def poll(self, toc): return False
+            def reset_current(self):
+                Worker.resets += 1
+                return True
+        path = self.run_service(Worker())
+        self.assertTrue(raw_request(path, {'command': 'reset-disc'})['ok'])
+        self.assertEqual(Worker.resets, 1)
+        self.assertFalse(raw_request(path, {'command': 'reset-disc', 'uid': 'X'})['ok'])
+
+    def test_without_metadata_it_is_refused(self):
+        path = self.run_service(None)
+        reply = raw_request(path, {'command': 'reset-disc'})
+        self.assertFalse(reply['ok'])
+        self.assertIn('metadata unavailable', reply['error'])
+
+
 class EarlySocketGuardTests(unittest.TestCase):
     def test_existing_socket_is_rejected_before_drive_access(self):
         with tempfile.TemporaryDirectory() as directory:

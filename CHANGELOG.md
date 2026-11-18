@@ -10,6 +10,10 @@ All notable changes for users of SonosCDPlayer. The version number is in
   queue entry before it seeks to the selected track) no longer stops the
   drive while it spins up.
 - The player shows its version in its status reply and logs it at start.
+- Settings → Reset CD entry: forgets the inserted CD's stored names and looks
+  them up again.
+- Cover store limited to 100 MB by default; cover JPEG quality configurable
+  in `ui.toml`.
 
 ## 0.9.0 – 2026-11-18
 

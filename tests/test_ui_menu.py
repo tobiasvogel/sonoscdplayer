@@ -327,9 +327,9 @@ class SpeakerScanCacheTests(unittest.TestCase):
         current = menu.connect_notices.current(now=3)
         self.assertEqual((current.key, current.severity), ('status.scan_none', 'warning'))
 
-    def test_settings_back_is_now_third_entry(self):
+    def test_settings_back_is_the_last_entry(self):
         menu = InteractiveMenu(discover=Discover(TWO))
-        self.open_settings_item(menu, 2, now=0)
+        self.open_settings_item(menu, 3, now=0)
         self.assertEqual((menu.section, menu.menu_focus), ('main', 2))
 
 

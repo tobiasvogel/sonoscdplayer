@@ -10,19 +10,25 @@ from pathlib import Path
 import tomllib
 
 from config_paths import ui_config
-from disc_covers import CoverPolicy
+from disc_covers import DEFAULT_BUDGET_MB, CoverPolicy
 
 
 @dataclass(frozen=True)
 class CoverPreferences:
     mode: str = 'auto'
     max_dimension_px: int = 512
+    jpeg_quality: int = 85
+    budget_mb: int = DEFAULT_BUDGET_MB
 
     def __post_init__(self):
         if type(self.mode) is not str or self.mode not in ('auto', 'on', 'off'):
             raise ValueError('ui.cover.mode must be auto, on or off')
-        # Reuse the same dimension validation as the image pipeline.
-        CoverPolicy(enabled=False, max_dimension_px=self.max_dimension_px)
+        # Reuse the same validation as the image pipeline.
+        self._policy(False)
+
+    def _policy(self, enabled):
+        return CoverPolicy(enabled=enabled, max_dimension_px=self.max_dimension_px,
+                           jpeg_quality=self.jpeg_quality, budget_mb=self.budget_mb)
 
     def download_policy(self, *, display_supports_cover: bool,
                         sonos_uses_cover: bool = False) -> CoverPolicy:
@@ -31,7 +37,7 @@ class CoverPreferences:
             raise ValueError('cover capability flags must be boolean')
         enabled = self.mode == 'on' or (
             self.mode == 'auto' and (display_supports_cover or sonos_uses_cover))
-        return CoverPolicy(enabled=enabled, max_dimension_px=self.max_dimension_px)
+        return self._policy(enabled)
 
 
 def read_cover_preferences(path: Path | None = None) -> CoverPreferences:
@@ -51,4 +57,6 @@ def read_cover_preferences(path: Path | None = None) -> CoverPreferences:
     if not isinstance(cover, dict):
         raise ValueError('[ui.cover] must be a table')
     return CoverPreferences(mode=cover.get('mode', 'auto'),
-                            max_dimension_px=cover.get('max_dimension_px', 512))
+                            max_dimension_px=cover.get('max_dimension_px', 512),
+                            jpeg_quality=cover.get('jpeg_quality', 85),
+                            budget_mb=cover.get('budget_mb', DEFAULT_BUDGET_MB))

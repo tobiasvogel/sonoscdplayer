@@ -9,7 +9,10 @@ from types import MappingProxyType
 
 MAIN_ITEMS = ("menu.targets", "menu.network", "menu.settings", "menu.back")
 NETWORK_ITEMS = ("network.status", "network.setup", "menu.back")
-SETTINGS_ITEMS = ("menu.language", "menu.rescan", "menu.back")
+SETTINGS_ITEMS = ("menu.language", "menu.rescan", "menu.reset_disc", "menu.back")
+# Confirmation before forgetting the inserted CD's stored metadata (D-050).
+# "Back" comes first so a hasty press changes nothing.
+RESET_DISC_ITEMS = ("menu.back", "menu.reset_disc_confirm")
 
 # POWER overlay, in display order (the controller acts on the part after "menu.").
 POWER_ITEMS = ("menu.back", "menu.poweroff", "menu.reboot")
@@ -20,6 +23,7 @@ NAVIGATION_PAGES = MappingProxyType({
     "main": ("menu.main", MAIN_ITEMS),
     "network": ("menu.network", NETWORK_ITEMS),
     "settings": ("menu.settings", SETTINGS_ITEMS),
+    "reset_disc": ("menu.reset_disc_question", RESET_DISC_ITEMS),
 })
 
 

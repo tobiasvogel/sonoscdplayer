@@ -77,6 +77,19 @@ class DiscCache:
             raise ValueError('invalid cached disc metadata') from exc
         return CachedDisc(local, row[1], row[2], row[3], bool(row[4]), row[5])
 
+    def delete(self, identity: DiscIdentity) -> bool:
+        """Remove this disc's entry, also a manually confirmed one (D-050)."""
+        if not self.path.is_file():
+            return False
+        db = self._connect(write=True)
+        try:
+            with db:
+                cursor = db.execute('DELETE FROM discs WHERE disc_id=? AND toc=?',
+                                    (identity.disc_id, identity.toc))
+            return cursor.rowcount > 0
+        finally:
+            db.close()
+
     def put(self, identity: DiscIdentity, local: LocalDiscMetadata, *,
             release_id=None, match_method=None, confidence_score=None,
             confirmed_by_user=False) -> bool:

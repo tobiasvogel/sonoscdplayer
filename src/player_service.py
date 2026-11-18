@@ -46,7 +46,7 @@ from player_play import make_url, prepare_selection
 from sonos_parallel_test import detect_drive
 
 MAX_REQUEST = 1024
-COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'eject', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery', 'volume +N|-N')
+COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'eject', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery', 'volume +N|-N', 'reset-disc')
 
 
 def response(controller, *, ok, error=None, commands=None):
@@ -529,6 +529,26 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     current_toc, current_text = _current_disc(disc_monitor, drive_toc, drive_cdtext)
                     if metadata_worker.observe(current_toc, current_text):
                         controller.metadata_snapshot = None
+
+                if isinstance(request, dict) and request.get('command') == 'reset-disc':
+                    # D-050: forget the inserted CD's stored metadata and look it
+                    # up again. No drive or Sonos access; playback is not touched.
+                    if set(request) != {'command'}:
+                        reply = response(controller, ok=False, error='invalid request keys')
+                    elif metadata_worker is None:
+                        reply = response(controller, ok=False, error='metadata unavailable')
+                    else:
+                        try:
+                            metadata_worker.reset_current()
+                            controller.metadata_snapshot = None
+                            print('[metadata] entry of the inserted CD reset; looking it up again',
+                                  flush=True)
+                            reply = response(controller, ok=True)
+                        except Exception as exc:
+                            reply = response(controller, ok=False,
+                                             error=f'{type(exc).__name__}: {exc}')
+                    publisher.publish(controller, power)
+                    return reply
 
                 # Volume control is passed only to volume requests, so the
                 # established command path stays unchanged for all others.

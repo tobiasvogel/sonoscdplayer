@@ -61,9 +61,11 @@ The configuration files are only read, never written by the services. What is ch
 | `target.json` | The last confirmed speaker selection (coordinator and group members), written by the player |
 | `ui.json` | The display language chosen in the menu, written by the OLED service; it takes precedence over `ui.toml` and is also read by the shutdown screens |
 | `metadata.sqlite3` | Album and track names found for each CD (CD-TEXT, MusicBrainz), written by the player |
-| `covers/` | One cached cover image per album, if covers are enabled (`[ui.cover] mode`) |
+| `covers/` | One cached cover image per album, if covers are enabled (`[ui.cover] mode`); at most `max_dimension_px` (default 512), JPEG quality `jpeg_quality` (default 85), together at most `budget_mb` (default 100 MB). When the budget is full, stored covers are kept and new ones are not stored |
 
 After a restart the player restores this selection without contacting any speaker and never starts playback on its own. The display menu asks the player for it and shows the remembered speakers as checked. PLAY checks the speakers as usual; if one is not available, an error is shown and the selection is kept. Choosing other speakers replaces the file; deleting it forgets the selection. Outside systemd the directory can be set with `player_service.py --state-dir`.
+
+A CD's names are looked up once and then kept. To look them up again (e.g. after a correction on MusicBrainz), choose **Settings → Reset CD entry** on the device with the CD inserted; this forgets the stored names of this CD only, also a manually chosen release, and searches again. The same is available as `player_remote.py reset-disc`.
 
 ## Playing on
 

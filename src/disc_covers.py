@@ -19,16 +19,29 @@ DEFAULT_COVER_DIR = Path('/var/lib/sonoscdplayer/covers')
 _UUID = re.compile(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')
 
 
+DEFAULT_BUDGET_MB = 100        # D-065
+
+
+class CoverBudgetFull(Exception):
+    """The cover store reached its budget; nothing is deleted (D-061)."""
+
+
 @dataclass(frozen=True)
 class CoverPolicy:
     enabled: bool = False
     max_dimension_px: int = 512
+    jpeg_quality: int = 85            # D-066
+    budget_mb: int = DEFAULT_BUDGET_MB
 
     def __post_init__(self):
         if type(self.enabled) is not bool:
             raise ValueError('cover enabled must be boolean')
         if type(self.max_dimension_px) is not int or not 64 <= self.max_dimension_px <= 2048:
             raise ValueError('cover max_dimension_px must be 64..2048')
+        if type(self.jpeg_quality) is not int or not 40 <= self.jpeg_quality <= 95:
+            raise ValueError('cover jpeg_quality must be 40..95')
+        if type(self.budget_mb) is not int or not 1 <= self.budget_mb <= 10000:
+            raise ValueError('cover budget_mb must be 1..10000')
 
 
 class CoverCache:
@@ -39,6 +52,14 @@ class CoverCache:
         if not _UUID.fullmatch(release_id):
             raise ValueError('invalid MusicBrainz release ID')
         return self.directory / (sha256(release_id.lower().encode()).hexdigest() + '.jpg')
+
+    def used_bytes(self) -> int:
+        """Size of all stored covers."""
+        try:
+            return sum(entry.stat().st_size for entry in self.directory.glob('*.jpg')
+                       if entry.is_file())
+        except OSError:
+            return 0
 
     def find(self, release_id: str) -> Path | None:
         path = self._path(release_id)
@@ -74,7 +95,10 @@ class CoverCache:
                                 Image.Resampling.LANCZOS)
                 rgb = image.convert('RGB')
                 encoded = BytesIO()
-                rgb.save(encoded, format='JPEG', quality=85, optimize=True)
+                rgb.save(encoded, format='JPEG', quality=policy.jpeg_quality, optimize=True)
+            if self.used_bytes() + len(encoded.getvalue()) > policy.budget_mb * 1024 * 1024:
+                # Full budget: keep every stored cover, store no new one (D-061).
+                raise CoverBudgetFull()
             self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
             path = self._path(release_id)
             fd, temp_name = tempfile.mkstemp(prefix='.cover-', dir=self.directory)
