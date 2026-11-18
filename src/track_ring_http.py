@@ -772,6 +772,8 @@ def cdparanoia_command(device, track):
 
 
 def main():
+    import stack_dump
+    stack_dump.enable('server')
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--device', default='/dev/sr1')
     p.add_argument('--track', type=int, default=1)

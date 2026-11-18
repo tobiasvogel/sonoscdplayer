@@ -813,4 +813,6 @@ def run(argv=None):
 
 
 if __name__ == '__main__':
+    import stack_dump
+    stack_dump.enable('player')
     sys.exit(run())
