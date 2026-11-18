@@ -574,51 +574,55 @@ class Server(ThreadingHTTPServer):
         or any active HTTP cursor still exists. A HEAD never starts a reader.
         """
         with self._generation_lock:
-            current = self.stream
-            # A cancelled/failed producer may still have offset 0 retained.
-            # Never attach a fresh GET to its terminally closed ring: a Sonos
-            # reconnect would receive BufferClosed rather than a new stream.
-            terminal_error = current._cancel.is_set() or (current.ring.stats['finished'] and current.error is not None)
-            if not terminal_error:
-                try:
-                    reader = current.attach(offset)
-                except DataExpired:
-                    pass
-                else:
-                    self._clear_orphan_timer()
-                    return current, reader
-            # The old anchor exists only before the first GET; an expired
-            # beginning implies it was removed. Count readers under ring lock.
-            state = current.ring.stats
-            if state['readers'] != 0:
-                raise ReplayBusy()
-            # The final HTTP bytes can be sent slightly before cdparanoia exits.
-            # Allow a brief grace period for cleanup, but never overlap readers.
-            current.thread.join(timeout=2.0)
-            if current.thread.is_alive() or not current.ring.stats['finished']:
-                raise ReplayBusy()
-            self._clear_orphan_timer()
-            # Stop old diagnostics and REUSE the same bytearray. No second PCM
-            # allocation exists even transiently during an HTTP retry.
-            current._diag_stop.set()
-            # Only resume from a sector boundary, preserving exact WAV byte
-            # positions by starting the ring at the corresponding PCM offset.
-            # A full GET always restarts at sector zero.
-            seek_offset = (offset // SECTOR) * SECTOR if current.command and current.command[0] == 'cdparanoia' else 0
-            current.ring.reset_for_replay(seek_offset)
-            replacement = Stream(current.expected, current.total_ram_budget,
-                                 list(current.command), current.write_timeout,
-                                 current.initial_prebuffer_bytes * 1000 // RATE,
-                                 ring=current.ring, start_offset=seek_offset, probe_cache=current.probe_cache)
-            # Pin offset zero BEFORE starting cdparanoia, preventing start races.
-            reader = replacement.attach(offset)
-            self.stream = replacement
-            self._streams.append(replacement)
-            self._generation += 1
-            self._probe_used = False
-            replacement.log(f'REPLAY generation={self._generation} sector_seek_pcm={seek_offset} sequential CD reread')
-            replacement.start()
-            return replacement, reader
+            return self._acquire_locked(offset)
+
+    def _acquire_locked(self, offset):
+        """acquire_get with the generation lock already held."""
+        current = self.stream
+        # A cancelled/failed producer may still have offset 0 retained.
+        # Never attach a fresh GET to its terminally closed ring: a Sonos
+        # reconnect would receive BufferClosed rather than a new stream.
+        terminal_error = current._cancel.is_set() or (current.ring.stats['finished'] and current.error is not None)
+        if not terminal_error:
+            try:
+                reader = current.attach(offset)
+            except DataExpired:
+                pass
+            else:
+                self._clear_orphan_timer()
+                return current, reader
+        # The old anchor exists only before the first GET; an expired
+        # beginning implies it was removed. Count readers under ring lock.
+        state = current.ring.stats
+        if state['readers'] != 0:
+            raise ReplayBusy()
+        # The final HTTP bytes can be sent slightly before cdparanoia exits.
+        # Allow a brief grace period for cleanup, but never overlap readers.
+        current.thread.join(timeout=2.0)
+        if current.thread.is_alive() or not current.ring.stats['finished']:
+            raise ReplayBusy()
+        self._clear_orphan_timer()
+        # Stop old diagnostics and REUSE the same bytearray. No second PCM
+        # allocation exists even transiently during an HTTP retry.
+        current._diag_stop.set()
+        # Only resume from a sector boundary, preserving exact WAV byte
+        # positions by starting the ring at the corresponding PCM offset.
+        # A full GET always restarts at sector zero.
+        seek_offset = (offset // SECTOR) * SECTOR if current.command and current.command[0] == 'cdparanoia' else 0
+        current.ring.reset_for_replay(seek_offset)
+        replacement = Stream(current.expected, current.total_ram_budget,
+                             list(current.command), current.write_timeout,
+                             current.initial_prebuffer_bytes * 1000 // RATE,
+                             ring=current.ring, start_offset=seek_offset, probe_cache=current.probe_cache)
+        # Pin offset zero BEFORE starting cdparanoia, preventing start races.
+        reader = replacement.attach(offset)
+        self.stream = replacement
+        self._streams.append(replacement)
+        self._generation += 1
+        self._probe_used = False
+        replacement.log(f'REPLAY generation={self._generation} sector_seek_pcm={seek_offset} sequential CD reread')
+        replacement.start()
+        return replacement, reader
 
 class DiscServer(Server):
     """All tracks of one CD under /track/<n>.wav (D-230).
@@ -650,13 +654,13 @@ class DiscServer(Server):
         return self.tracks[track] + 44
 
     def acquire_get(self, offset=0, track=None):
-        if track is None or track == self.track:
-            return super().acquire_get(offset)
+        # Check and attach under ONE lock hold: a request for another track
+        # must never switch the ring between the check and the attach.
         deadline = time.monotonic() + self.SWITCH_WAIT_SECONDS
         while True:
             with self._generation_lock:
-                if track == self.track:      # another request switched already
-                    break
+                if track is None or track == self.track:
+                    return self._acquire_locked(offset)
                 stream = self._switch_locked(track, offset)
                 if stream is not None:
                     reader = stream.attach(offset)
@@ -665,7 +669,6 @@ class DiscServer(Server):
             if time.monotonic() >= deadline:
                 raise ReplayBusy()
             time.sleep(self.SWITCH_POLL_SECONDS)
-        return super().acquire_get(offset)
 
     def release_get(self, stream, disconnected, complete=False):
         super().release_get(stream, disconnected, complete=complete)

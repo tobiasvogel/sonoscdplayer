@@ -185,6 +185,32 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(self.p.uris(), [FOREIGN])
         self.assertIsNone(self.c._queue_block)
 
+    def test_resume_in_the_app_between_two_reads_is_no_error(self):
+        """18.11.: refresh read PAUSED_PLAYBACK, the ownership check then saw
+        TRANSITIONING because the user pressed play in the Sonos app."""
+        self.make(QueuePlayer())
+        self.playing()
+        self.p.transport = 'PAUSED_PLAYBACK'
+        self.c.refresh()
+        self.assertEqual(self.c.state.mode, Mode.PAUSED)
+        states = iter(['PAUSED_PLAYBACK', 'TRANSITIONING'])
+        original = self.p.get_current_transport_info
+        self.p.get_current_transport_info = lambda: {
+            'current_transport_state': next(states, 'PLAYING')}
+        self.c.refresh()                                # race: no ERROR
+        self.assertEqual(self.c.state.mode, Mode.PAUSED)
+        self.p.get_current_transport_info = original
+        self.p.transport = 'PLAYING'
+        self.c.refresh()
+        self.assertEqual(self.c.state.mode, Mode.PLAYING)
+
+    def test_foreign_uri_while_paused_is_still_an_error(self):
+        self.make(QueuePlayer())
+        self.playing()
+        self.p.transport, self.p.uri = 'PAUSED_PLAYBACK', FOREIGN
+        self.c.refresh()
+        self.assertEqual(self.c.state.mode, Mode.ERROR)
+
     def test_shuffle_repeat_or_off_uses_direct_uri(self):
         for player, use_queue in ((QueuePlayer(mode='SHUFFLE'), True),
                                   (QueuePlayer(mode='REPEAT_ALL'), True),

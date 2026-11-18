@@ -22,6 +22,11 @@ from sonos_group import is_expected_group
 from sonos_parallel_test import detect_drive, stream_lines, wait_reader, READER_DONE
 
 
+class TransportChanged(RuntimeError):
+    """Sonos changed its transport state between two reads (e.g. the user
+    pressed play or pause in the Sonos app). Not an ownership violation."""
+
+
 def ownership_snapshot(player, expected_uid: str, expected_url: str, members=frozenset()) -> None:
     """Fail closed if transport/group/URI does not prove our own stream."""
     if player.uid != expected_uid:
@@ -30,7 +35,7 @@ def ownership_snapshot(player, expected_uid: str, expected_url: str, members=fro
         raise RuntimeError('ownership denied: unexpected group topology')
     transport = player.get_current_transport_info()['current_transport_state']
     if transport != 'PLAYING':
-        raise RuntimeError(f'ownership denied: transport {transport}, expected PLAYING')
+        raise TransportChanged(f'ownership denied: transport {transport}, expected PLAYING')
     info = player.get_current_track_info()
     uri = info.get('uri')
     if not isinstance(uri, str) or uri != expected_url:

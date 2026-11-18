@@ -21,7 +21,7 @@ import time
 from cd_toc import read_toc
 from player_play import make_url, prepare_selection, verify_target
 from player_state import Mode
-from player_switch import ownership_snapshot
+from player_switch import TransportChanged, ownership_snapshot
 from sonos_ui.playback_progress import verified_progress
 import sonos_group
 from sonos_parallel_test import detect_drive, stream_lines, wait_reader
@@ -130,7 +130,7 @@ def ownership_for_transport(player, uid, url, expected, members=frozenset()):
         raise RuntimeError('ownership denied: unexpected topology')
     transport = player.get_current_transport_info()['current_transport_state']
     if transport != expected:
-        raise RuntimeError(f'ownership denied: transport {transport}, expected {expected}')
+        raise TransportChanged(f'ownership denied: transport {transport}, expected {expected}')
     if player.get_current_track_info().get('uri') != url:
         raise RuntimeError('ownership denied: exact URI mismatch')
 
@@ -389,6 +389,11 @@ class Controller:
             else:
                 self._display_progress = None
                 self._display_progress_poll_at = None
+        except TransportChanged as exc:
+            # Play/pause in the Sonos app between our two reads: the next
+            # refresh sees the new state. UID, group and URI are still checked
+            # on every refresh, so nothing foreign is adopted here.
+            print(f'[M0.11d] transport changed during check ({exc}); rechecking', flush=True)
         except Exception as exc:
             self._fail(f'ownership/status check failed: {type(exc).__name__}: {exc}')
         if self._pending_advance is not None:
