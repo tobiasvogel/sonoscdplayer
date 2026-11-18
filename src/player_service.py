@@ -814,5 +814,7 @@ def run(argv=None):
 
 if __name__ == '__main__':
     import stack_dump
+    import version
     stack_dump.enable('player')
+    print('[version] SonosCDPlayer ' + version.describe(), flush=True)
     sys.exit(run())

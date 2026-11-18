@@ -1,0 +1,37 @@
+# Changelog
+
+All notable changes for users of SonosCDPlayer. The version number is in
+[`VERSION`](VERSION); how a release is made is described in
+[docs/RELEASE.md](docs/RELEASE.md).
+
+## Unreleased
+
+- A request for another track right after PLAY (Sonos loads the first
+  queue entry before it seeks to the selected track) no longer stops the
+  drive while it spins up.
+- The player shows its version in its status reply and logs it at start.
+
+## 0.9.0 – 2026-11-18
+
+First numbered version. It describes the state that has been tested on the
+device up to this date.
+
+- Plays an audio CD on Sonos speakers in the local network, alone or as a
+  group; speaker selection is kept across restarts.
+- The whole CD is added as one block to the Sonos queue: the Sonos app
+  shows all tracks, skipping in the app works and the player follows; the
+  next track is read ahead into RAM. With shuffle/repeat or
+  `use_queue = false` each track is set directly.
+- Pause and resume continue from RAM where possible.
+- Track titles, artists (per track on compilations), album and cover from
+  CD-TEXT and MusicBrainz, cached locally.
+- 128×128 OLED with menus for speakers, network, language and POWER;
+  notices; optional cover. Status LEDs for power and network.
+- WLAN setup through a hotspot or directly at the device (network list,
+  password entry).
+- Player errors can be cleared at the device: STOP clears, PLAY retries;
+  a start that never begins playing is given up after 30 s.
+- Ambient light sensor (APDS9306) for LED and OLED brightness; the sensor
+  service reports missing or stale values instead of old ones.
+- Configuration in `/etc/sonoscdplayer/`, systemd units rendered from the
+  repository.

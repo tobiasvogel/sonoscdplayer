@@ -303,6 +303,10 @@ class ReplayBusy(Exception):
     """The optical drive is still in use by a previous generation."""
 
 
+class Superseded(Exception):
+    """The request was overtaken by the one for the track actually wanted."""
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
 
@@ -392,6 +396,11 @@ class Handler(BaseHTTPRequestHandler):
         aligned = pcm_start - pcm_start % 4
         try:
             stream, reader = self.server.acquire_get(aligned, track)
+        except Superseded:
+            # Sonos has already moved on to the selected track; nothing to answer.
+            self.server.stream.log(f'GET dropped: {self.path} superseded by the selected track')
+            self.close_connection = True
+            return
         except ReplayBusy:
             self.server.stream.log('GET reject: old generation still active; no concurrent CD reread')
             self._headers(409, 0)
@@ -668,12 +677,21 @@ class DiscServer(Server):
     """
     SWITCH_WAIT_SECONDS = 20.0
     SWITCH_POLL_SECONDS = 0.05
+    # When the queue becomes the source, Sonos first requests the queue's
+    # current entry (often track 1) and only then seeks to the selected
+    # track. Such an early request for another track waits this long for
+    # the selected one instead of stopping the reader that is just spinning
+    # up the drive (SONOS-NAV-H1, 18.11.).
+    START_GUARD_SECONDS = 5.0
 
     def __init__(self, addr, stream, track, *, tracks, command_for, cover=None):
         if track not in tracks:
             raise ValueError('start track not on the disc')
         self.tracks = dict(tracks)          # track number -> PCM bytes
         self.command_for = command_for      # track number -> reader command
+        self._start_track = track
+        self._first_get_pending = True      # no GET has attached yet
+        self._start_served = False          # the selected track has been requested
         super().__init__(addr, stream, track, cover=cover)
 
     def track_for(self, path):
@@ -690,11 +708,23 @@ class DiscServer(Server):
         # Check and attach under ONE lock hold: a request for another track
         # must never switch the ring between the check and the attach.
         deadline = time.monotonic() + self.SWITCH_WAIT_SECONDS
+        guard_until = time.monotonic() + self.START_GUARD_SECONDS
+        with self._generation_lock:
+            early = self._first_get_pending and track is not None and track != self._start_track
         while True:
             with self._generation_lock:
+                if early and self._start_served:
+                    raise Superseded()           # Sonos went on to the selected track
                 if track is None or track == self.track:
+                    self._first_get_pending = False
+                    if track == self._start_track:
+                        self._start_served = True
                     return self._acquire_locked(offset)
-                stream = self._switch_locked(track, offset)
+                if early and time.monotonic() < guard_until:
+                    stream = None                # give the selected track a moment
+                else:
+                    self._first_get_pending = False
+                    stream = self._switch_locked(track, offset)
                 if stream is not None:
                     reader = stream.attach(offset)
                     stream.start()

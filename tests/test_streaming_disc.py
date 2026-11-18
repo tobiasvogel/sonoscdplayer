@@ -76,6 +76,7 @@ class DiscServerTests(unittest.TestCase):
         import socket
         server = self.start(track=3, delay=1.5)
         server.SWITCH_WAIT_SECONDS = 1.0
+        server.START_GUARD_SECONDS = 0.0       # the later case: guard already over
         abandoned = socket.create_connection(('127.0.0.1', server.server_port))
         abandoned.sendall(b'GET /track/1.wav HTTP/1.1\r\nHost: x\r\n\r\n')
         deadline = time.monotonic() + 5
@@ -86,6 +87,29 @@ class DiscServerTests(unittest.TestCase):
         status, data = request(server.server_port, '/track/3.wav')
         self.assertEqual((status, data[44:]), (200, FILL[3] * SIZES[3]))
         self.assertEqual(server.track, 3)
+
+    def test_early_request_for_another_track_does_not_stop_the_start(self):
+        """SONOS-NAV-H1: Sonos asks for the queue's first entry, then seeks to
+        the selected track. The reader for the selected track keeps running."""
+        import socket
+        server = self.start(track=3, delay=1.0)
+        first_reader = server.stream
+        early = socket.create_connection(('127.0.0.1', server.server_port))
+        early.sendall(b'GET /track/1.wav HTTP/1.1\r\nHost: x\r\n\r\n')
+        time.sleep(0.3)
+        status, data = request(server.server_port, '/track/3.wav')
+        self.assertEqual((status, data[44:]), (200, FILL[3] * SIZES[3]))
+        self.assertIs(server.stream, first_reader)          # no switch, no reread
+        early.settimeout(5)
+        self.assertEqual(early.recv(100), b'')              # dropped without data
+        early.close()
+
+    def test_lone_request_for_another_track_still_plays_it(self):
+        server = self.start(track=3)
+        server.START_GUARD_SECONDS = 0.3
+        status, data = request(server.server_port, '/track/1.wav')
+        self.assertEqual((status, data[44:]), (200, FILL[1] * SIZES[1]))
+        self.assertIn(server.track, (1, 2))     # 2 once the read-ahead started
 
     def test_streaming_reader_is_not_preempted(self):
         server = self.start()
@@ -106,6 +130,7 @@ class DiscServerTests(unittest.TestCase):
 
     def test_switch_waits_while_another_client_reads(self):
         server = self.start()
+        server.START_GUARD_SECONDS = 0.0
         DiscServer.SWITCH_WAIT_SECONDS, saved = 0.3, DiscServer.SWITCH_WAIT_SECONDS
         self.addCleanup(setattr, DiscServer, 'SWITCH_WAIT_SECONDS', saved)
         held = server.stream.ring.register(0)           # a client still streaming track 1

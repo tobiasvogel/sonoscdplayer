@@ -204,6 +204,8 @@ Additional documentation is available in the [`docs/`](docs/) directory.
 | [Power button](docs/POWER_BUTTON.md) | Power controls, permissions, and activation |
 | [Shutdown and restart screens](docs/SHUTDOWN_SCREENS.md) | OLED screens while shutting down or restarting, installation, optional exitrd |
 | [Status LEDs](docs/STATUS_LEDS.md) | Meaning of the power and connection (network) LEDs |
+| [Releases and updates](docs/RELEASE.md) | Version number, making a release, updating the device |
+| [Changelog](CHANGELOG.md) | Changes per version |
 
 Some features are optional or hardware-specific. Consult each guide for its requirements and limitations.
 

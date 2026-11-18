@@ -21,6 +21,7 @@ import time
 from cd_toc import read_toc
 from player_play import make_url, prepare_selection, verify_target
 from player_state import Mode
+from version import info as software_info
 from player_switch import TransportChanged, ownership_snapshot
 from sonos_ui.playback_progress import verified_progress
 import sonos_group
@@ -212,6 +213,8 @@ class Controller:
             'stream': {
                 'active': active,
             },
+            # Which code runs on the device (OPS-02); read once per process.
+            'software': software_info(),
         }
         if (self._display_progress is not None and owned and active
                 and self.state.mode in (Mode.PLAYING, Mode.PAUSED)):

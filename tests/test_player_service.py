@@ -188,7 +188,9 @@ class StatusAPITests(unittest.TestCase):
             'sonos':{'target_uid':None,'transport':'UNKNOWN','owned':False,
                      'group_cleanup_pending':False},
             'stream':{'active':False},
+            'software':reply['state']['software'],
         })
+        self.assertRegex(reply['state']['software']['version'], r'^\d+\.\d+\.\d+')
         self.assertEqual(self.verify_calls, 0)
         json.dumps(reply)
 
