@@ -216,7 +216,11 @@ def merged_metadata(local: LocalDiscMetadata, decision: MatchDecision) -> LocalD
         return local
     updated_tracks = local.tracks
     if len(chosen.track_titles) == len(local.tracks):
-        updated_tracks = tuple(replace(track, title=track.title or chosen.track_titles[i])
+        artists = (chosen.track_artists if len(chosen.track_artists) == len(local.tracks)
+                   else (None,) * len(local.tracks))
+        # Per-track artists matter on compilations; CD-TEXT still wins.
+        updated_tracks = tuple(replace(track, title=track.title or chosen.track_titles[i],
+                                       artist=track.artist or artists[i])
                                for i, track in enumerate(local.tracks))
     return replace(local, album=local.album or chosen.title,
                    artist=local.artist or chosen.artist, tracks=updated_tracks)

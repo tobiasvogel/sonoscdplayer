@@ -52,6 +52,20 @@ class MatchingTests(unittest.TestCase):
         self.assertEqual(enriched.tracks[1].title, 'Schöne Blumen')
         self.assertEqual(enriched.tracks[0].title, 'Lied vom Fruehling')
 
+    def test_adds_missing_track_artists_from_musicbrainz(self):
+        local = LocalDiscMetadata(None, None, tuple(
+            LocalTrackMetadata(i + 1, 180, title, artist)
+            for i, (title, artist) in enumerate((
+                ('Lied vom Fruehling', 'Chor vom CD-TEXT'), ('Schoene Blumen', None),
+                ('Alles ist gruen', None), ('Das Schlusslied', None)))), 'available')
+        compilation = ReleaseCandidate('correct', 'Frühlingslieder', 'Verschiedene', None, None,
+                                       self.correct.track_titles,
+                                       ('MB A', 'MB B', None, 'MB D'))
+        enriched = merged_metadata(local, self.decide(compilation, local=local))
+        self.assertEqual([t.artist for t in enriched.tracks],
+                         ['Chor vom CD-TEXT', 'MB B', None, 'MB D'])   # CD-TEXT wins
+        self.assertEqual(enriched.artist, 'Verschiedene')
+
     def test_near_tie_stays_manual(self):
         similar = candidate('alternative', 'Frühlingslieder', 'Kinderchor',
                             self.correct.track_titles)

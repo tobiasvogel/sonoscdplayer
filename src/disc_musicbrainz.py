@@ -60,6 +60,8 @@ class ReleaseCandidate:
     country: str | None
     date: str | None
     track_titles: tuple[str | None, ...]
+    # Per-track artist credit (differs from ``artist`` on compilations).
+    track_artists: tuple[str | None, ...] = ()
 
 
 def artist_credit(value):
@@ -96,21 +98,25 @@ def parse_release_candidates(data, *, track_count):
             tracks = medium.get('tracks')
             if not isinstance(tracks, list) or len(tracks) != track_count:
                 continue
-            titles = []
+            titles, artists = [], []
             for track in tracks:
                 if not isinstance(track, dict):
                     titles.append(None)
+                    artists.append(None)
                     continue
                 recording = track.get('recording')
-                title_value = track.get('title') or (
-                    recording.get('title') if isinstance(recording, dict) else None)
+                recording = recording if isinstance(recording, dict) else {}
+                title_value = track.get('title') or recording.get('title')
                 titles.append(title_value if isinstance(title_value, str) else None)
-            matching_media.append(tuple(titles))
+                artists.append(artist_credit(track.get('artist-credit'))
+                               or artist_credit(recording.get('artist-credit')))
+            matching_media.append((tuple(titles), tuple(artists)))
         candidates.append(ReleaseCandidate(
             release_id, title, artist_credit(release.get('artist-credit')),
             release.get('country') if isinstance(release.get('country'), str) else None,
             release.get('date') if isinstance(release.get('date'), str) else None,
-            matching_media[0] if len(matching_media) == 1 else ()))
+            matching_media[0][0] if len(matching_media) == 1 else (),
+            matching_media[0][1] if len(matching_media) == 1 else ()))
     return tuple(candidates)
 
 

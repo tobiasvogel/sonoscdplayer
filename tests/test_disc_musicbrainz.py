@@ -67,6 +67,20 @@ class MusicBrainzTests(unittest.TestCase):
         self.assertIn('toc=', calls[0].full_url)
         self.assertIn('SonosCDPlayer', calls[0].get_header('User-agent'))
 
+    def test_compilation_keeps_artist_per_track(self):
+        document = {'releases': [{'id': 'one', 'title': 'Hits', 'artist-credit': [
+                        {'name': 'Various Artists'}],
+                     'media': [{'track-count': 3, 'tracks': [
+                         {'title': 'A', 'artist-credit': [{'name': 'Singer', 'joinphrase': ' feat. '},
+                                                          {'name': 'Guest'}]},
+                         {'title': 'B', 'recording': {'artist-credit': [{'name': 'Band'}]}},
+                         {'title': 'C'}]}]}]}
+        result = lookup_disc(self.identity, track_count=3,
+                             opener=lambda req, timeout: FakeResponse(document))
+        release = result.releases[0]
+        self.assertEqual(release.artist, 'Various Artists')
+        self.assertEqual(release.track_artists, ('Singer feat. Guest', 'Band', None))
+
     def test_ambiguous(self):
         document = {'releases': [{'id': 'one', 'title': 'A'},
                                   {'id': 'two', 'title': 'B'}]}
