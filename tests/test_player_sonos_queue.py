@@ -211,6 +211,22 @@ class QueueTests(unittest.TestCase):
         self.c.refresh()
         self.assertEqual(self.c.state.mode, Mode.ERROR)
 
+    def test_start_stuck_in_transitioning_is_given_up_and_released(self):
+        """18.11.: Sonos stayed TRANSITIONING; the device hung until restart."""
+        self.make(QueuePlayer())
+        self.c.play()
+        self.p.transport = 'TRANSITIONING'
+        with patch('player_controller.time.monotonic', return_value=self.c.start_monotonic + 10):
+            self.c.refresh()
+        self.assertEqual(self.c.state.mode, Mode.STARTING)
+        with patch('player_controller.time.monotonic', return_value=self.c.start_monotonic + 31):
+            self.c.refresh()
+        self.assertEqual(self.c.state.mode, Mode.ERROR)
+        self.assertEqual(self.p.uris(), [FOREIGN])           # our block removed
+        self.assertFalse(self.s.alive())
+        self.assertTrue(self.c.can_reset())                  # STOP / PLAY can clear it
+        self.assertEqual(self.p.stops, 0)                    # no Sonos STOP sent
+
     def test_shuffle_repeat_or_off_uses_direct_uri(self):
         for player, use_queue in ((QueuePlayer(mode='SHUFFLE'), True),
                                   (QueuePlayer(mode='REPEAT_ALL'), True),

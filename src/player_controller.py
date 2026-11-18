@@ -140,6 +140,11 @@ def ownership_for_transport(player, uid, url, expected, members=frozenset()):
 # to its end (progress is polled every 2 s; Sonos stops shortly after the end).
 END_TOLERANCE_SECONDS = 6
 
+# A start that never reaches PLAYING is given up after this long, whatever
+# Sonos reports (e.g. stuck in TRANSITIONING). The error is then released,
+# so PLAY or STOP on the device can clear it (D-231).
+STARTUP_LIMIT_SECONDS = 30
+
 
 class Controller:
     """A single owner: only this instance's exact URI may be stopped."""
@@ -307,6 +312,12 @@ class Controller:
             player = self.verify_existing()
             transport = player.get_current_transport_info()['current_transport_state']
             self.last_transport = transport
+            if (self.state.mode == Mode.STARTING and not self.seen_playing
+                    and transport != 'PLAYING' and self.start_monotonic is not None
+                    and time.monotonic() - self.start_monotonic >= STARTUP_LIMIT_SECONDS):
+                self._fail(f'Sonos did not start playing within {STARTUP_LIMIT_SECONDS} s '
+                           f'(transport {transport}); startup aborted')
+                return
             if transport in ('PLAYING', 'PAUSED_PLAYBACK', 'TRANSITIONING'):
                 self._follow_sonos(player)
             if transport == 'PLAYING':
