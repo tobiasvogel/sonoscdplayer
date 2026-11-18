@@ -27,7 +27,7 @@ import sonos_group
 from sonos_parallel_test import detect_drive, stream_lines, wait_reader
 from metadata_status import status_metadata
 from sonos_metadata import (DEFAULT_ALBUM_PREFIX, cover_route, didl_item, playing_from_queue,
-                            queue_allowed, queue_item_is_ours, remove_queue_item, track_didl)
+                            queue_allowed, queue_item_is_ours, remove_queue_block, track_didl)
 
 
 class ProcessServer:
@@ -51,14 +51,15 @@ class ProcessServer:
             elif 'READER end written=' in line:
                 self._reader_active = False
 
-    def start(self, track, cover=None):
+    def start(self, track, cover=None, disc=False):
         if self.proc is not None:
             raise RuntimeError('server already attached')
         events = queue.Queue()
         p = self.popen([sys.executable, '-u', str(self.base / 'track_ring_http.py'),
                         '--device', self.device, '--track', str(track),
                         '--port', str(self.port), '--config', str(self.config)]
-                       + (['--cover', str(cover)] if cover else []),
+                       + (['--cover', str(cover)] if cover else [])
+                       + (['--disc'] if disc else []),
                        cwd=self.base, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, text=True, bufsize=1)
         self.proc = p
@@ -158,7 +159,9 @@ class Controller:
         self.metadata_snapshot = None  # asynchronously loaded, TOC-qualified display info
         self.album_prefix = DEFAULT_ALBUM_PREFIX  # [sonos] album_prefix, before the album name
         self.use_queue = True        # [sonos] use_queue: play from the queue to show artist/album
-        self._queue_entry = None     # (1-based position, url) of our own queue item
+        # Our disc block in the Sonos queue (D-230): {'first': 1-based position,
+        # 'tracks': [track numbers], 'urls': [url per track]} or None.
+        self._queue_block = None
         self.auto_advance = True     # [playback] continue: next track after a track ends
         self._pending_advance = None
         self.stopped_since = None
@@ -217,6 +220,7 @@ class Controller:
         return snapshot
 
     def _ownership(self, player, expected):
+        self._follow_sonos(player)
         return ownership_for_transport(player, self.uid, self.owned_url,
                                        expected, frozenset(self._joined))
 
@@ -303,6 +307,8 @@ class Controller:
             player = self.verify_existing()
             transport = player.get_current_transport_info()['current_transport_state']
             self.last_transport = transport
+            if transport in ('PLAYING', 'PAUSED_PLAYBACK', 'TRANSITIONING'):
+                self._follow_sonos(player)
             if transport == 'PLAYING':
                 self.stopped_since = None
                 ownership_snapshot(player, self.uid, self.owned_url, frozenset(self._joined))
@@ -331,15 +337,20 @@ class Controller:
                 group_proof_url = self.owned_url
                 if info.get('uri') != self.owned_url:
                     # At the end of the queue Sonos jumps back to its first
-                    # entry. Still a natural end if our item is untouched in
-                    # the queue that is playing; otherwise fail closed.
-                    if not (self._queue_entry is not None and playing_from_queue(player)
-                            and queue_item_is_ours(player, *self._queue_entry)):
+                    # entry - possibly the first track of our own block.
+                    # Still a natural end if our block is untouched in the
+                    # queue that is playing; otherwise fail closed.
+                    if not self._block_intact(player):
                         self._fail('Sonos URI changed before STOPPED')
                         return
-                    group_proof_url = None   # proven through our queue item
+                    group_proof_url = None   # proven through our queue block
+                    first = self._block_track(info.get('uri'))
+                    if first is not None:
+                        self.state = self.state.followed(first)
                 url = self.owned_url
-                advance = self._next_after_end(self._display_progress)
+                # In block mode Sonos plays on by itself (D-230).
+                advance = (None if self._queue_block
+                           else self._next_after_end(self._display_progress))
                 self.state = self.state.natural_end()
                 self._drop_queue_entry(player)
                 self.owned_url = None
@@ -420,11 +431,62 @@ class Controller:
                 self._recovery_url = None
             print(f'[M0.11d] continuing failed: {type(exc).__name__}: {exc}', flush=True)
 
+    def _enqueue_disc(self, player, host, meta, cover_url):
+        """Append every track as one block at the END of the queue, play the
+        selected one. The user's own queue entries are never touched."""
+        tracks = list(self.state.track_numbers)
+        urls = [make_url(host, self.port, n) for n in tracks]
+        first = None
+        for index, (number, url) in enumerate(zip(tracks, urls)):
+            didl = track_didl(url, meta or {}, number, album_prefix=self.album_prefix,
+                              cover_url=cover_url, duration_seconds=self._toc_duration(number))
+            position = player.add_to_queue(didl_item(didl))
+            if first is None:
+                first = position
+                self._queue_block = {'first': first, 'tracks': tracks, 'urls': []}
+            elif position != first + index:
+                raise RuntimeError('queue changed while adding the disc')
+            self._queue_block['urls'].append(url)
+        player.play_from_queue(first - 1 + tracks.index(self.state.selected_track))
+
+    def _block_track(self, uri):
+        """Track number of ``uri`` if it is one of our block's URLs, else None."""
+        block = self._queue_block
+        if not block or uri not in block['urls']:
+            return None
+        return block['tracks'][block['urls'].index(uri)]
+
+    def _follow_sonos(self, player):
+        """Sonos (or the Sonos app) moved within our block: follow its track.
+
+        Only URLs of our own disc block are followed; anything else is left to
+        the ownership checks, which fail closed as before.
+        """
+        if not self._queue_block:
+            return
+        uri = player.get_current_track_info().get('uri')
+        track = self._block_track(uri)
+        if track is None or uri == self.owned_url:
+            return
+        self.owned_url = uri
+        self.state = self.state.followed(track)
+        self._display_progress = None
+        self._display_progress_poll_at = None
+        print(f'[M0.11d] Sonos is on track {track}; following', flush=True)
+
+    def _block_intact(self, player):
+        block = self._queue_block
+        if not block:
+            return False
+        last = len(block['urls']) - 1
+        return (playing_from_queue(player)
+                and queue_item_is_ours(player, block['first'] + last, block['urls'][last]))
+
     def _drop_queue_entry(self, player):
-        """After our own verified stop/end: remove our queue item if still ours."""
-        entry, self._queue_entry = self._queue_entry, None
-        if entry is not None:
-            remove_queue_item(player, entry)
+        """After our own verified stop/end: remove our block where still ours."""
+        block, self._queue_block = self._queue_block, None
+        if block is not None:
+            remove_queue_block(player, block)
 
     def verify_existing(self):
         if self.player is None:
@@ -478,10 +540,15 @@ class Controller:
             meta = self.metadata_snapshot
             cover = meta.get('cover_file') if isinstance(meta, dict) else None
             cover_path = cover_route(cover) and cover
+            # Whole disc as a block in the Sonos queue, unless shuffle/repeat
+            # is on or [sonos] use_queue = false (D-230).
+            block = self.use_queue and queue_allowed(target)
+            server_options = {}
             if cover_path:
-                self.server.start(self.state.selected_track, cover=cover_path)
-            else:
-                self.server.start(self.state.selected_track)
+                server_options['cover'] = cover_path
+            if block:
+                server_options['disc'] = True
+            self.server.start(self.state.selected_track, **server_options)
             player = self._verify_retained_group(candidate) if retained else self.verify(candidate)
             if wanted and not retained:
                 for member_uid, member in member_players.items():
@@ -507,18 +574,21 @@ class Controller:
             didl = track_didl(url, meta, self.state.selected_track,
                               album_prefix=self.album_prefix, cover_url=cover_url,
                               duration_seconds=self._toc_duration(self.state.selected_track))
-            if didl is not None and self.use_queue and queue_allowed(player):
-                # Appended last, so Sonos stops after our track instead of
-                # continuing with the user's queue. Nothing else is touched.
-                position = player.add_to_queue(didl_item(didl))
-                self._queue_entry = (position, url)
-                player.play_from_queue(position - 1)
+            if block:
+                self._enqueue_disc(player, host, meta, cover_url)
             elif didl is not None:
                 player.play_uri(url, meta=didl)
             else:
                 player.play_uri(url, title=f'SonosCDPlayer Track {self.state.selected_track}')
         except BaseException as exc:
             self.server.close()
+            if self._queue_block is not None:
+                # Half-added disc block: take back what is verifiably ours.
+                try:
+                    remove_queue_block(player, self._queue_block)
+                except Exception as cleanup:
+                    print(f'[M0.11d] queue cleanup failed: {cleanup}', flush=True)
+                self._queue_block = None
             # A failed/ambiguous play_uri may already have changed the coordinator.
             # Never unjoin after an uncertain Sonos write without URI proof.
             if self._joined and not self._group_uncertain:
@@ -678,6 +748,9 @@ class Controller:
         if new == old:
             print('[M0.11d] already at disc boundary', flush=True)
             return
+        if self._queue_block:
+            self._jump_in_block(new)
+            return
         members = self._group_members
         self._stop_owned(keep_group=bool(members))
         self.state = self.state.select(new)
@@ -691,6 +764,25 @@ class Controller:
                 self._group_uncertain = True
                 self._recovery_url = None
             raise
+
+    def _jump_in_block(self, track):
+        """NEXT/PREVIOUS on the device while our block plays: move within it."""
+        if not self.seen_playing or not self.owned_url:
+            raise ValueError('track switch requires confirmed owned playback')
+        player = self.verify_existing()
+        expected = 'PLAYING' if self.state.mode == Mode.PLAYING else 'PAUSED_PLAYBACK'
+        self._ownership(player, expected)
+        self._ownership(player, expected)
+        block = self._queue_block
+        index = block['tracks'].index(track)
+        player.play_from_queue(block['first'] - 1 + index)
+        self.owned_url = block['urls'][index]
+        self.state = self.state.followed(track)
+        if self.state.mode == Mode.PAUSED:
+            self.state = self.state.resumed()   # play_from_queue starts playback
+        self._display_progress = None
+        self._display_progress_poll_at = None
+        self.last_transport = 'TRANSITIONING'
 
     def command(self, line):
         tokens = line.strip().lower().split()

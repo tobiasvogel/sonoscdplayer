@@ -149,8 +149,10 @@ class Renderer:
             self.text(canvas,(6,36),m.artist or self.tr('label.unknown_artist'),fill=t.secondary,size=10,width=116,height=15,time=elapsed,scroll=True)
             self.text(canvas,(6,51),self.tr('label.tracks',count=m.track_count or '?'),fill=t.muted,size=8,width=116,height=8)
         d.line((5,59,123,59),fill=t.muted)
-        self.text(canvas,(6,65),'01',fill=t.accent,size=11,bold=True,width=19,height=15)
-        self.text(canvas,(28,65),m.title or self.tr('label.track',number=1),fill=t.primary,size=11,bold=True,width=96,height=15,scroll=False)
+        # The selected track (NEXT/PREVIOUS while stopped), not always track 1.
+        number = m.track if isinstance(m.track, int) and m.track > 0 else 1
+        self.text(canvas,(6,65),f'{number:02d}',fill=t.accent,size=11,bold=True,width=19,height=15)
+        self.text(canvas,(28,65),m.title or self.tr('label.track',number=number),fill=t.primary,size=11,bold=True,width=96,height=15,scroll=False)
         if m.disc_phase == 'STARTING':
             status = self.tr('status.starting')
         elif m.disc_phase == 'ERROR':

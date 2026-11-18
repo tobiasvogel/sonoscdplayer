@@ -67,7 +67,16 @@ After a restart the player restores this selection without contacting any speake
 
 ## Playing on
 
-Like a CD player, the next track follows when a track has played to its end; after the last track the player stops. A STOP from the Sonos app is not mistaken for the end of a track: the player continues only if the last position it saw was within a few seconds of the end. Switch it off in `player.toml`:
+On PLAY the player appends all tracks of the CD as one block at the end of the Sonos queue and starts the selected track. Sonos then plays on by itself to the end of the CD, and the Sonos app shows the whole track list: next, previous or tapping a track in the app works, and the player and the display follow. The NEXT and PREVIOUS buttons move within the same block. After STOP, at the end of the CD or when the player shuts down, the block is removed again, entry by entry and only where an entry is still the player's own; the rest of the queue is never touched. If music other than the CD is started from the app, the player shows an error and leaves the speaker alone, as before.
+
+While the current track plays, the stream server already reads the next track into the RAM buffer, so the following track starts without a gap caused by the drive. The buffer is set in `player.toml` and must be at least 16 MiB:
+
+```toml
+[streaming]
+max_buffer_mib = 16   # 16 to 512
+```
+
+While shuffle or repeat is on in the Sonos app, or with `use_queue = false` under `[sonos]`, the player sets each track directly instead. Then the player itself plays the next track when a track has played to its end; after the last track it stops. A STOP from the Sonos app is not mistaken for the end of a track: the player continues only if the last position it saw was within a few seconds of the end. Switch this off in `player.toml`:
 
 ```toml
 [playback]
@@ -83,7 +92,7 @@ When the player knows the CD (CD-TEXT or MusicBrainz), Sonos shows the track tit
 album_prefix = "CD: "   # empty string: no prefix
 ```
 
-Names that arrive while a track is already playing appear from the next track on; a running track is never restarted for them. The Sonos app shows artist and album only for music played from the Sonos queue. The player therefore appends its track at the end of the queue, plays it from there and removes it again after the track (only if that entry is still its own; the rest of the queue is never touched). While shuffle or repeat is on, or with `use_queue = false` under `[sonos]`, the stream is set directly and the app shows the title only. The Sonos app does not show the cover for this stream, even though the speaker receives its address. The cover is offered to Sonos by the player's stream server. With `[ui.cover] mode = "auto"` covers are downloaded because Sonos shows them; `"off"` switches covers off everywhere.
+Names that arrive while a track is already playing appear from the next track on; a running track is never restarted for them. The Sonos app shows artist and album only for music played from the Sonos queue (see *Playing on*). While shuffle or repeat is on, or with `use_queue = false` under `[sonos]`, the stream is set directly and the app shows the title only. The Sonos app does not show the cover for this stream, even though the speaker receives its address. The cover is offered to Sonos by the player's stream server. With `[ui.cover] mode = "auto"` covers are downloaded because Sonos shows them; `"off"` switches covers off everywhere.
 
 ## Boot setup
 

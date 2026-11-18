@@ -12,7 +12,7 @@ from player_service import handle_command
 class FakeServer:
     def __init__(self): self.up=False; self.starts=[]
     def alive(self): return self.up
-    def start(self, track): self.starts.append(track); self.up=True
+    def start(self, track, **options): self.starts.append(track); self.options=options; self.up=True
     def close(self): self.up=False
 
 
@@ -87,7 +87,7 @@ class TestController(unittest.TestCase):
 class Server:
     def __init__(self): self.up=False; self.starts=[]
     def alive(self): return self.up
-    def start(self, track): self.starts.append(track); self.up=True
+    def start(self, track, **options): self.starts.append(track); self.options=options; self.up=True
     def close(self): self.up=False
 
 

@@ -33,6 +33,10 @@ class BufferTimeout(BufferErrorBase):
     pass
 
 
+# The player is designed and tested for at least this PCM budget (17.11.).
+MIN_BUFFER_MIB = 16
+
+
 @dataclass(frozen=True)
 class StreamingConfig:
     max_buffer_mib: int
@@ -45,8 +49,8 @@ class StreamingConfig:
         if not isinstance(section, dict) or "max_buffer_mib" not in section:
             raise ValueError("Missing [streaming].max_buffer_mib")
         value = section["max_buffer_mib"]
-        if type(value) is not int or not 1 <= value <= 512:
-            raise ValueError("max_buffer_mib must be an integer from 1 to 512")
+        if type(value) is not int or not MIN_BUFFER_MIB <= value <= 512:
+            raise ValueError(f"max_buffer_mib must be an integer from {MIN_BUFFER_MIB} to 512")
         return cls(max_buffer_mib=value)
 
     @property

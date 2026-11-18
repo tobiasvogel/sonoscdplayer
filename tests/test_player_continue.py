@@ -6,14 +6,18 @@ from unittest.mock import patch
 from player_state import Mode
 from sonos_metadata import track_didl
 
-from test_player_sonos_queue import META, QueuePlayer, QueueTests
+import test_player_sonos_queue as queue_tests
+from test_player_sonos_queue import META, QueuePlayer
 
 
 class ContinueTests(unittest.TestCase):
-    # Reuse the queue test fixture without running its tests twice.
-    setUp = QueueTests.setUp
-    make = QueueTests.make
-    playing = QueueTests.playing
+    """Without the queue block (here: use_queue off) the player continues itself."""
+    setUp = queue_tests.QueueTests.setUp
+    playing = queue_tests.QueueTests.playing
+
+    def make(self, player, **kwargs):
+        kwargs.setdefault('use_queue', False)
+        return queue_tests.QueueTests.make(self, player, **kwargs)
 
     def end_track(self, elapsed, duration=200):
         self.c._display_progress = {'elapsed_seconds': elapsed, 'duration_seconds': duration}
@@ -26,13 +30,19 @@ class ContinueTests(unittest.TestCase):
         self.end_track(197)
         self.assertEqual((self.c.state.mode, self.c.state.selected_track), (Mode.STARTING, 2))
         self.assertEqual(self.p.plays[-1], 'http://192.0.2.10:8765/track/2.wav')
-        self.assertEqual(self.p.uris().count('http://192.0.2.10:8765/track/1.wav'), 0)
 
     def test_stop_from_the_sonos_app_does_not_continue(self):
         self.make(QueuePlayer())
         self.playing()
         self.end_track(60)
         self.assertEqual((self.c.state.mode, self.c.state.selected_track), (Mode.STOPPED, 1))
+        self.assertEqual(len(self.p.plays), 1)
+
+    def test_block_mode_leaves_continuing_to_sonos(self):
+        self.make(QueuePlayer(), use_queue=True)
+        self.playing()
+        self.end_track(197)          # still our URL: Sonos stopped at the end itself
+        self.assertEqual(self.c.state.mode, Mode.STOPPED)
         self.assertEqual(len(self.p.plays), 1)
 
     def test_without_progress_no_continue(self):
@@ -45,7 +55,7 @@ class ContinueTests(unittest.TestCase):
 
     def test_last_track_stops(self):
         self.make(QueuePlayer())
-        self.c.state = self.c.state.select(2)
+        self.c.state = self.c.state.select(3)
         self.playing()
         self.end_track(199)
         self.assertEqual(self.c.state.mode, Mode.STOPPED)

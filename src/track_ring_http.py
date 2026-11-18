@@ -50,6 +50,11 @@ class ProbeCache:
         with self.lock:
             return bytes(self.data) if self.ready else None
 
+    def reset(self):
+        """A new track starts: forget the previous track's prefix."""
+        with self.lock:
+            self.ready = False
+
 
 class Stream:
     def __init__(self, expected: int, capacity: int, command: list[str], write_timeout: float = 30, initial_prebuffer_ms: int = 0, ring: PCMRing | None = None, start_offset: int = 0, probe_cache: ProbeCache | None = None):
@@ -293,21 +298,22 @@ class Handler(BaseHTTPRequestHandler):
         self.close_connection = True
 
     def _request_span(self):
-        """Return WAV byte start/end inclusive, or None after writing an error."""
+        """Return (start, end, partial, track) in WAV bytes, or None after an error."""
         stream = self.server.stream
-        size = stream.expected + 44
         stream.log(f'{self.command} received client={self.client_address[0]} '
                    f'path={self.path!r} range={self.headers.get("Range")!r} '
                    f'if_range={self.headers.get("If-Range")!r} '
                    f'available={stream.ring.stats["next_offset"]}')
-        if urlsplit(self.path).path != self.server.route:
+        track = self.server.track_for(self.path)
+        if track is None:
             self._headers(404, 0); return None
+        size = self.server.size_for(track)
         if self.headers.get('If-Range') is not None:
             # We have no ETag or Last-Modified validator; do not misinterpret it.
             self._headers(400, 0); return None
         value = self.headers.get('Range')
         if value is None:
-            return (0, size - 1, False)
+            return (0, size - 1, False, track)
         m = re.fullmatch(r'bytes=(\d+)-(\d*)', value.strip())
         if not m:
             self._headers(416, 0, content_range=f'bytes */{size}'); return None
@@ -315,7 +321,7 @@ class Handler(BaseHTTPRequestHandler):
         end = int(m.group(2)) if m.group(2) else size - 1
         if start >= size or end < start:
             self._headers(416, 0, content_range=f'bytes */{size}'); return None
-        return start, min(end, size - 1), True
+        return start, min(end, size - 1), True, track
 
     def _serve_cover(self, *, body):
         server = self.server
@@ -342,35 +348,37 @@ class Handler(BaseHTTPRequestHandler):
             return
         span = self._request_span()
         if span is None: return
-        start, end, partial = span
+        start, end, partial, track = span
+        # HEAD never starts or switches a CD read.
         self._headers(206 if partial else 200, end - start + 1, 'audio/wav',
-                      content_range=f'bytes {start}-{end}/{self.server.stream.expected + 44}' if partial else None)
+                      content_range=f'bytes {start}-{end}/{self.server.size_for(track)}' if partial else None)
 
     def do_GET(self):
         if self._serve_cover(body=True):
             return
         span = self._request_span()
         if span is None: return
-        start, end, partial = span
-        size = self.server.stream.expected + 44
+        start, end, partial, track = span
+        size = self.server.size_for(track)
         # A Sonos reconnect typically probes the beginning with a plain GET,
         # immediately disconnects after CHUNK, then issues a seeked Range GET.
         # Serve that probe from an explicitly budgeted RAM prefix without a CD
         # restart. This short-body response is Sonos-specific, not a complete
         # general-purpose HTTP 200 transfer; disabled after one such probe.
-        if not partial and self.server.try_cached_probe(self):
+        if not partial and track == self.server.track and self.server.try_cached_probe(self):
             return
         # WAV starts with a 44-byte header; the ring offsets address PCM only.
         pcm_start = max(0, start - 44)
         aligned = pcm_start - pcm_start % 4
         try:
-            stream, reader = self.server.acquire_get(aligned)
+            stream, reader = self.server.acquire_get(aligned, track)
         except ReplayBusy:
             self.server.stream.log('GET reject: old generation still active; no concurrent CD reread')
             self._headers(409, 0)
             return
         sent = 0
         disconnected = False
+        complete = False
         stream.http_begin(reader, self.client_address[0])
         try:
             header = wav_header(stream.expected)
@@ -409,6 +417,7 @@ class Handler(BaseHTTPRequestHandler):
                 sent += len(data)
                 stream.http_sent(reader, sent)
             stream.log(f'GET end sent={sent}/{pcm_remaining} wav_range={start}-{end}')
+            complete = sent >= pcm_remaining and end == size - 1
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError) as exc:
             disconnected = True
             stream.log(f'GET disconnect sent={sent}: {type(exc).__name__}')
@@ -417,7 +426,7 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             stream.http_end(reader)
             stream.ring.unregister(reader)
-            self.server.release_get(stream, disconnected)
+            self.server.release_get(stream, disconnected, complete=complete)
 
 MAX_COVER_BYTES = 2_000_000
 
@@ -445,6 +454,7 @@ class Server(ThreadingHTTPServer):
 
     def __init__(self, addr, stream, track, cover=None):
         self.stream = stream
+        self.track = track
         self.route = f'/track/{track}.wav'
         # Optional album art for Sonos: one JPEG, read once, served read-only.
         self.cover_route, self.cover_bytes = load_cover(cover)
@@ -454,6 +464,13 @@ class Server(ThreadingHTTPServer):
         self._probe_used = False
         self._orphan_timer = None
         super().__init__(addr, Handler)
+
+    def track_for(self, path):
+        """Track number a request path addresses, or None (404)."""
+        return self.track if urlsplit(path).path == self.route else None
+
+    def size_for(self, track):
+        return self.stream.expected + 44
 
     def server_close(self):
         """Release all replay generations, not only the current one."""
@@ -506,7 +523,7 @@ class Server(ThreadingHTTPServer):
             if stream.thread.is_alive():
                 stream.cancel_orphan()
 
-    def release_get(self, stream: Stream, disconnected: bool):
+    def release_get(self, stream: Stream, disconnected: bool, complete: bool = False):
         """Allow a brief HTTP reconnect before cancelling the orphaned CD read.
 
         Sonos may reset a probe GET and immediately reconnect. Keep the
@@ -527,7 +544,7 @@ class Server(ThreadingHTTPServer):
                 timer.start()
                 stream.log('GET disconnect: grace period for HTTP reconnect')
 
-    def acquire_get(self, offset=0):
+    def acquire_get(self, offset=0, track=None):
         """Atomically attach a GET or schedule one SEQUENTIAL reread.
 
         Never start another optical reader while the existing producer is alive
@@ -580,6 +597,120 @@ class Server(ThreadingHTTPServer):
             replacement.start()
             return replacement, reader
 
+class DiscServer(Server):
+    """All tracks of one CD under /track/<n>.wav (D-230).
+
+    Still one CD reader at a time and one PCM ring (the configured budget):
+    a request for another track waits until no HTTP client reads the current
+    one, then becomes a new generation on the same ring. When a track has
+    been read completely and fully delivered, the next one is read ahead so
+    Sonos finds it ready. HEAD never starts a reader.
+    """
+    SWITCH_WAIT_SECONDS = 20.0
+    SWITCH_POLL_SECONDS = 0.05
+
+    def __init__(self, addr, stream, track, *, tracks, command_for, cover=None):
+        if track not in tracks:
+            raise ValueError('start track not on the disc')
+        self.tracks = dict(tracks)          # track number -> PCM bytes
+        self.command_for = command_for      # track number -> reader command
+        super().__init__(addr, stream, track, cover=cover)
+
+    def track_for(self, path):
+        m = re.fullmatch(r'/track/(\d{1,2})\.wav', urlsplit(path).path)
+        if m is None:
+            return None
+        track = int(m.group(1))
+        return track if track in self.tracks else None
+
+    def size_for(self, track):
+        return self.tracks[track] + 44
+
+    def acquire_get(self, offset=0, track=None):
+        if track is None or track == self.track:
+            return super().acquire_get(offset)
+        deadline = time.monotonic() + self.SWITCH_WAIT_SECONDS
+        while True:
+            with self._generation_lock:
+                if track == self.track:      # another request switched already
+                    break
+                stream = self._switch_locked(track, offset)
+                if stream is not None:
+                    reader = stream.attach(offset)
+                    stream.start()
+                    return stream, reader
+            if time.monotonic() >= deadline:
+                raise ReplayBusy()
+            time.sleep(self.SWITCH_POLL_SECONDS)
+        return super().acquire_get(offset)
+
+    def release_get(self, stream, disconnected, complete=False):
+        super().release_get(stream, disconnected, complete=complete)
+        if disconnected or not complete:
+            return
+        # The last bytes can leave before cdparanoia has exited: wait briefly.
+        if stream.thread.ident is not None:
+            stream.thread.join(timeout=3.0)
+        with self._generation_lock:
+            following = self._next_track(self.track)
+            state = stream.ring.stats
+            if (stream is not self.stream or following is None or state['readers'] != 0
+                    or not state['finished'] or stream.error is not None):
+                return
+            ahead = self._switch_locked(following, 0)
+            if ahead is not None:
+                ahead.log(f'PREFETCH track={following} after complete delivery')
+                ahead.start()
+
+    def _next_track(self, track):
+        later = sorted(n for n in self.tracks if n > track)
+        return later[0] if later else None
+
+    def _switch_locked(self, track, offset):
+        """New generation for ``track`` on the same ring, or None while busy.
+
+        Caller holds the generation lock. Never overlaps two CD readers.
+        """
+        current = self.stream
+        anchored = 1 if current.anchor is not None else 0
+        if current.ring.stats['readers'] - anchored > 0:
+            return None                      # an HTTP client still reads it
+        if current.anchor is not None:
+            with current.lock:
+                current.ring.unregister(current.anchor)
+                current.anchor = None
+        if current.thread.ident is None:
+            current.ring.finish(error='superseded before start')
+        elif current.thread.is_alive():
+            current.cancel_orphan()
+            current.thread.join(timeout=3.0)
+            if current.thread.is_alive():
+                return None
+        current._diag_stop.set()
+        self._clear_orphan_timer()
+        seek = (offset // SECTOR) * SECTOR if current.command and current.command[0] == 'cdparanoia' else 0
+        if seek >= self.tracks[track]:
+            seek = 0
+        current.ring.reset_for_replay(seek)
+        if current.probe_cache is not None:
+            current.probe_cache.reset()
+        stream = Stream(self.tracks[track], current.total_ram_budget, self.command_for(track),
+                        current.write_timeout, current.initial_prebuffer_bytes * 1000 // RATE,
+                        ring=current.ring, start_offset=seek, probe_cache=current.probe_cache)
+        self.stream = stream
+        self._streams.append(stream)
+        self.track = track
+        self.route = f'/track/{track}.wav'
+        self._generation += 1
+        self._probe_used = False
+        stream.log(f'SWITCH track={track} generation={self._generation} sector_seek_pcm={seek}')
+        return stream
+
+
+def cdparanoia_command(device, track):
+    return ['cdparanoia', '-q', '-d', device, '-r', str(track), '-']
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--device', default='/dev/sr1')
@@ -590,14 +721,24 @@ def main():
     p.add_argument('--write-timeout', type=float, default=30)
     p.add_argument('--initial-prebuffer-ms', type=int, default=0, help='PCM-Vorlauf vor erstem WAV-Byte; 0 = bisheriger Start')
     p.add_argument('--cover', default=None, help='cached album-art JPEG to offer Sonos under /cover/<name>')
+    p.add_argument('--disc', action='store_true',
+                   help='serve every track of the CD (/track/<n>.wav), one reader at a time')
     a = p.parse_args()
     cfg = StreamingConfig.load(a.config)
-    track = read_toc(a.device).get_track(a.track)
-    command = ['cdparanoia', '-q', '-d', a.device, '-r', str(a.track), '-']
-    # Reserve 58,800 PCM bytes WITHIN the configured 16 MiB, not on top of it.
+    toc = read_toc(a.device)
+    track = toc.get_track(a.track)
+    command = cdparanoia_command(a.device, a.track)
+    # Reserve 58,800 PCM bytes WITHIN the configured budget, not on top of it.
     stream = Stream(track.pcm_bytes, cfg.capacity_bytes, command, a.write_timeout,
                     a.initial_prebuffer_ms, probe_cache=ProbeCache(CHUNK))
-    with Server((a.bind, a.port), stream, a.track, cover=a.cover) as server:
+    if a.disc:
+        server_cm = DiscServer((a.bind, a.port), stream, a.track,
+                               tracks={t.number: t.pcm_bytes for t in toc.tracks},
+                               command_for=lambda n: cdparanoia_command(a.device, n),
+                               cover=a.cover)
+    else:
+        server_cm = Server((a.bind, a.port), stream, a.track, cover=a.cover)
+    with server_cm as server:
         print(f'Serving http://{a.bind}:{a.port}{server.route} '
               f'PCM={track.pcm_bytes} RAM={cfg.capacity_bytes} initial_prebuffer_ms={a.initial_prebuffer_ms}', flush=True)
         stream.start() # Start only AFTER server successfully binds.

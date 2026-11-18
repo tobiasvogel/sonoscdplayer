@@ -87,6 +87,14 @@ class PlayerState:
             raise TransitionError('RESUME requires PAUSED')
         return replace(self, mode=Mode.PLAYING)
 
+    def followed(self, track: int) -> 'PlayerState':
+        """Sonos moved to another track of our disc block (D-230); mode unchanged."""
+        if self.mode not in (Mode.STARTING, Mode.PLAYING, Mode.PAUSED):
+            raise TransitionError('Following a track requires playback')
+        if track not in self.track_numbers:
+            raise TransitionError(f'Track {track} not present')
+        return replace(self, selected_track=track)
+
     def natural_end(self) -> 'PlayerState':
         if self.mode not in (Mode.STARTING, Mode.PLAYING, Mode.PAUSED):
             raise TransitionError('No playback underway')

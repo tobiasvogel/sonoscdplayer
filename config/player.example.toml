@@ -1,5 +1,5 @@
 [streaming]
-max_buffer_mib = 16
+max_buffer_mib = 16   # RAM buffer of the stream server, 16 to 512 (also holds the read-ahead of the next track)
 
 # CD metadata: CD-TEXT (read once right after the TOC), then MusicBrainz.
 # A failed online lookup is tried once more after 2 minutes.

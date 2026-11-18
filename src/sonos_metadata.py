@@ -141,3 +141,15 @@ def playing_from_queue(player):
     except Exception:
         return False
     return isinstance(uri, str) and uri.startswith('x-rincon-queue:')
+
+
+def remove_queue_block(player, block):
+    """Remove our disc block, last entry first; only entries that are still ours."""
+    if not block:
+        return 0
+    removed = 0
+    first, urls = block['first'], block['urls']
+    for offset in range(len(urls) - 1, -1, -1):
+        if remove_queue_item(player, (first + offset, urls[offset])):
+            removed += 1
+    return removed
