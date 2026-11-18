@@ -154,6 +154,11 @@ int main(int argc, char **argv) {
             } else if ((status & STATUS_DATA) && rd(i2c, ALS_DATA, data, sizeof data)) {
                 perror("Sensordaten");
                 state.i2c_error = 1;
+            } else if (!(status & STATUS_DATA) && state.valid && now > state.sample_ms
+                       && now - state.sample_ms > stale_ms) {
+                /* Answers, but measures no more (e.g. switched off): start it again. */
+                fprintf(stderr, "APDS9306 liefert keine neuen Messwerte; neu konfigurieren\n");
+                state.i2c_error = 1;
             } else if (status & STATUS_DATA) {
                 uint32_t raw = (uint32_t)data[0] | ((uint32_t)data[1] << 8) | ((uint32_t)data[2] << 16);
                 double base = id == 0xb3 ? 0.146845 : 0.170067;
