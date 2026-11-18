@@ -115,6 +115,8 @@ def screen_from_display_model(model: DisplayModel) -> SemanticScreen:
             rows.append(ScreenItem("artist", "artist", value=model.artist))
         if model.title:
             rows.append(ScreenItem("track_title", "track", value=model.title))
+        if model.track_artist:
+            rows.append(ScreenItem("track_artist", "artist", value=model.track_artist))
         if model.track_count:
             rows.append(ScreenItem("track", "track_number",
                                    value=f"{model.track}/{model.track_count}"))

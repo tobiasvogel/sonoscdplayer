@@ -1,4 +1,4 @@
-service: apds9306.c apds9306d.c
+service: apds9306.c apds9306d.c apds9306_logic.h
 	gcc -O2 -Wall -Wextra apds9306d.c -o apds9306d
 	gcc -O2 -Wall -Wextra apds9306.c -o apds9306
 

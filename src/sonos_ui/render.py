@@ -169,15 +169,17 @@ class Renderer:
     def playback(self,canvas,m,elapsed):
         t=self.theme;d=ImageDraw.Draw(canvas)
         self.shell(canvas,self.tr('header.pause') if m.playback=='paused' else self.tr('header.playing'))
+        # Compilation: the track's own artist says more than the album name.
+        second = m.track_artist or m.album or self.tr('label.audio_cd')
         if self.cover_enabled:
             self.cover(canvas,m.cover)
             self.text(canvas,(44,16),f'{m.track:02d}/{m.track_count:02d}',fill=t.accent,size=9,bold=True,width=80,height=11)
             self.text(canvas,(44,29),m.title or self.tr('label.track',number=m.track),fill=t.primary,size=9,bold=True,width=80,height=12,time=elapsed,scroll=True)
-            self.text(canvas,(44,43),m.album or self.tr('label.audio_cd'),fill=t.secondary,size=8,width=80,height=10,time=elapsed,scroll=True)
+            self.text(canvas,(44,43),second,fill=t.secondary,size=8,width=80,height=10,time=elapsed,scroll=True)
         else:
             self.text(canvas,(6,16),f'{m.track:02d}/{m.track_count:02d}',fill=t.accent,size=10,bold=True,width=116,height=13)
             self.text(canvas,(6,30),m.title or self.tr('label.track',number=m.track),fill=t.primary,size=12,bold=True,width=116,height=16,time=elapsed,scroll=True)
-            self.text(canvas,(6,47),m.album or self.tr('label.audio_cd'),fill=t.secondary,size=9,width=116,height=11,time=elapsed,scroll=True)
+            self.text(canvas,(6,47),second,fill=t.secondary,size=9,width=116,height=11,time=elapsed,scroll=True)
         d.line((5,59,123,59),fill=t.muted)
         def fmt(s):
             return '--:--' if s is None else f'{s//60:02d}:{s%60:02d}'

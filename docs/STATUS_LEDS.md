@@ -1,6 +1,6 @@
 # Status LEDs
 
-The player has two LEDs, driven by the LED service (`sonoscdplayer-led.service`). Their pins are set in `player.toml` under `[led_outputs]` (`power_pin`, `connection_pin`); the same pins are set early at boot by `tools/install_screens.sh` (see [Configuration](CONFIGURATION.md#boot-setup)). With an ambient light sensor, both LEDs follow the room brightness.
+The player has two LEDs, driven by the LED service (`sonoscdplayer-led.service`). Their pins are set in `player.toml` under `[led_outputs]` (`power_pin`, `connection_pin`); the same pins are set early at boot by `tools/install_screens.sh` (see [Configuration](CONFIGURATION.md#boot-setup)). With an ambient light sensor, both LEDs follow the room brightness. If the sensor has no current value (not ready yet, stopped measuring, or an I²C error), the sensor service reports that instead of an old value; the LEDs and the display then return to their fixed fallback brightness after a few seconds. The sensor service keeps running, reconfigures the sensor after a reset and retries every second.
 
 ## Connection LED: network of the Raspberry Pi
 

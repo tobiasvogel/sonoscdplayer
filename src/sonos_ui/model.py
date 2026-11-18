@@ -11,6 +11,9 @@ class DisplayModel:
     album: str | None = None
     artist: str | None = None
     title: str | None = None
+    # The current track's own artist, when it differs from the album artist
+    # (compilations); shown during playback instead of the album name.
+    track_artist: str | None = None
     track: int = 1
     track_count: int = 0
     cover: str | None = None

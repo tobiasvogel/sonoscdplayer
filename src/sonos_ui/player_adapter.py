@@ -45,6 +45,13 @@ def disc_metadata(state, count):
             cover if isinstance(cover, str) and cover.startswith('/') else None)
 
 
+def compilation_artist(state, album_artist):
+    """The selected track's artist if it differs from the album artist."""
+    meta = state.get('metadata')
+    track_artist = _text(meta.get('track_artist')) if isinstance(meta, dict) else None
+    return track_artist if track_artist and track_artist != album_artist else None
+
+
 def project_status(state, previous=None):
     """Only fields currently supported by player_service; never invent metadata.
 
@@ -90,6 +97,7 @@ def project_status(state, previous=None):
         view='playback' if playback in ('playing', 'paused') else 'idle',
         disc_present=count > 0,
         album=album, artist=artist, title=title, cover=cover,
+        track_artist=compilation_artist(state, artist) if count > 0 else None,
         track=track, track_count=count, playback=playback,
         speaker=None, elapsed_seconds=elapsed, duration_seconds=duration,
         disc_phase=mode,  # state label only, never authorizes transport actions

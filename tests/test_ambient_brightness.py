@@ -15,6 +15,14 @@ class TestAmbient(unittest.TestCase):
     def test_invalid_responses(self):
         for raw in (b'',b'NaN',b'-2',b'{"lux":2.75}',b'{"lux":true}',b'{"value":12}',b'[1]',b'x',b'{"lux": "12"}',b'Inf',b'1e3',b'2 lux',b'1 2',b'+2',b'x'*2049):
             with self.subTest(raw=raw[:20]),self.assertRaises(ValueError): parse_lux(raw)
+    def test_daemon_errors_name_the_reason(self):
+        from integrations.outputs.ambient_brightness import SensorUnavailable
+        for reason in ('not-ready', 'stale', 'i2c'):
+            with self.subTest(reason=reason):
+                with self.assertRaises(SensorUnavailable) as caught:
+                    parse_lux(f'ERR {reason}\n'.encode())
+                self.assertEqual(str(caught.exception), 'sensor ' + reason)
+                self.assertIsInstance(caught.exception, ValueError)   # callers fall back
     def test_lux_clamp_and_monotone(self):
         c=AmbientConfig()
         self.assertAlmostEqual(lux_to_brightness(0,c),c.min_brightness)

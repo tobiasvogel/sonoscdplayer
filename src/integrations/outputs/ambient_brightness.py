@@ -43,6 +43,11 @@ class AmbientConfig:
 
 
 _DECIMAL_LUX = re.compile(r"(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)")
+_DAEMON_ERROR = re.compile(r"ERR [a-z0-9-]{1,32}")
+
+
+class SensorUnavailable(ValueError):
+    """The daemon answered, but has no current value (not-ready, stale, i2c)."""
 
 
 def parse_lux(raw: bytes) -> float:
@@ -54,6 +59,9 @@ def parse_lux(raw: bytes) -> float:
     if len(raw) > 2048:
         raise ValueError('sensor reply too long')
     text = raw.decode('ascii', errors='strict').strip()
+    if _DAEMON_ERROR.fullmatch(text):
+        # Callers fall back as for any failed read; the reason helps diagnosis.
+        raise SensorUnavailable('sensor ' + text[4:])
     if not _DECIMAL_LUX.fullmatch(text):
         raise ValueError('sensor reply must be a single decimal lux number')
     value = float(text)
