@@ -61,6 +61,10 @@ def validate_frame(capabilities: DisplayCapabilities,
         elif frame.pixel_format == "rgb565":
             if len(frame.data) != frame.width * frame.height * 2:
                 raise ValueError("invalid rgb565 frame length")
+        elif frame.pixel_format == "mono1-vlsb":
+            # One byte per column and eight vertical pixels, bit 0 at top.
+            if frame.height % 8 or len(frame.data) != frame.width * frame.height // 8:
+                raise ValueError("invalid mono1-vlsb frame length")
         # Other formats need their own explicitly validated packing in 01B/01C.
         else:
             raise ValueError("frame packing not yet supported")

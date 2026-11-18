@@ -153,7 +153,7 @@ To join a new Wi-Fi network, hold CONNECT for 10 seconds: the player opens a tem
 
 SonosCDPlayer provides a display-based interface for playback information, device status, and menu navigation.
 
-The current reference implementation uses an OLED display. Support for other display types, resolutions, and visual themes is a future goal.
+The current reference implementation uses an OLED display. Drivers and test tools for a smaller monochrome OLED (SH1107) and a color LCD (ST7735S) are included and await their connection to the player; a four-color e-paper module was evaluated and found unsuitable. See [Displays](docs/DISPLAYS.md).
 
 The implemented interface includes playback and disc status, interactive menus, Sonos target selection, and rotary encoder navigation. English and German are available, with an initial language set in TOML and session-only switching from the display menu. Adaptive brightness is supported on suitable reference hardware.
 
@@ -204,6 +204,7 @@ Additional documentation is available in the [`docs/`](docs/) directory.
 | [Power button](docs/POWER_BUTTON.md) | Power controls, permissions, and activation |
 | [Shutdown and restart screens](docs/SHUTDOWN_SCREENS.md) | OLED screens while shutting down or restarting, installation, optional exitrd |
 | [Status LEDs](docs/STATUS_LEDS.md) | Meaning of the power and connection (network) LEDs |
+| [Displays](docs/DISPLAYS.md) | Supported and evaluated display modules; [SH1107](docs/SH1107.md) and [ST7735S](docs/ST7735S.md) details |
 | [Releases and updates](docs/RELEASE.md) | Version number, making a release, updating the device |
 | [Changelog](CHANGELOG.md) | Changes per version |
 

@@ -1,4 +1,4 @@
-"""Hardware-independent display profiles for upcoming physical evaluation.
+"""Hardware-independent candidate profiles and separate reference-only modules.
 
 No driver or pin mapping is implied. All proposed defaults are provisional until
 the exact module variant and hardware tests confirm orientation/interface.
@@ -43,6 +43,13 @@ PROFILES = {
     'sh1107_64x128': HardwareDisplayProfile(
         'sh1107_64x128', 'SH1107', 64, 128, 'mono1', False,
         'interactive'),
+}
+
+
+# Evaluated and excluded from player-display candidates: full refresh only,
+# too slow for track/status changes and interactive menu navigation.
+# Retain geometry for explicit experiments and future e-paper driver work.
+REFERENCE_PROFILES = {
     'epaper_200x200_4color': HardwareDisplayProfile(
         'epaper_200x200_4color', 'UNKNOWN', 200, 200, 'four_color',
         True, 'event_driven'),

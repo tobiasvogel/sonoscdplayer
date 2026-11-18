@@ -7,7 +7,7 @@ from integrations.outputs.ssd1327 import Framebuffer, SSD1327, DisplayConfig
 from sonos_ui.layout_config import DisplayProfile, show_cover
 from sonos_ui.model import DisplayModel
 from sonos_ui.render import Renderer
-from sonos_ui.display_profiles import PROFILES, profile_for, HardwareDisplayProfile
+from sonos_ui.display_profiles import PROFILES, REFERENCE_PROFILES, profile_for, HardwareDisplayProfile
 from PIL import Image
 from sonos_ui import marquee
 from sonos_ui.marquee import Marquee, MarqueeClock
@@ -109,10 +109,10 @@ class CoverAndRecoveryTests(unittest.TestCase):
 
 
 class DisplayProfileTests(unittest.TestCase):
-    def test_four_explicit_profiles(self):
-        self.assertEqual(len(PROFILES),4)
+    def test_three_player_display_candidates(self):
+        self.assertEqual(len(PROFILES),3)
         self.assertEqual({p.controller for p in PROFILES.values()},
-                         {'SSD1327','ST7735S','SH1107','UNKNOWN'})
+                         {'SSD1327','ST7735S','SH1107'})
 
     def test_existing_oled_stays_text_focused(self):
         p=profile_for('ssd1327_128x128')
@@ -128,8 +128,8 @@ class DisplayProfileTests(unittest.TestCase):
         p=profile_for('sh1107_64x128')
         self.assertFalse(p.cover_enabled())
 
-    def test_eink_refresh_only_on_events(self):
-        p=profile_for('epaper_200x200_4color')
+    def test_reference_eink_refresh_only_on_events(self):
+        p=REFERENCE_PROFILES['epaper_200x200_4color']
         self.assertEqual(p.refresh_policy,'event_driven')
         self.assertEqual(p.controller,'UNKNOWN')
         self.assertFalse(p.driver_ready)

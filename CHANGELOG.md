@@ -6,6 +6,8 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- Drivers, test-pattern diagnostics and renderers for the SH1107 OLED
+  (SPI/I2C) and the ST7735S color LCD; not yet connected to the player.
 - A request for another track right after PLAY (Sonos loads the first
   queue entry before it seeks to the selected track) no longer stops the
   drive while it spins up.
