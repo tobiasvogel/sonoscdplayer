@@ -143,6 +143,20 @@ class PCMRing:
             self._cv.notify_all()
             return reader_id
 
+    def reopen(self) -> None:
+        """Continue a stopped producer's data: keep every retained byte and
+        let a new producer append at the current end.
+
+        Caller holds the generation lock; the old producer has exited and no
+        reader is attached.
+        """
+        with self._cv:
+            if not self._finished or self._readers:
+                raise BufferClosed('cannot reopen ring while producer or readers active')
+            self._finished = False
+            self._error = None
+            self._cv.notify_all()
+
     def reader_ids(self) -> tuple[int, ...]:
         with self._cv:
             return tuple(self._readers)

@@ -605,6 +605,9 @@ class Server(ThreadingHTTPServer):
         # Stop old diagnostics and REUSE the same bytearray. No second PCM
         # allocation exists even transiently during an HTTP retry.
         current._diag_stop.set()
+        continued = self._continue_locked(current, offset, current.ring.stats)
+        if continued is not None:
+            return continued
         # Only resume from a sector boundary, preserving exact WAV byte
         # positions by starting the ring at the corresponding PCM offset.
         # A full GET always restarts at sector zero.
@@ -623,6 +626,36 @@ class Server(ThreadingHTTPServer):
         replacement.log(f'REPLAY generation={self._generation} sector_seek_pcm={seek_offset} sequential CD reread')
         replacement.start()
         return replacement, reader
+
+    def _continue_locked(self, current, offset, state):
+        """After a pause: serve what is still in RAM, read on from where the
+        stopped reader ended. None if that is not possible.
+
+        Sonos drops the connection during a longer pause; the reader is then
+        stopped. On resume the requested position is often still in the ring,
+        so neither a reread from the track start nor a second copy is needed.
+        """
+        resume_at = state['next_offset']
+        if not (state['oldest_offset'] <= offset <= resume_at < current.expected):
+            return None
+        if resume_at % SECTOR or not current.command or current.command[0] != 'cdparanoia':
+            return None
+        current.ring.reopen()
+        replacement = Stream(current.expected, current.total_ram_budget,
+                             list(current.command), current.write_timeout,
+                             current.initial_prebuffer_bytes * 1000 // RATE,
+                             ring=current.ring, start_offset=resume_at,
+                             probe_cache=current.probe_cache)
+        reader = replacement.attach(offset)
+        self.stream = replacement
+        self._streams.append(replacement)
+        self._generation += 1
+        self._probe_used = False
+        replacement.log(f'CONTINUE generation={self._generation} from_ram={state["oldest_offset"]}-'
+                        f'{resume_at} reader_offset={offset} cd_from_pcm={resume_at}')
+        replacement.start()
+        return replacement, reader
+
 
 class DiscServer(Server):
     """All tracks of one CD under /track/<n>.wav (D-230).
