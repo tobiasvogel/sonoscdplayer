@@ -22,7 +22,7 @@ class FakeController:
     def status_snapshot(self):
         return {'schema_version':1,'player':{'mode':self.state.mode.value}}
 
-    def command(self, command):
+    def apply_command(self, command):
         self.calls.append(command)
 
 

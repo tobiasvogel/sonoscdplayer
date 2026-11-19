@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Send exactly one local command to the player service via its owner-only Unix socket."""
+"""Send one command to the player service and print the reply.
+
+Example (from src/): ``python3 -m sonoscdplayer.player.remote status``.
+The socket belongs to the service account; run it as that user.
+"""
 import argparse
 import json
 import socket
@@ -7,6 +11,7 @@ import sys
 
 
 def request(path, command, *, uid=None, force=False, response_timeout=120):
+    """Send ``command`` to the service's socket at ``path``; return the reply dict."""
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         client.settimeout(3)  # Local socket connection only
         client.connect(path)
@@ -29,6 +34,7 @@ def request(path, command, *, uid=None, force=False, response_timeout=120):
 
 
 def run(argv=None):
+    """Command line: send the command, print the JSON reply, exit 0 if ok."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--socket', default='/tmp/sonoscdplayer-control.sock')
     parser.add_argument('--response-timeout', type=float, default=120,

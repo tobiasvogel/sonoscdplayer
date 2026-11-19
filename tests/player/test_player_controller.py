@@ -3,7 +3,7 @@ import queue
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
-from sonoscdplayer.player.controller import Controller, wait_startup_pcm, ProcessServer
+from sonoscdplayer.player.controller import Controller, wait_startup_pcm, TrackServerProcess
 from sonoscdplayer.player.state import PlayerState, Mode
 from sonoscdplayer.player.service import handle_command
 
@@ -40,9 +40,9 @@ class TestController(unittest.TestCase):
         self.c.play(); self.p.transport='PLAYING'; self.c.refresh()
         self.assertEqual(self.c.state.mode,Mode.PLAYING)
     def test_no_sonos_action_before_play(self):
-        self.c.command('next'); self.assertEqual(self.c.state.selected_track,2); self.assertEqual(self.p.plays,[])
+        self.c.apply_command('next'); self.assertEqual(self.c.state.selected_track,2); self.assertEqual(self.p.plays,[])
     def test_start_confirmation(self):
-        self.c.command('play'); self.assertEqual(self.c.state.mode,Mode.STARTING)
+        self.c.apply_command('play'); self.assertEqual(self.c.state.mode,Mode.STARTING)
         self.c.refresh(); self.assertEqual(self.c.state.mode,Mode.STARTING)
         self.p.transport='PLAYING'; self.c.refresh(); self.assertEqual(self.c.state.mode,Mode.PLAYING)
     def test_switch_next(self):
@@ -154,7 +154,7 @@ class Tests(unittest.TestCase):
         with self.assertRaisesRegex(TimeoutError, 'Sonos PLAY not sent'):
             wait_startup_pcm(queue.Queue(), SimpleNamespace(poll=lambda:None), timeout=.02)
     def test_server_default_enabled(self):
-        p=ProcessServer('.', '/dev/sr0', 'config.toml', 8765)
+        p=TrackServerProcess('.', '/dev/sr0', 'config.toml', 8765)
         self.assertTrue(p.startup_prebuffer)
         self.assertEqual(p.startup_timeout,45)
 

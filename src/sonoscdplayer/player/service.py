@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
-"""Local Unix-socket controller. No TCP control endpoint.
+"""The player service (sonoscdplayer-player.service).
 
-One command/event loop owns the controller. The socket has mode 0600. An
-instance refuses to remove pre-existing socket paths (even stale ones).
-No automatic PLAY or STOP on startup/exit.
+Started with ``python3 -m sonoscdplayer.player.service``. At startup it
+finds the drive and reads the inserted CD, then listens on a local Unix
+socket (mode 0600, no network port) for one-line JSON commands from the
+display service, the button service and ``player.remote``. A single worker
+thread owns the Controller and carries out every command and the regular
+refresh, so commands never run concurrently. The status is published for
+quick reads without waiting for the worker.
+
+The service never starts playback on its own and never stops Sonos when it
+exits. It refuses to remove an existing socket path, even a stale one.
 """
 from __future__ import annotations
 
@@ -37,7 +44,7 @@ from sonoscdplayer.player.state import Mode, PlayerState, state_for_disc
 from sonoscdplayer.drive.power import DrivePowerManager, load_config
 from sonoscdplayer.drive.wake_validation import wait_for_woken_disc
 from sonoscdplayer.drive.usb_identity import usb_identity, recovered_device
-from sonoscdplayer.player.controller import Controller, ProcessServer, routed_source_ip
+from sonoscdplayer.player.controller import Controller, TrackServerProcess, routed_source_ip
 from sonoscdplayer.sonos.target_selection import SelectedTarget
 from sonoscdplayer.sonos.target_store import TargetStore, default_state_dir
 from sonoscdplayer.sonos.volume import VolumeControl, parse_volume_command
@@ -49,6 +56,7 @@ COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --u
 
 
 def response(controller, *, ok, error=None, commands=None):
+    """The JSON reply: ok/error, the status line and the full state snapshot."""
     result = {'ok': ok, 'status': controller.status(),
               'state': controller.status_snapshot()}
     if error is not None:
@@ -154,7 +162,7 @@ def handle_command(controller, request, selection=None, eject=None, volume=None)
         elif command == 'playpause':
             controller.playpause(uid)
         elif command != 'status':
-            controller.command(command)
+            controller.apply_command(command)
         return response(controller, ok=True)
     except Exception as exc:
         if command == 'eject':
@@ -288,14 +296,17 @@ def disc_allows_new_play(controller, request, monitor):
 
 
 class StatusPublisher:
-    """Immutable cached read-only response; NEVER authorizes a Sonos action."""
+    """Latest status reply, kept for "status" requests while the worker is busy.
+
+    Only a copy of the state; it never allows a Sonos action.
+    """
     def __init__(self, controller, power=None):
         self._lock = threading.Lock()
         self._reply = None
         self.publish(controller, power)
 
     def publish(self, controller, power=None):
-        # Only the serialized controller worker calls this method.
+        """Store the current status (called by the worker only)."""
         reply = response(controller, ok=True)
         if power is not None:
             reply['state']['drive_power'] = power.snapshot(reader_active=controller.server.reader_active())
@@ -303,11 +314,13 @@ class StatusPublisher:
             self._reply = copy.deepcopy(reply)
 
     def read(self):
+        """A copy of the stored status reply."""
         with self._lock:
             return copy.deepcopy(self._reply)
 
 
 def read_request(conn):
+    """Read one JSON request line (at most MAX_REQUEST bytes); raises ValueError."""
     conn.settimeout(2)
     data = bytearray()
     while len(data) <= MAX_REQUEST:
@@ -323,6 +336,7 @@ def read_request(conn):
 
 
 def send_reply(conn, reply):
+    """Send the reply as one JSON line and close the connection."""
     try:
         conn.sendall((json.dumps(reply, ensure_ascii=False) + '\n').encode())
     except OSError:
@@ -430,6 +444,12 @@ def read_startup_cdtext_locked(device, *, reader=read_cdtext, lock=drive_lock):
 
 
 def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, target_store=None, metadata_worker=None, drive_cdtext=None):
+    """Listen on ``socket_path`` and run the worker until SIGTERM/SIGINT.
+
+    The optional arguments connect drive power management, the USB identity
+    and TOC of the drive, the disc monitor, the remembered speaker selection
+    and the metadata worker.
+    """
     path = Path(socket_path).expanduser().absolute()
     if not path.parent.is_dir():
         raise ValueError('socket parent directory does not exist')
@@ -701,6 +721,7 @@ def install_sigterm_handler():
 
 
 def run(argv=None):
+    """Command line of the service: read the configuration, find the drive, serve."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--device', default='auto')
     ap.add_argument('--port', type=int, default=8765)
@@ -743,7 +764,7 @@ def run(argv=None):
         if shutdown_policy not in ('stop_owned', 'leave_playing'):
             raise ValueError('invalid service.shutdown_policy')
         ctrl = Controller(state, None, None, ns.port,
-                          ProcessServer(base, device, conf, ns.port,
+                          TrackServerProcess(base, device, conf, ns.port,
                                         startup_prebuffer=startup_enabled,
                                         startup_timeout=float(startup_timeout)), route=routed_source_ip)
         ctrl.disc_status = disc_status

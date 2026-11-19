@@ -1,28 +1,27 @@
-#!/usr/bin/env python3
-"""Player controller: one process that owns the drive, the track server and Sonos playback.
+"""The player's playback logic: track server process, Sonos playback, groups.
 
-All STOP actions demand two immediate ownership proofs. No group operations,
-no autonomous Sonos STOP on exit. Never writes PCM to disk. POSIX terminal.
+``Controller`` holds the PlayerState and carries out PLAY, PAUSE, STOP,
+NEXT/PREVIOUS and track selection. It starts the track server process
+(``TrackServerProcess``), tells Sonos what to play, forms and releases temporary
+groups, and follows what Sonos reports (``refresh``). The player service
+(player/service.py) owns one Controller and calls it from its worker.
+
+Safety rules: a Sonos STOP is only sent after the speaker was checked twice
+to still play our own stream; leaving the service never stops Sonos on its
+own; PCM is never written to disk.
 """
 from __future__ import annotations
 
-import argparse
-from sonoscdplayer.system import config_paths
-import pathlib
 import queue
-import re
-import select
 import socket
 import subprocess
 import sys
 import threading
 import time
 
-from sonoscdplayer.audio.table_of_contents import read_toc
 from sonoscdplayer.audio.track_server_process import (forward_server_output, track_stream_url,
                                                       wait_for_reader_start)
-from sonoscdplayer.drive.drive_probe import find_audio_cd_drive
-from sonoscdplayer.player.state import Mode, state_for_disc
+from sonoscdplayer.player.state import Mode
 from sonoscdplayer.system.version import info as software_info
 from sonoscdplayer.sonos.speaker_checks import (TransportChanged, find_solo_stopped_speaker,
                                                 require_our_stream)
@@ -31,10 +30,13 @@ from sonoscdplayer.sonos import groups
 from sonoscdplayer.metadata.status_summary import status_metadata
 from sonoscdplayer.sonos.track_metadata import (DEFAULT_ALBUM_PREFIX, cover_route, didl_item, playing_from_queue,
                             queue_allowed, queue_item_is_ours, remove_queue_block, track_didl)
-from sonoscdplayer.system.package_paths import SOURCE_ROOT
 
 
-class ProcessServer:
+class TrackServerProcess:
+    """The track HTTP server as child process, started per playback.
+
+    ``base`` is the working directory (src/), ``config`` the player.toml path.
+    """
     def __init__(self, base, device, config, port, *, popen=subprocess.Popen, startup_prebuffer=True, startup_timeout=45.0):
         self.base, self.device, self.config, self.port = base, device, config, port
         self.popen = popen
@@ -45,6 +47,7 @@ class ProcessServer:
         self._reader_lock = threading.Lock()
 
     def reader_active(self):
+        """True while the server's CD reader is running."""
         with self._reader_lock:
             return self._reader_active if self.alive() else False
 
@@ -56,6 +59,10 @@ class ProcessServer:
                 self._reader_active = False
 
     def start(self, track, cover=None, disc=False):
+        """Start the server for ``track`` and wait until its reader runs.
+
+        With ``disc=True`` it serves all tracks of the CD (DiscServer).
+        """
         if self.proc is not None:
             raise RuntimeError('server already attached')
         events = queue.Queue()
@@ -85,6 +92,7 @@ class ProcessServer:
         return self.proc is not None and self.proc.poll() is None
 
     def close(self):
+        """Terminate the server process."""
         p, self.proc = self.proc, None
         with self._reader_lock:
             self._reader_active = False
@@ -138,7 +146,17 @@ STARTUP_LIMIT_SECONDS = 30
 
 
 class Controller:
-    """A single owner: only this instance's exact URI may be stopped."""
+    """Playback on Sonos for one CD; see the module docstring.
+
+    Args:
+        state: the PlayerState to start with.
+        uid: default speaker UID (the service passes the selected one to play()).
+        host, port: address under which Sonos reaches the track server.
+        server: a TrackServerProcess.
+        verify: finds and checks the speaker before PLAY.
+        route: optional function returning the LAN address for a speaker.
+        find_many: finds group members by UID.
+    """
     def __init__(self, state, uid, host, port, server, verify=find_solo_stopped_speaker, route=None, find_many=None):
         self.state, self.uid = state, uid
         self.host, self.port = host, port
@@ -174,6 +192,7 @@ class Controller:
         return track_stream_url(self.host, self.port, track)
 
     def status(self):
+        """One-line summary for the log and the status reply."""
         return (f'mode={self.state.mode.value} track={self.state.selected_track}/'
                 f'{len(self.state.track_numbers)} sonos={self.last_transport} '
                 f'owned={bool(self.owned_url)} server={self.server.alive()}')
@@ -296,6 +315,10 @@ class Controller:
         return coordinator
 
     def refresh(self):
+        """Follow Sonos: confirm playback, notice pause/stop/track changes and errors.
+
+        Called regularly by the service's worker while something plays.
+        """
         if self.state.mode not in (Mode.STARTING, Mode.PLAYING, Mode.PAUSED):
             return
         if not self.server.alive():
@@ -499,6 +522,7 @@ class Controller:
             remove_queue_block(player, block)
 
     def verify_existing(self):
+        """The speaker we play on; raises RuntimeError if there is none."""
         if self.player is None:
             raise RuntimeError('no Sonos target attached')
         return self.player
@@ -528,6 +552,12 @@ class Controller:
             self._recovery_url = url
 
     def play(self, uid=None, members=None):
+        """Start the selected track on speaker ``uid`` (plus group ``members``).
+
+        Raises:
+            ValueError: the player is not stopped.
+            RuntimeError: a speaker check or the start failed.
+        """
         if self.state.mode != Mode.STOPPED:
             raise ValueError('PLAY requires STOPPED')
         candidate = uid if uid is not None else self.uid
@@ -627,6 +657,7 @@ class Controller:
         self.stopped_since = None
 
     def pause(self):
+        """Pause our own stream."""
         if self.state.mode != Mode.PLAYING or not self.seen_playing or not self.owned_url or not self.server.alive():
             raise ValueError('PAUSE requires confirmed owned PLAYING')
         player = self.verify_existing()
@@ -637,6 +668,7 @@ class Controller:
         self.last_transport = 'PAUSED_PLAYBACK'
 
     def resume(self):
+        """Continue our paused stream."""
         if self.state.mode != Mode.PAUSED or not self.seen_playing or not self.owned_url or not self.server.alive():
             raise ValueError('RESUME requires confirmed owned PAUSED')
         player = self.verify_existing()
@@ -647,6 +679,7 @@ class Controller:
         self.last_transport = 'PLAYING'
 
     def playpause(self, uid=None, members=None):
+        """PLAY when stopped, otherwise toggle pause."""
         if self.state.mode == Mode.STOPPED:
             return self.play(uid, members)
         if uid is not None and uid != self.uid:
@@ -676,6 +709,7 @@ class Controller:
             self._release_group(owned_url=old_url)
 
     def stop(self):
+        """Stop our own stream (after checking it twice) and release the group."""
         # If Sonos already stopped during STARTING, release ONLY our local session.
         # Never issue Sonos STOP on this recovery path.
         if self.state.mode == Mode.STARTING and self.owned_url and self.player:
@@ -759,6 +793,7 @@ class Controller:
             self.reset()
 
     def change(self, direction):
+        """Go to the 'next' or 'previous' track, playing or stopped."""
         if direction not in ('next', 'previous'):
             raise ValueError('invalid direction')
         if self.state.mode == Mode.STOPPED:
@@ -811,16 +846,16 @@ class Controller:
         self._display_progress_poll_at = None
         self.last_transport = 'TRANSITIONING'
 
-    def command(self, line):
+    def apply_command(self, line):
+        """Carry out a simple command from the service: play, pause, resume,
+        playpause, stop, next, previous or "select N".
+
+        Raises:
+            ValueError: unknown command.
+        """
         tokens = line.strip().lower().split()
-        if not tokens:
-            return True
-        name = tokens[0]
-        if name in ('quit', 'exit') and len(tokens) == 1:
-            return False
-        if name == 'status' and len(tokens) == 1:
-            print(self.status(), flush=True)
-        elif name == 'play' and len(tokens) == 1:
+        name = tokens[0] if tokens else ''
+        if name == 'play' and len(tokens) == 1:
             self.play()
         elif name == 'pause' and len(tokens) == 1:
             self.pause()
@@ -834,11 +869,8 @@ class Controller:
             self.change(name)
         elif name == 'select' and len(tokens) == 2 and tokens[1].isdigit():
             self.state = self.state.select(int(tokens[1]))
-        elif name == 'help' and len(tokens) == 1:
-            print('Commands: status, select N, play, next, previous, stop, quit', flush=True)
         else:
-            raise ValueError('unknown command; type help')
-        return True
+            raise ValueError(f'unknown command: {line.strip()!r}')
 
     def shutdown_owned(self, policy='stop_owned'):
         """Best-effort shutdown; NEVER stop Sonos without two fresh URI proofs.
@@ -893,64 +925,5 @@ class Controller:
                 'player_stream_uri': isinstance(uri, str) and '/track/' in uri and uri.endswith('.wav')}
  
     def close(self):
-        # Crucial: leaving the CLI never causes a Sonos STOP.
+        """Stop the track server; never sends a Sonos STOP."""
         self.server.close()
-
-
-def run(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--device', default='auto')
-    ap.add_argument('--track', type=int, default=1)
-    ap.add_argument('--pi-host', required=True)
-    ap.add_argument('--uid', required=True)
-    ap.add_argument('--port', type=int, default=8765)
-    ap.add_argument('--config', default=str(config_paths.player_config()))
-    ns = ap.parse_args(argv)
-    if not ns.uid.strip():
-        ap.error('nonempty --uid required')
-    if ns.device != 'auto' and not re.fullmatch(r'/dev/sr\d+', ns.device):
-        ap.error('--device must be auto or /dev/srN')
-    try:
-        track_stream_url(ns.pi_host, ns.port, ns.track)
-        base = SOURCE_ROOT
-        conf = pathlib.Path(ns.config)
-        if not conf.is_absolute():
-            conf = base / conf
-        if not conf.is_file():
-            raise RuntimeError(f'missing config: {conf}')
-        device = find_audio_cd_drive() if ns.device == 'auto' else ns.device
-        disc = read_toc(device)
-        state = state_for_disc(disc, ns.track)
-        server = ProcessServer(base, device, conf, ns.port)
-        ctrl = Controller(state, ns.uid, ns.pi_host, ns.port, server)
-    except Exception as exc:
-        print(f'[player] setup failed: {exc}', file=sys.stderr)
-        return 1
-    print('[player] interactive; help lists commands. No Sonos actions until play.', flush=True)
-    print(ctrl.status(), flush=True)
-    try:
-        while True:
-            # Poll even while terminal is idle; no background Sonos control thread.
-            try:
-                ready, _, _ = select.select([sys.stdin], [], [], 2)
-                if ready:
-                    line = sys.stdin.readline()
-                    if not line:
-                        break
-                    try:
-                        if not ctrl.command(line):
-                            break
-                        print(ctrl.status(), flush=True)
-                    except Exception as exc:
-                        print(f'[player] command rejected: {type(exc).__name__}: {exc}', flush=True)
-                ctrl.refresh()
-            except KeyboardInterrupt:
-                print('\n[player] Ctrl-C: no Sonos STOP', flush=True)
-                break
-    finally:
-        ctrl.close()
-    return 0
-
-
-if __name__ == '__main__':
-    sys.exit(run())

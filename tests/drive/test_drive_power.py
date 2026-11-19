@@ -7,7 +7,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 from sonoscdplayer.drive.power import DrivePowerManager, load_config, parse_power_page
 from sonoscdplayer.drive.drive_lock import drive_lock
-from sonoscdplayer.player.controller import ProcessServer
+from sonoscdplayer.player.controller import TrackServerProcess
 from sonoscdplayer.ui.display_service import StatusHold, request_status
 PAGE = ''' /dev/sr0: TSSTcorp CDDVDW TS-U633J [cd/dvd]\nPower condition mode page:\n IACT 370 [cha: n, def:370]\n SZCT 430 [cha: n, def:430]\n IDLE_A 1 [cha: n, def: 1]\n'''
 CHANGEABLE = '''Power condition mode page:\n IACT 370 [cha: y, def:370]\n SZCT 430 [cha: n, def:430]\n'''
@@ -201,7 +201,7 @@ class ModePageKeepaliveTests(unittest.TestCase):
         self.assertFalse(any('--set=' in part for a in calls for part in a))
 
     def test_reader_state_follows_read_events(self):
-        p=ProcessServer('.', '/dev/sr0', 'config.toml', 8765)
+        p=TrackServerProcess('.', '/dev/sr0', 'config.toml', 8765)
         class Live:
             def poll(self):return None
         p.proc=Live()

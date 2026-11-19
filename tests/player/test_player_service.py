@@ -52,7 +52,7 @@ class DummyController:
         return {'schema_version': 1, 'player': {'mode': 'STOPPED'}}
     def play(self, uid):
         self.calls.append(('play', uid))
-    def command(self, cmd):
+    def apply_command(self, cmd):
         self.calls.append(cmd)
         if cmd == 'stop':
             raise ValueError('not owner')

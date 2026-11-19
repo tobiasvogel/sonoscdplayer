@@ -6,6 +6,8 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- The controller's interactive console mode (`player_controller.py` run
+  directly) is removed; the player is controlled through the service.
 - Unused USB-reconnect modules (`reconnect_observer`, `reconnect_policy`,
   `reconnect_coordinator`) removed; reconnects are handled by
   `drive/usb_identity.py` and `drive/disc_monitor.py` as before.
