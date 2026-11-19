@@ -1,4 +1,4 @@
-"""M0.13b opt-in PWM output. No Sonos write operations or audio dependencies.
+"""Opt-in PWM output. No Sonos write operations or audio dependencies.
 
 RPi.GPIO.PWM is *software timed PWM*, even on hardware-PWM-capable BCM12/13.
 A future pigpio/backend can supply DMA/hardware timing without changing this model.
@@ -198,7 +198,7 @@ def read_shutting_down():
 
 
 def unavailable_status(started, now, last_good_at):
-    """Status to show when the player cannot be read (D-225)."""
+    """Status to show when the player cannot be read."""
     if last_good_at is None and now - started < STARTUP_GRACE_SECONDS:
         return {'schema_version': 1, 'player': {'mode': 'STARTING'}}, 'waiting_for_player'
     return {'schema_version': 1, 'player': {'mode': 'ERROR'}}, 'status_unavailable'
@@ -336,7 +336,7 @@ def main(argv=None):
                     if last_status is None:
                         # Make socket failure visible instead of silently masking
                         # caller-selected connection simulations - except while
-                        # the player is still starting (D-225).
+                        # the player is still starting.
                         fallback, why = unavailable_status(started, now, last_good_at)
                         state = derive_led_state(fallback, network=network,
                                                  shutting_down=shutting_down)

@@ -1,4 +1,4 @@
-// SonosCDPlayer: let the service user run the WLAN setup (NET-01).
+// SonosCDPlayer: let the service user run the WLAN setup.
 //
 // Template only: render it with
 //   tools/render_runtime_units.py --service-user <account> ...

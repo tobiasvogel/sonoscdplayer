@@ -1,6 +1,6 @@
 """Pure display timing decisions for notices; no timers or input handlers.
 
-UI-NOTICE-02 consumes these decisions without hardware dependencies.
+The notice engine consumes these decisions without hardware dependencies.
 """
 from dataclasses import dataclass
 from math import isfinite

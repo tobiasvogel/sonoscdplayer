@@ -37,7 +37,7 @@ class BufferTimeout(BufferErrorBase):
     pass
 
 
-# The player is designed and tested for at least this PCM budget (17.11.).
+# The player is designed and tested for at least this PCM budget.
 MIN_BUFFER_MIB = 16
 
 

@@ -1,4 +1,4 @@
-"""Character-by-character text entry with the rotary encoder (D-224).
+"""Character-by-character text entry with the rotary encoder.
 
 Pure state, no GPIO, network or display access, so any menu can reuse it:
 turning the encoder moves a character wheel, pressing takes the shown

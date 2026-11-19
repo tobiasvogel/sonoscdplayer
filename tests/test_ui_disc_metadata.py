@@ -1,4 +1,4 @@
-"""Disc metadata in the status and on the OLED (META-01, 17.11.)."""
+"""Disc metadata in the status and on the OLED."""
 import json
 import unittest
 

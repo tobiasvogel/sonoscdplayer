@@ -1,4 +1,4 @@
-"""WLAN setup through a temporary hotspot (NET-01, D-223).
+"""WLAN setup through a temporary hotspot.
 
 CONNECT held for 10 s starts a WPA2 hotspot with a random password; a small
 web page on the hotspot address lets the user pick their WLAN and enter its

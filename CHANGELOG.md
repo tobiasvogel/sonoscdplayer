@@ -6,6 +6,10 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- Log lines are tagged by component (`[player]`, `[service]`, `[disc]`,
+  `[drive-wake]`, …) instead of internal milestone names such as `[M0.11d]`.
+- Tests run with pytest (`python3 -m pytest`, settings in `pytest.ini`).
+- The control socket accepts connections as soon as it appears.
 - Drivers, test-pattern diagnostics and renderers for the SH1107 OLED
   (SPI/I2C) and the ST7735S color LCD; not yet connected to the player.
 - A request for another track right after PLAY (Sonos loads the first

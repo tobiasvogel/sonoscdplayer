@@ -47,13 +47,13 @@ def matching_policy_from_config(metadata):
         language_rules=load_language_rules(tuple(languages)))
 
 
-#: An offline/unavailable lookup is tried once more after this time (D-069).
+#: An offline/unavailable lookup is tried once more after this time.
 RETRY_SECONDS = 120.0
 _RETRY_STATUSES = ('offline', 'unavailable', 'error')
 
 
 def _prefer_cdtext(local, cached):
-    """CD-TEXT read now wins over cached fields (D-041); the rest comes from the cache."""
+    """CD-TEXT read now wins over cached fields; the rest comes from the cache."""
     if local.cdtext_status != 'available':
         return cached
     tracks = cached.tracks
@@ -115,7 +115,7 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
         effective, release_id, match, score = local, None, 'toc', None
         if online:
             # The remote provider is optional. Its exceptions have the same
-            # retry semantics as a structured 'error' result (D-227).
+            # retry semantics as a structured 'error' result.
             try:
                 result = lookup(identity, track_count=len(toc.tracks),
                                 timeout_seconds=timeout)
@@ -245,7 +245,7 @@ class MetadataWorker:
         return True
 
     def reset_current(self):
-        """Forget the stored entry of the inserted CD and look it up again (D-050).
+        """Forget the stored entry of the inserted CD and look it up again.
 
         Only this disc's metadata entry is removed; covers stay (they belong
         to a release and may be shared). CD-TEXT read at insertion is kept.

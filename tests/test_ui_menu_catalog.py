@@ -1,4 +1,4 @@
-"""ARC-DISPLAY-01C: shared navigation catalog, no extra input controller."""
+"""Shared navigation catalog, no extra input controller."""
 import unittest
 from unittest.mock import patch
 

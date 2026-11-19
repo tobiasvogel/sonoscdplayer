@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only optical-drive discovery for SonosCDPlayer v0.11.0-alpha.1.
+"""Read-only optical-drive discovery for SonosCDPlayer.
 
 Disc type is verified with cd-info; this probe never starts audio playback.
 """

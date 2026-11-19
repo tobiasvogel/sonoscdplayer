@@ -1,7 +1,7 @@
 """Offscreen notices using existing UI themes and packaged icon assets.
 
 Rendering is intentionally read-only. The notice scheduler and UI navigation
-will be implemented separately in UI-NOTICE-02.
+is handled by notice_engine.
 """
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageOps

@@ -25,7 +25,7 @@ class Topology:
 
 
 def from_devices(devices, *, language='de'):
-    """List individual discovered speakers, as in M0.16a.
+    """List individual discovered speakers, as returned by discovery.
 
     Existing Sonos group membership is read-only metadata. Never collapse
     speakers into a synthetic "+N" entry. Nor does an individual checkbox

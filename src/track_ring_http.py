@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Experimental RAM-only CD-DA track HTTP server (v0.11.0-alpha.1).
+"""RAM-only HTTP server that streams the CD tracks to Sonos as WAV.
 
 No disk spool, no Sonos controls. Missing replay history can require sequential CD reread; active-reader conflicts -> 409.
 This server is NOT a seamless concurrent retry implementation.
@@ -667,7 +667,7 @@ class Server(ThreadingHTTPServer):
 
 
 class DiscServer(Server):
-    """All tracks of one CD under /track/<n>.wav (D-230).
+    """All tracks of one CD under /track/<n>.wav.
 
     Still one CD reader at a time and one PCM ring (the configured budget):
     a request for another track waits until no HTTP client reads the current
@@ -681,7 +681,7 @@ class DiscServer(Server):
     # current entry (often track 1) and only then seeks to the selected
     # track. Such an early request for another track waits this long for
     # the selected one instead of stopping the reader that is just spinning
-    # up the drive (SONOS-NAV-H1, 18.11.).
+    # up the drive.
     START_GUARD_SECONDS = 5.0
 
     def __init__(self, addr, stream, track, *, tracks, command_for, cover=None):

@@ -1,7 +1,7 @@
-"""INP-02: relative Sonos volume for the physical volume buttons.
+"""Relative Sonos volume for the physical volume buttons.
 
 Runs only inside the player service's serialized control worker. Two cases are
-allowed (decision D-213):
+allowed:
 
 1. Own playback (PLAYING or PAUSED, owned stream): the live ownership gate of
    PAUSE/RESUME is applied, then the group volume of the player's own (possibly

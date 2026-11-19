@@ -1,4 +1,4 @@
-"""M0.19a: immutable optical-disc state, separate from playback Mode.
+"""Immutable optical-disc state, separate from playback Mode.
 
 The status is an observation, not permission to start playback or a reason to
 issue drive / Sonos commands. No device access occurs in this module.

@@ -234,7 +234,7 @@ def should_publish_drive_activity(name, event, *, safe_executor):
     # Every physical press, including VOL+/VOL-, counts as drive activity.
     # The async publisher never waits in the GPIO loop; the volume executor
     # independently drops repeats while a player request is in flight.
-    # EJECT authorization remains guarded separately by INP-03.
+    # EJECT authorization remains guarded separately by the player (safe eject checks).
     # Safe executor performs synchronous wake before every mapped
     # transport action. Other physical inputs use the async publisher.
     return not (

@@ -1,4 +1,4 @@
-"""Pure M0.19 USB reconnect sequence observer.
+"""Pure observer of the USB disconnect/reconnect sequence of the drive.
 
 Consumes complete, externally collected device snapshots.
 No hardware access, motor commands, CD reads or playback.

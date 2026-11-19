@@ -1,4 +1,4 @@
-"""META-01B: mock-only tests, no real drive or HTTP requests."""
+"""Mock-only tests, no real drive or HTTP requests."""
 import io
 import json
 import unittest

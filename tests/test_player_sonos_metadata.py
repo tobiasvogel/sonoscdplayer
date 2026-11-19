@@ -1,4 +1,4 @@
-"""Track information and album art for Sonos (META-02, 17.11.)."""
+"""Track information and album art for Sonos."""
 import os
 import tempfile
 import threading

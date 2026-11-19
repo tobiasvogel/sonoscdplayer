@@ -1,4 +1,4 @@
-"""Pure M0.19 reconnect eligibility assessment.
+"""Pure decision whether a reconnected drive may be used again.
 
 No USB, optical-drive, motor or Sonos I/O.
 A candidate assessment never authorizes PLAY.

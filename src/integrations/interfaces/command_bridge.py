@@ -1,4 +1,4 @@
-"""M0.12c-r2: explicit safe mapping from button press to local player protocol.
+"""Explicit safe mapping from button press to local player protocol.
 
 No GPIO imports; dry-run never opens a socket. The player service remains
 sole authority for Sonos ownership/topology/stream checks.

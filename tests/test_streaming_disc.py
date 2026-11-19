@@ -1,5 +1,5 @@
 """Disc server: every track of one CD from one process, one reader at a time,
-read-ahead of the next track (D-230). Synthetic PCM, no drive."""
+read-ahead of the next track. Synthetic PCM, no drive."""
 import http.client
 import sys
 import threading
@@ -72,7 +72,7 @@ class DiscServerTests(unittest.TestCase):
 
     def test_abandoned_request_does_not_block_the_wanted_track(self):
         """Sonos loads the queue's first entry, then seeks to the selected one
-        (18.11.): the abandoned request must not hold the switch."""
+       : the abandoned request must not hold the switch."""
         import socket
         server = self.start(track=3, delay=1.5)
         server.SWITCH_WAIT_SECONDS = 1.0
@@ -89,7 +89,7 @@ class DiscServerTests(unittest.TestCase):
         self.assertEqual(server.track, 3)
 
     def test_early_request_for_another_track_does_not_stop_the_start(self):
-        """SONOS-NAV-H1: Sonos asks for the queue's first entry, then seeks to
+        """Sonos asks for the queue's first entry, then seeks to
         the selected track. The reader for the selected track keeps running."""
         import socket
         server = self.start(track=3, delay=1.0)

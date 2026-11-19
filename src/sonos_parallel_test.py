@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""v0.11.0-alpha.1: one-shot Sonos playback start while CD reader is active.
+"""Start Sonos playback once while the CD reader is active (playback start helper).
 
 Safety: target by UID, refuse groups and non-STOPPED state; no stop/join/unjoin.
 Test harness, not production control; does not modify the audio server.

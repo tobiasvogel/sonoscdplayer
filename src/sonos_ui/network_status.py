@@ -1,4 +1,4 @@
-"""Bounded, read-only NetworkManager status for the INP-03c UI.
+"""Bounded, read-only NetworkManager status for the network screen of the menu.
 
 No connection activation, scanning, password access or configuration writes.
 Only device TYPE and STATE are requested; device names, SSIDs, IPs and

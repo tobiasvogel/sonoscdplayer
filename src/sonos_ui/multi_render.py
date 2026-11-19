@@ -74,7 +74,7 @@ class MultiRenderer(Renderer):
         return ssd1327_gray(im) if gray else im
 
     def render_netsetup(self,snap,*,gray=False,footer=None):
-        """WLAN setup (D-223): hotspot name, password and address, or progress."""
+        """WLAN setup: hotspot name, password and address, or progress."""
         t=self.theme
         im=Image.new('RGB',(128,128),t.background)
         self.shell(im,self.tr('netsetup.title'))
@@ -107,7 +107,7 @@ class MultiRenderer(Renderer):
         return ssd1327_gray(im) if gray else im
 
     def render_wifi_list(self,networks,saved,focus,*,notice='',gray=False):
-        """On-device WLAN choice (D-224): found networks, hidden network, back."""
+        """On-device WLAN choice: found networks, hidden network, back."""
         t=self.theme
         im=Image.new('RGB',(128,128),t.background)
         self.shell(im,self.tr('netsetup.choose'))

@@ -1,4 +1,4 @@
-"""META-01B: read-only MusicBrainz identification and one-shot lookup.
+"""Read-only MusicBrainz identification and one-shot lookup.
 
 No drive, Sonos or playback access. Online errors never replace local CD-TEXT.
 """

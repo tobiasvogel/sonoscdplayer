@@ -3,7 +3,7 @@
 Only these NetworkManager operations are used: list devices, scan WLANs,
 create/remove the temporary hotspot profile, and add/activate/remove WLAN
 profiles created by this player (name prefix ``sonoscdplayer-wifi``). Other
-profiles are only activated (on-device setup, D-224), never modified. Secrets are passed to nmcli but never logged or
+profiles are only activated (on-device setup), never modified. Secrets are passed to nmcli but never logged or
 included in error messages.
 """
 from __future__ import annotations
@@ -95,7 +95,7 @@ class Nm:
         return None
 
     def hardware_suffix(self, device):
-        """Last 4 hex digits of the WLAN MAC address (stable per device, D-184)."""
+        """Last 4 hex digits of the WLAN MAC address (stable per device)."""
         out = self._run('--get-values', 'GENERAL.HWADDR', 'device', 'show', device).stdout
         digits = ''.join(c for c in out.strip() if c in '0123456789abcdefABCDEF')
         return digits[-4:].upper() if len(digits) >= 4 else '0000'

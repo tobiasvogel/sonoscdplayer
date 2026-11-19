@@ -1,4 +1,4 @@
-"""M0.14c standalone manual SSD1327 contrast test, no player access.
+"""Standalone manual SSD1327 contrast test, no player access.
 
 Use --gpio --execute for hardware; otherwise prints the proposed sequence only.
 """
@@ -20,7 +20,7 @@ def parse_levels(value):
     return levels
 
 def main(argv=None):
-    p=argparse.ArgumentParser(description='M0.14c manual SSD1327 contrast experiment')
+    p=argparse.ArgumentParser(description='Manual SSD1327 contrast test')
     p.add_argument('--gpio',action='store_true')
     p.add_argument('--execute',action='store_true')
     p.add_argument('--spi-hz',type=int,default=2_000_000)

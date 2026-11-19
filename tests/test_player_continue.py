@@ -1,5 +1,5 @@
 """Continue with the next track after a track has played out; track length
-for Sonos (17.11.)."""
+for Sonos."""
 import unittest
 from unittest.mock import patch
 

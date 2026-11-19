@@ -1,4 +1,4 @@
-"""ARC-DISPLAY-01D: display-independent screen builders.
+"""Display-independent screen builders.
 
 Each function turns controller state into a translated SemanticScreen. They
 read state only: no input handling, no player commands, no pixels. Every

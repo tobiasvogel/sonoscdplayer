@@ -1,4 +1,4 @@
-"""INP-03c: read-only and fail-closed coarse network status."""
+"""Read-only and fail-closed coarse network status."""
 import subprocess
 from types import SimpleNamespace
 import unittest

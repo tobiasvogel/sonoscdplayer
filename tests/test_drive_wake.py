@@ -899,7 +899,7 @@ class WakeSocketSnapshotTests(unittest.TestCase):
         controller = FakeController()
         publisher = StatusPublisher(controller, power)
 
-        with tempfile.TemporaryDirectory(prefix="m019-socket-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="drive-socket-") as tmp:
             path = str(Path(tmp) / "control.sock")
 
             with socket.socket(
@@ -1003,7 +1003,7 @@ class Controller:
         self.server = SimpleNamespace(
             reader_active=lambda: False,
             alive=lambda: False,
-            device="/dev/fake-m019-concurrent",
+            device="/dev/fake-drive-concurrent",
         )
         self.disc_status = None
         self.owned_url = None
@@ -1124,7 +1124,7 @@ class ConcurrentWakeTests(unittest.TestCase):
         attempts = ctx.Value("i", 0)
 
         with tempfile.TemporaryDirectory(
-            prefix="m019-concurrent-"
+            prefix="drive-concurrent-"
         ) as directory:
             path = str(Path(directory) / "control.sock")
             process = ctx.Process(
@@ -1346,7 +1346,7 @@ class SuccessfulConcurrentWakeTests(unittest.TestCase):
         plays = ctx.Value("i", 0)
 
         with tempfile.TemporaryDirectory(
-            prefix="m019-wake-success-"
+            prefix="drive-wake-success-"
         ) as directory:
 
             path = str(
@@ -1510,7 +1510,7 @@ class ServeFakeController:
         self.server = SimpleNamespace(
             reader_active=lambda: False,
             alive=lambda: False,
-            device="/dev/fake-m019",
+            device="/dev/fake-drive",
         )
         self.disc_status = None
         self.owned_url = None
@@ -1624,7 +1624,7 @@ class RealServeSocketTests(unittest.TestCase):
         errors = []
 
         with tempfile.TemporaryDirectory(
-            prefix="m019-real-serve-"
+            prefix="drive-real-serve-"
         ) as directory:
             path = str(Path(directory) / "control.sock")
 

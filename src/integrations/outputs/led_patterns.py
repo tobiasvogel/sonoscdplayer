@@ -84,7 +84,7 @@ class ErrorHold:
             old=self._active[i]
             is_error=incoming.reason in _ERROR_REASONS
             if incoming.reason == 'shutting_down':
-                # Shutting down is shown at once, never behind a held error (D-225).
+                # Shutting down is shown at once, never behind a held error.
                 self._active[i]=None
                 self._until[i]=0.0
                 result.append(incoming)

@@ -1,4 +1,4 @@
-"""M0.14c-r1: optional APDS9306-controlled SSD1327 contrast.
+"""Optional APDS9306-controlled SSD1327 contrast.
 
 Own, independent lux curve; no Sonos or LED control. The sensor is accessed
 only through the existing read-only Unix socket protocol.

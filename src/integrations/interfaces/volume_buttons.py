@@ -1,4 +1,4 @@
-"""INP-02: physical volume buttons (auto-repeat and one-shot RPCs).
+"""Physical volume buttons (auto-repeat and one-shot RPCs).
 
 The GPIO loop calls VolumeRepeat.event()/tick() and hands the resulting steps to
 VolumeExecutor.submit(). Only one request may be in flight. Repeats that arrive

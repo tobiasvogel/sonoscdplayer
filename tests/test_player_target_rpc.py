@@ -181,7 +181,7 @@ class GroupPlaySelectedTests(unittest.TestCase):
 
 
 class RememberedTargetTests(unittest.TestCase):
-    """TGT-01: the selection survives a restart but never acts on its own."""
+    """the selection survives a restart but never acts on its own."""
 
     def setUp(self):
         import tempfile

@@ -1,4 +1,4 @@
-"""On-device WLAN choice during the setup (D-224): list, name and password entry.
+"""On-device WLAN choice during the setup: list, name and password entry.
 
 UI state only. NetworkManager work happens in ``network_setup.SetupSession``;
 this controller turns encoder input into session calls and draws the screens.

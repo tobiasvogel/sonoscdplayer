@@ -19,7 +19,7 @@ ALLOWED = frozenset({
     ('connect', 'status'), ('connect', 'settings'), ('connect', 'settings_hint'),
     ('connect', 'setup_requested'),
     *(('connect', f'warning_{seconds}') for seconds in range(1, 6)),
-    # INP-02: acknowledged level or missing-target info (no private UID).
+    # acknowledged level or missing-target info (no private UID).
     *(('volume', str(level)) for level in range(101)),
     ('volume', 'no_target'),
 })

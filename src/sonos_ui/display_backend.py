@@ -1,4 +1,4 @@
-"""ARC-DISPLAY-01A: frame contracts and explicit backend registry.
+"""Frame contracts and explicit backend registry.
 
 This module contains no hardware implementations. Registration is explicit:
 configuration values never import arbitrary Python modules.

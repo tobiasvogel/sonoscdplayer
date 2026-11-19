@@ -1,4 +1,4 @@
-"""M0.13c optional APDS9306 lux reader and smooth brightness control.
+"""Optional APDS9306 lux reader and smooth brightness control.
 
 This module never touches I2C, Sonos or GPIO. Sensor access occurs only
 on an opt-in, short-timeout Unix socket read. Unknown formats fail closed.

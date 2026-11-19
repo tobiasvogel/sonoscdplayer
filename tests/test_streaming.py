@@ -220,7 +220,7 @@ class PrebufferWaitTests(unittest.TestCase):
 
 
 def get(port, *, wait_out_409=True):
-    """GET the track; by default wait out the documented 409 (M0.10b) that
+    """GET the track; by default wait out the documented 409 that
     answers while the previous CD reader is still exiting, which takes a
     moment longer on a loaded machine."""
     deadline = time.monotonic() + 5
@@ -393,22 +393,19 @@ class TestResourceShutdown(unittest.TestCase):
         try:
             thread.start()
             stream.start()
-            import http.client
             for _ in range(2):
-                conn = http.client.HTTPConnection('127.0.0.1', server.server_port, timeout=6)
-                try:
-                    conn.request('GET', '/track/1.wav')
-                    response = conn.getresponse()
-                    self.assertEqual(response.status, 200)
-                    self.assertEqual(len(response.read()), 240044)
-                finally:
-                    conn.close()
+                status, data = get(server.server_port)
+                self.assertEqual(status, 200)
+                self.assertEqual(len(data), 240044)
             self.assertEqual(server._generation, 2)
         finally:
             server.shutdown()
             server.server_close()
             thread.join(2)
         for generation in server._streams:
+            # close() signals the workers; give them a moment to finish.
+            generation.thread.join(2)
+            generation._diag_thread.join(2)
             self.assertFalse(generation.thread.is_alive())
             self.assertFalse(generation._diag_thread.is_alive())
 

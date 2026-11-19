@@ -1,4 +1,4 @@
-"""ARC-DISPLAY-01A: validated, hardware-independent display capabilities.
+"""Validated, hardware-independent display capabilities.
 
 Capabilities describe output, not a physical connection or controller driver.
 A character display is not treated as a tiny pixel framebuffer.

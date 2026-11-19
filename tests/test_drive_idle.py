@@ -541,13 +541,13 @@ class EjectIdlePolicyTests(unittest.TestCase):
             idle_policy=SimpleNamespace(**defaults)
         )
 
-    def test_disabled_feature_preserves_inp03(self):
+    def test_disabled_idle_feature_keeps_eject(self):
         self.assertFalse(eject_blocked_by_idle_policy(None))
         self.assertFalse(eject_blocked_by_idle_policy(
             SimpleNamespace(idle_policy=None)
         ))
 
-    def test_normal_awake_drive_can_use_inp03(self):
+    def test_awake_drive_can_eject(self):
         self.assertFalse(
             eject_blocked_by_idle_policy(self.power())
         )
@@ -593,7 +593,7 @@ class FakeController:
         self.server = SimpleNamespace(
             reader_active=lambda: False,
             alive=lambda: False,
-            device="/dev/fake-m019-eject",
+            device="/dev/fake-drive-eject",
         )
         self.disc_status = None
         self.owned_url = None
@@ -716,7 +716,7 @@ class EjectServeGuardTests(unittest.TestCase):
         handler_calls = ctx.Value("i", 0)
 
         with tempfile.TemporaryDirectory(
-            prefix="m019-eject-guard-"
+            prefix="drive-eject-guard-"
         ) as directory:
             path = str(Path(directory) / "control.sock")
             process = ctx.Process(
@@ -783,7 +783,7 @@ class EjectServeGuardTests(unittest.TestCase):
         )
 
     def test_wake_fault_still_reaches_the_eject_handler(self):
-        # The handler (INP-03 checks) is faked here; it decides on the real drive.
+        # The handler (safe eject checks) is faked here; it decides on the real drive.
         self.scenario(
             self.flags(wake_fault_latched=True, spun_down=True),
             allowed=True,
@@ -794,12 +794,12 @@ class EjectServeGuardTests(unittest.TestCase):
             self.flags(wake_fault_latched=True, wake_in_progress=True)
         )
 
-    def test_normal_awake_drive_reaches_inp03_handler(self):
-        # The INP-03 handler itself is replaced by a fake.
+    def test_awake_drive_reaches_the_eject_handler(self):
+        # The eject handler itself is replaced by a fake.
         # Its detailed safety checks have their own tests.
         self.scenario(self.flags(), allowed=True)
 
-    def test_disabled_feature_preserves_inp03_route(self):
+    def test_disabled_idle_feature_keeps_the_eject_route(self):
         self.scenario(None, allowed=True)
 
     def test_normalized_eject_is_also_blocked(self):

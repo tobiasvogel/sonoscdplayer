@@ -18,7 +18,7 @@ DEFAULT_CONFIG = None
 class UIConfig:
     language: str = 'de'
     cover_mode: str = 'auto'
-    # Characters offered in addition to ASCII when typing names (D-224);
+    # Characters offered in addition to ASCII when typing names;
     # passwords stay ASCII.
     extra_characters: str = DEFAULT_EXTRA_CHARACTERS
 

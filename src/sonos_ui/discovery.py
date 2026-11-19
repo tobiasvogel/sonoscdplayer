@@ -1,4 +1,4 @@
-"""M0.16a: read-only SoCo discovery snapshots; no Sonos transport writes.
+"""Read-only SoCo discovery snapshots; no Sonos transport writes.
 
 UIDs stay in memory, not in CLI output or preview filenames. A stable key
 maps a visible name to one exact device only within the current snapshot.

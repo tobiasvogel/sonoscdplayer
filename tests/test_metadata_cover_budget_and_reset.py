@@ -1,4 +1,4 @@
-"""META-02 (18.11.): cover budget and quality, resetting the inserted CD's entry."""
+"""Cover budget and quality, resetting the inserted CD's entry."""
 from io import BytesIO
 from pathlib import Path
 import tempfile

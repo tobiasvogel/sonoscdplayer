@@ -1,9 +1,9 @@
-"""Remember the selected Sonos speakers across restarts (D-003, D-217).
+"""Remember the selected Sonos speakers across restarts.
 
 The selection is kept in ``target.json`` in the player's state directory
 (see ``state_files``), never in the configuration files under ``/etc``.
 Restoring a selection contacts no speaker and never starts playback; PLAY
-performs the usual live checks (D-203). A missing, unreadable or invalid
+performs the usual live checks. A missing, unreadable or invalid
 file simply means "nothing selected".
 """
 from __future__ import annotations

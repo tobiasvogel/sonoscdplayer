@@ -1,4 +1,4 @@
-"""Pure player state model (v0.11.0-alpha.1). No disc IO or Sonos side effects.
+"""Pure player state model. No disc IO or Sonos side effects.
 
 PLAYING means confirmed transport state, not a successful play_uri request.
 Track selection while playing is rejected until an explicit safe stop/restart
@@ -88,7 +88,7 @@ class PlayerState:
         return replace(self, mode=Mode.PLAYING)
 
     def followed(self, track: int) -> 'PlayerState':
-        """Sonos moved to another track of our disc block (D-230); mode unchanged."""
+        """Sonos moved to another track of our disc block; mode unchanged."""
         if self.mode not in (Mode.STARTING, Mode.PLAYING, Mode.PAUSED):
             raise TransitionError('Following a track requires playback')
         if track not in self.track_numbers:

@@ -147,7 +147,7 @@ def render(source_dir, *, checkout, python_venv, user, power_actions=True,
         text = '\n'.join(line for line in text.split('\n') if not (
             line.lstrip().startswith('#') and (
                 'preview' in line.lower() or
-                'm016b-config.conf' in line or
+                'm016b-config.conf' in line or  # legacy drop-in name from early installs
                 'config path to player.toml' in line
             )
         ))

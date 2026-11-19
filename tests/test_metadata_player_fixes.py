@@ -1,4 +1,4 @@
-"""Review fixes for META-01 (17.11.): CD-TEXT in the player, covers optional,
+"""Disc metadata in the player: CD-TEXT in the player, covers optional,
 one later lookup, cover download for Sonos."""
 from pathlib import Path
 from types import SimpleNamespace

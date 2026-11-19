@@ -1,4 +1,4 @@
-"""Opt-in M0.18 safe PLAY/PAUSE command path.
+"""Opt-in safe PLAY/PAUSE command path.
 
 Read status and selection once per physical press, apply the fail-closed policy,
 then attempt exactly one player transport command. No retry, queue, UID, or

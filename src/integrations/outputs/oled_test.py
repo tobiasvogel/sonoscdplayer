@@ -1,4 +1,4 @@
-"""M0.14a standalone SSD1327 diagnostic, no player/Sonos access."""
+"""Standalone SSD1327 diagnostic, no player/Sonos access."""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -8,7 +8,7 @@ from .ssd1327 import DisplayConfig, Framebuffer, SSD1327, FRAME_BYTES
 
 
 def main(argv=None):
-    p=argparse.ArgumentParser(description='M0.14a SSD1327 display self-test')
+    p=argparse.ArgumentParser(description='SSD1327 display self-test')
     p.add_argument('--gpio',action='store_true',help='Use physical SPI and GPIO')
     p.add_argument('--execute',action='store_true',help='Required hardware authorization')
     p.add_argument('--spi-hz',type=int,default=2_000_000)

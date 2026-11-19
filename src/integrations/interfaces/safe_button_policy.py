@@ -1,4 +1,4 @@
-"""Pure M0.18 policy for the physical PLAY/PAUSE button.
+"""Pure policy for the physical PLAY/PAUSE button.
 
 This module has no GPIO, socket, or Sonos access. It only authorizes a
 candidate command from fresh player snapshots; the player remains the

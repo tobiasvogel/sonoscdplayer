@@ -1,8 +1,8 @@
 """Target selection for the existing player service.
 
 Selection is NOT ownership and grants no transport command by itself.
-With a TargetStore the last selection survives restarts (D-003); a restored
-selection is not checked against Sonos until PLAY (D-017, D-203).
+With a TargetStore the last selection survives restarts; a restored
+selection is not checked against Sonos until PLAY.
 All methods are invoked by the player service's serialized control worker.
 """
 from player_state import Mode

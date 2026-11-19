@@ -3,7 +3,7 @@
 Description=SonosCDPlayer regular PWM LED frontend (GPIO12/13)
 After=sonoscdplayer-early-power-led.service
 # Stopped after the other services, so the power LED keeps blinking slowly
-# through the shutdown (D-225); goes off when this service stops.
+# through the shutdown; goes off when this service stops.
 After=sonoscdplayer-player.service sonoscdplayer-oled.service sonoscdplayer-buttons.service
 # No Conflicts= on the early LED: both units are started in the same boot
 # transaction, and systemd would then drop the early LED job entirely.

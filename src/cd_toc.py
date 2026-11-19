@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""strict, read-only CD-DA TOC parsing using cdparanoia -Q.
+"""Strict, read-only CD-DA TOC parsing using cdparanoia -Q.
 
 No streaming, Sonos control or disk audio caching. Track ends are exclusive.
 """

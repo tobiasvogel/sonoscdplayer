@@ -1,4 +1,4 @@
-"""INP-03b offline contract: GPIO options, semantic gestures and UI notices."""
+"""CONNECT button offline contract: GPIO options, semantic gestures and UI notices."""
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest

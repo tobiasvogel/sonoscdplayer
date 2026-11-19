@@ -1,4 +1,4 @@
-"""ARC-DISPLAY-01B: offscreen tests, no hardware, Sonos or GPIO."""
+"""Offscreen tests, no hardware, Sonos or GPIO."""
 import unittest
 
 from sonos_ui.character_layout import portable_text, render_character_screen

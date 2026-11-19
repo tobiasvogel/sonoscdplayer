@@ -1,4 +1,4 @@
-"""SNS-03: the APDS9306 daemon never serves an old lux value as current."""
+"""The APDS9306 daemon never serves an old lux value as current."""
 import shutil
 import subprocess
 import tempfile

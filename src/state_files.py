@@ -1,4 +1,4 @@
-"""Small JSON state files in the state directory (D-216).
+"""Small JSON state files in the state directory.
 
 What is chosen during operation lives in ``/var/lib/sonoscdplayer`` (systemd
 ``StateDirectory=``, or ``$STATE_DIRECTORY``), one file per service, never in

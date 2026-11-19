@@ -1,4 +1,4 @@
-"""Contract tests for ARC-DISPLAY-01A; no physical display is required."""
+"""Contract tests for display capabilities and frame backends; no physical display is required."""
 import unittest
 
 from sonos_ui.display_capabilities import DisplayCapabilities, SSD1327_CAPABILITIES

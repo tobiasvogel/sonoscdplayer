@@ -26,7 +26,7 @@ class MarqueeClock:
 
     Each text is identified by its position, viewport and content. A text
     starts with the initial pause when it first appears and restarts after it
-    changed or disappeared for longer than ``forget_after`` (D-197). The
+    changed or disappeared for longer than ``forget_after``. The
     display loop asks ``animating()`` to refresh faster only while some
     visible text actually overflows its viewport.
     """

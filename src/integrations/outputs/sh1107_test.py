@@ -54,7 +54,7 @@ def main(argv=None):
     parser.add_argument('--i2c-bus', type=int, default=None)
     parser.add_argument('--i2c-address', type=lambda v: int(v, 0), default=None,
                         help='7-bit address: 0x3C (DC low) or 0x3D (DC high)')
-    # Defaults match the project module as wired and tested (18.11.).
+    # Defaults match the project module as wired and tested.
     parser.add_argument('--rst-pin', type=int, default=27)
     parser.add_argument('--gpio-warnings', action='store_true')
     parser.add_argument('--rotation', type=int, choices=(0, 90, 180, 270), default=270)

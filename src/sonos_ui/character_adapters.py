@@ -24,7 +24,7 @@ _ACTION_KEYS = {DONE: "textinput.done", DELETE: "textinput.delete",
 def text_entry_frame(entry: TextEntry, capabilities: DisplayCapabilities,
                      *, title: str, language: str = "de",
                      subtitle: str = "", page: int = 0) -> CharacterFrame:
-    """A tiny-screen projection of the existing D-224 input state.
+    """A tiny-screen projection of the existing WLAN text-entry state.
 
     The controller still owns the 95-character wheel, fast turning, UTF-8
     byte limits, editing, validation and submission. No new input actions.

@@ -1,4 +1,4 @@
-"""Pure M0.19 idle optical-drive policy; no hardware, GPIO or Sonos I/O.
+"""Pure idle optical-drive policy (spin-down and wake decisions); no hardware, GPIO or Sonos I/O.
 
 An acknowledgement is required before treating a motor as stopped/awake.
 The caller must serialize drive operations with CD reading and never infer

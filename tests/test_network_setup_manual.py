@@ -1,4 +1,4 @@
-"""NET-02: on-device WLAN choice from the hotspot screen (D-224)."""
+"""On-device WLAN choice from the hotspot screen."""
 import time
 import unittest
 
@@ -299,7 +299,7 @@ class CancelByConnectTests(unittest.TestCase):
 
 
 class PolishTests(unittest.TestCase):
-    """Rescan entry, short CONNECT as Done (17.11.)."""
+    """Rescan entry, short CONNECT as Done."""
 
     def setUp(self):
         self.nm = ManualNm()

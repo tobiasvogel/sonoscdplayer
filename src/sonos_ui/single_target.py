@@ -1,4 +1,4 @@
-"""M0.17a phase 1: pure single-speaker intent validation.
+"""Pure single-speaker intent validation.
 
 Never issues player commands, changes topology, stores credentials or infers
 authorization from a UI checkbox. A later explicit player-command boundary

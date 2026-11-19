@@ -80,7 +80,7 @@ class SafeButtonPolicyTests(unittest.TestCase):
                 self.assertIsNone(plan_playpause(snapshot(mode), target()))
 
     def test_released_error_play_retries_and_stop_clears(self):
-        """18.11.: a player error must be resolvable at the device."""
+        """a player error must be resolvable at the device."""
         self.assertEqual(plan_playpause(snapshot('ERROR'), target()), 'play-selected')
         self.assertEqual(plan_stop(snapshot('ERROR'), target()), 'reset')
         self.assertEqual(plan_stop(snapshot('ERROR'), target(False)), 'reset')

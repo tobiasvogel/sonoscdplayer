@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""M0.11b: one-shot selected-track PLAY; never issues STOP or alters Sonos groups.
+"""One-shot selected-track PLAY; never issues STOP or alters Sonos groups.
 
 This is an integration harness, not a persistent player daemon. The mode is
 confirmed via Sonos transport polling; 'play_uri' alone is not confirmation.
@@ -77,12 +77,12 @@ def run(argv=None, *, verify=verify_target, drive=detect_drive, toc=read_toc,
     events = queue.Queue()
     state = PlayerState()
     try:
-        print('[M0.11b] first Sonos safety preflight', flush=True)
+        print('[play] first Sonos safety preflight', flush=True)
         verify(args.uid)
         device = drive(base) if args.device == 'auto' else args.device
         disc = toc(device)
         state = prepare_selection(disc, args.track)
-        print(f'[M0.11b] selected={state.selected_track} of {len(state.track_numbers)} '
+        print(f'[play] selected={state.selected_track} of {len(state.track_numbers)} '
               f'pcm_bytes={disc.get_track(state.selected_track).pcm_bytes} mode={state.mode.value}', flush=True)
         config = pathlib.Path(args.config)
         if not config.is_absolute():
@@ -95,7 +95,7 @@ def run(argv=None, *, verify=verify_target, drive=detect_drive, toc=read_toc,
                      text=True, bufsize=1)
         threading.Thread(target=stream_lines, args=(proc, events, t0), daemon=True).start()
         wait_reader(events, proc, timeout=30)
-        print('[M0.11b] second Sonos safety preflight', flush=True)
+        print('[play] second Sonos safety preflight', flush=True)
         player = verify(args.uid)
         if proc.poll() is not None:
             raise RuntimeError('Server ended before PLAY')
@@ -107,7 +107,7 @@ def run(argv=None, *, verify=verify_target, drive=detect_drive, toc=read_toc,
         if any(line is not None and READER_DONE in line for line in pending):
             raise RuntimeError('CD reader ended before PLAY')
         state = state.start_requested()
-        print(f'[M0.11b] mode={state.mode.value} PLAY selected track={state.selected_track}', flush=True)
+        print(f'[play] mode={state.mode.value} PLAY selected track={state.selected_track}', flush=True)
         player.play_uri(url, title=f'SonosCDPlayer Track {state.selected_track}')
         until = clock() + args.observe_seconds
         was_playing = False
@@ -119,20 +119,20 @@ def run(argv=None, *, verify=verify_target, drive=detect_drive, toc=read_toc,
                 transport = player.get_current_transport_info()['current_transport_state']
                 state = confirmed_mode(state, transport)
                 was_playing |= (state.mode == Mode.PLAYING)
-                print(f'[M0.11b] Sonos={transport} player={state.mode.value}', flush=True)
+                print(f'[play] Sonos={transport} player={state.mode.value}', flush=True)
                 if was_playing and state.mode == Mode.STOPPED:
-                    print('[M0.11b] natural end observed; no Sonos STOP sent', flush=True)
+                    print('[play] natural end observed; no Sonos STOP sent', flush=True)
                     return 0
             except (OSError, KeyError) as exc:
-                print(f'[M0.11b] transport status unavailable: {type(exc).__name__}', flush=True)
+                print(f'[play] transport status unavailable: {type(exc).__name__}', flush=True)
             sleep(min(5, max(0, until-clock())))
         if not was_playing:
             raise RuntimeError('Never observed Sonos PLAYING')
-        print('[M0.11b] observation ended while playing; no Sonos STOP sent', flush=True)
+        print('[play] observation ended while playing; no Sonos STOP sent', flush=True)
         return 0
     except (RuntimeError, TOCError, OSError, ValueError, TimeoutError) as exc:
         state = state.failed(str(exc))
-        print(f'[M0.11b] mode={state.mode.value}: {exc}', file=sys.stderr, flush=True)
+        print(f'[play] mode={state.mode.value}: {exc}', file=sys.stderr, flush=True)
         return 1
     finally:
         # Terminating a local HTTP server is NOT equivalent to stopping Sonos.

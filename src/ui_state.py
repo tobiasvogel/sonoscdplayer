@@ -1,4 +1,4 @@
-"""Remember the display language chosen in the menu (D-216, UI-LANG-01).
+"""Remember the display language chosen in the menu.
 
 The OLED service owns ``ui.json`` in the state directory:
 ``{"language": "de", "version": 1}``. It takes precedence over ``[ui]

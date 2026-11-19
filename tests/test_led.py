@@ -55,7 +55,7 @@ class LedModelTests(unittest.TestCase):
         self.assertEqual(result.connection.pattern, Pattern.OFF)
 
     def test_connection_led_ignores_sonos_state(self):
-        # Sonos ownership or transport never lights the network LED (D-222).
+        # Sonos ownership or transport never lights the network LED.
         result = derive_led_state(snapshot('PLAYING', owned=True, transport='PLAYING', target_uid='FAKE_TEST_UID'))
         self.assertEqual(result.connection.pattern, Pattern.OFF)
         self.assertEqual(result.connection.reason, 'network_unknown')
@@ -316,7 +316,7 @@ class TestDiagnostics(unittest.TestCase):
              contextlib.redirect_stdout(out):
             self.assertEqual(led_pwm.main(['--network','disconnected','--seconds','0.05']), 0)
         first=json.loads(out.getvalue().splitlines()[0])
-        # Never answered yet: still starting, breathing instead of an error (D-225).
+        # Never answered yet: still starting, breathing instead of an error.
         self.assertIn('waiting_for_player',first['source'])
         self.assertEqual(first['power_pattern'],'breathe')
         self.assertEqual(first['connection_pattern'],'slow_blink')

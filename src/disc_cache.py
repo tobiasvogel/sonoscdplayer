@@ -1,4 +1,4 @@
-"""META-01C: SQLite metadata cache; no audio or optical-drive access."""
+"""SQLite metadata cache; no audio or optical-drive access."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -78,7 +78,7 @@ class DiscCache:
         return CachedDisc(local, row[1], row[2], row[3], bool(row[4]), row[5])
 
     def delete(self, identity: DiscIdentity) -> bool:
-        """Remove this disc's entry, also a manually confirmed one (D-050)."""
+        """Remove this disc's entry, also a manually confirmed one."""
         if not self.path.is_file():
             return False
         db = self._connect(write=True)

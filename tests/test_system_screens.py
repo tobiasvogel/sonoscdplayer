@@ -166,7 +166,7 @@ class LocalizedShutdownFrameTests(unittest.TestCase):
 
 
 class MenuLanguageTests(unittest.TestCase):
-    """UI-LANG-01: the menu language is remembered and drives the shutdown frames."""
+    """the menu language is remembered and drives the shutdown frames."""
 
     def test_ui_state_round_trip_and_fallbacks(self):
         from ui_state import UiState
@@ -228,7 +228,7 @@ class MenuLanguageTests(unittest.TestCase):
         self.assertEqual(menu.language, 'en')
 
     def test_new_locale_file_is_built_into_the_shutdown_frames(self):
-        """Adding a locale file is enough; no language list to maintain (D-221)."""
+        """Adding a locale file is enough; no language list to maintain."""
         from unittest import mock
         import build_shutdown_renderer as builder
         import sonos_ui.i18n as i18n

@@ -1,4 +1,4 @@
-"""Idle overview shows the selected track, not always 01 (17.11.)."""
+"""Idle overview shows the selected track, not always 01."""
 import unittest
 
 from sonos_ui.player_adapter import project_status

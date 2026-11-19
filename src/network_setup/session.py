@@ -1,11 +1,11 @@
-"""State machine of one WLAN setup (D-223, D-224).
+"""State machine of one WLAN setup.
 
 idle -> preparing -> hotspot -> connecting -> connected
                         ^            |
                         +-- failed --+   (hotspot restarts, same password)
 hotspot -> idle after 15 min or on cancel (CONNECT held again).
 
-On-device entry (encoder press on the hotspot screen, D-224):
+On-device entry (encoder press on the hotspot screen):
 hotspot -> scanning -> choosing -> connecting -> connected
               (hotspot ends)  ^         |
                               +-failed--+   (back to the list/password entry)
@@ -126,7 +126,7 @@ class SetupSession:
         self._spawn(self._connect, generation, ssid, password, hidden)
         return ''
 
-    # ---- on-device entry (D-224) ----------------------------------------
+    # ---- on-device entry ----------------------------------------
     def manual(self):
         """End the hotspot and offer the network list on the display."""
         with self._lock:

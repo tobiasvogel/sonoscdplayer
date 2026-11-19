@@ -1,4 +1,4 @@
-"""ARC-DISPLAY-01A: semantic screens shared by graphical and text layouts.
+"""Semantic screens shared by graphical and text layouts.
 
 No GPIO, Pillow, player RPC or hardware-specific coordinates are used here.
 An action is a stable UI intent, never permission to execute a player command.

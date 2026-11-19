@@ -1,4 +1,4 @@
-"""Encoder text entry (D-224)."""
+"""Encoder text entry."""
 import unittest
 
 from sonos_ui.multi_render import MultiRenderer

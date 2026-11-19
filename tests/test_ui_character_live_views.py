@@ -1,4 +1,4 @@
-"""ARC-DISPLAY-01B: read-only full-menu projection on tiny displays."""
+"""Read-only full-menu projection on tiny displays."""
 import unittest
 from types import SimpleNamespace
 

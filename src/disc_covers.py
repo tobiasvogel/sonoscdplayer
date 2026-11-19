@@ -1,4 +1,4 @@
-"""META-01C: single-resolution, file-based Cover Art Archive cache.
+"""Single-resolution, file-based Cover Art Archive cache.
 
 Pillow is optional: absent Pillow affects covers only, never CD playback.
 No upscale; dimensions are bounded by max_dimension_px on both axes.
@@ -19,18 +19,18 @@ DEFAULT_COVER_DIR = Path('/var/lib/sonoscdplayer/covers')
 _UUID = re.compile(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')
 
 
-DEFAULT_BUDGET_MB = 100        # D-065
+DEFAULT_BUDGET_MB = 100
 
 
 class CoverBudgetFull(Exception):
-    """The cover store reached its budget; nothing is deleted (D-061)."""
+    """The cover store reached its budget; nothing is deleted."""
 
 
 @dataclass(frozen=True)
 class CoverPolicy:
     enabled: bool = False
     max_dimension_px: int = 512
-    jpeg_quality: int = 85            # D-066
+    jpeg_quality: int = 85
     budget_mb: int = DEFAULT_BUDGET_MB
 
     def __post_init__(self):
@@ -97,7 +97,7 @@ class CoverCache:
                 encoded = BytesIO()
                 rgb.save(encoded, format='JPEG', quality=policy.jpeg_quality, optimize=True)
             if self.used_bytes() + len(encoded.getvalue()) > policy.budget_mb * 1024 * 1024:
-                # Full budget: keep every stored cover, store no new one (D-061).
+                # Full budget: keep every stored cover, store no new one.
                 raise CoverBudgetFull()
             self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
             path = self._path(release_id)

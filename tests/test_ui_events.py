@@ -1,4 +1,4 @@
-"""M0.16b: regression tests for read-only UI and private event transport."""
+"""Regression tests for read-only UI and private event transport."""
 import tempfile
 import unittest
 from pathlib import Path

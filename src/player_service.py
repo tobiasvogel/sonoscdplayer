@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""M0.12a local Unix-socket controller. No TCP control endpoint.
+"""Local Unix-socket controller. No TCP control endpoint.
 
 One command/event loop owns the controller. The socket has mode 0600. An
 instance refuses to remove pre-existing socket paths (even stale ones).
@@ -164,7 +164,7 @@ def handle_command(controller, request, selection=None, eject=None, volume=None)
             if not detail.startswith('EJECT '):
                 detail = ('errno=' + str(exc.errno) if isinstance(exc, OSError)
                           and exc.errno is not None else type(exc).__name__)
-            print('[inp03] EJECT rejected: ' + detail, flush=True)
+            print('[eject] EJECT rejected: ' + detail, flush=True)
         return response(controller, ok=False, error=f'{type(exc).__name__}: {exc}')
 
 
@@ -197,7 +197,7 @@ def _diagnosed_wake(power, monitor, *, source):
 
     # Never print USB serials, complete TOCs or Sonos target identifiers.
     print(
-        "[m019-wake] "
+        "[drive-wake] "
         f"source={source} "
         f"ok={ok} "
         f"elapsed_seconds={elapsed:.2f} "
@@ -440,6 +440,10 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
     original_umask = os.umask(0o177)
     try:
         server.bind(str(path))
+        # Listen at once: clients wait for the socket file, and a connect
+        # between bind() and listen() would be refused. Requests queue in the
+        # backlog until the loop below accepts them.
+        server.listen(16)
     finally:
         os.umask(original_umask)
     bound_inode = os.lstat(path).st_ino
@@ -453,9 +457,8 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
     pending = []
     try:
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
-        server.listen(16)
         server.setblocking(False)
-        print(f'[M0.15a-r2] local socket ready: {path} (0600); responsive cached status', flush=True)
+        print(f'[service] local socket ready: {path} (0600); responsive cached status', flush=True)
         # Only this one worker ever touches controller, Sonos, reader and drive power.
         with concurrent.futures.ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix='player-control') as executor:
@@ -531,7 +534,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                         controller.metadata_snapshot = None
 
                 if isinstance(request, dict) and request.get('command') == 'reset-disc':
-                    # D-050: forget the inserted CD's stored metadata and look it
+                    # forget the inserted CD's stored metadata and look it
                     # up again. No drive or Sonos access; playback is not touched.
                     if set(request) != {'command'}:
                         reply = response(controller, ok=False, error='invalid request keys')
@@ -787,11 +790,11 @@ def run(argv=None):
             print(f'[metadata] disabled: {type(exc).__name__}', flush=True)
 
         # Never issue start/keepalive motor commands when no readable disc was
-        # selected. M0.19b will implement safe idle discovery and reloading.
+        # selected. Disc changes while idle are handled by disc_monitor.
         if toc is not None:
             power = DrivePowerManager(device, load_config(conf))
             power.start()
-        print(f'[M0.19a] service ready; disc={disc_status.mode.value}; '
+        print(f'[disc] service ready; disc={disc_status.mode.value}; '
               'no Sonos action until explicit PLAY', flush=True)
         def on_verified_rebind(new_device):
             # Same original USB serial, validated by DiscMonitor; only idle.
@@ -812,18 +815,18 @@ def run(argv=None):
               target_store=TargetStore(ns.state_dir),
               metadata_worker=metadata_worker, drive_cdtext=startup_cdtext)
     except KeyboardInterrupt:
-        print('\n[M0.12b-r7] shutdown requested', flush=True)
+        print('\n[service] shutdown requested', flush=True)
     except Exception as exc:
-        print(f'[M0.12a] service failed: {type(exc).__name__}: {exc}', file=sys.stderr)
+        print(f'[service] service failed: {type(exc).__name__}: {exc}', file=sys.stderr)
         return 1
     finally:
         if metadata_worker is not None:
             metadata_worker.close()
         if ctrl:
             result = ctrl.shutdown_owned(shutdown_policy)
-            print(f'[M0.12b-r7] shutdown: {result}', flush=True)
+            print(f'[shutdown] shutdown: {result}', flush=True)
             if result['action'] == 'not_stopped':
-                print('[M0.12b-r7] WARNING: Sonos may retain a stream URI; no unverified STOP sent', flush=True)
+                print('[shutdown] WARNING: Sonos may retain a stream URI; no unverified STOP sent', flush=True)
             ctrl.close()
         if power is not None:
             power.close()

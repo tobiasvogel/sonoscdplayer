@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Send exactly one local command to M0.12a via an owner-only Unix socket."""
+"""Send exactly one local command to the player service via its owner-only Unix socket."""
 import argparse
 import json
 import socket

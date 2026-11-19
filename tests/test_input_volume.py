@@ -1,4 +1,4 @@
-"""INP-02 volume buttons: player gate, button repeat/coalescing, OLED overlay."""
+"""Volume buttons: player gate, button repeat/coalescing, OLED overlay."""
 import tempfile
 import threading
 import time

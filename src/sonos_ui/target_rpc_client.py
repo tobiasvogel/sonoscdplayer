@@ -63,7 +63,7 @@ def read_target(*, socket_path=DEFAULT_SOCKET, timeout=2.0):
 
 
 def reset_disc(*, socket_path=DEFAULT_SOCKET, timeout=4.0):
-    """Ask the player to forget the inserted CD's stored metadata (D-050)."""
+    """Ask the player to forget the inserted CD's stored metadata."""
     with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as sock:
         sock.settimeout(timeout)
         sock.connect(str(socket_path))

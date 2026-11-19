@@ -1,7 +1,7 @@
-"""M0.19a: one-time non-playing disc classification at service startup.
+"""One-time non-playing disc classification at service startup.
 
 No polling, motor control, Sonos requests or re-reads during playback. Media
-insertion/removal monitoring is deliberately deferred to M0.19b.
+insertion/removal monitoring is handled separately by disc_monitor.
 """
 from __future__ import annotations
 

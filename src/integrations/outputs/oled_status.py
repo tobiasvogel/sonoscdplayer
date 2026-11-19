@@ -279,7 +279,7 @@ def wait_for_player_ready(status_request, socket_path, *, max_wait_seconds=30.0,
 
 
 def main(argv=None):
-    p=argparse.ArgumentParser(description='M0.14b read-only SSD1327 OLED status')
+    p=argparse.ArgumentParser(description='SSD1327 OLED status and menu service')
     p.add_argument('--gpio',action='store_true')
     from state_files import default_state_dir
     p.add_argument('--state-dir',type=Path,default=default_state_dir(),
@@ -337,7 +337,7 @@ def main(argv=None):
     from sonos_ui.i18n import available_languages
     from ui_state import UiState
     ui_state = UiState(args.state_dir)
-    # A language chosen in the menu (state file) wins over ui.toml (D-216).
+    # A language chosen in the menu (state file) wins over ui.toml.
     language = ui_state.language(available_languages()) or ui_config.language
     if args.gpio != args.execute: p.error('--gpio and --execute must be given together')
     try:

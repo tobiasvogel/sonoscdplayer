@@ -1,4 +1,4 @@
-"""M0.19b: conservative idle-only disc-state polling.
+"""Conservative idle-only disc-state polling.
 
 No Sonos commands. Never query a drive while a reader, stream, session or
 unresolved group is attached. The bound /dev/srN must not be replaced by an

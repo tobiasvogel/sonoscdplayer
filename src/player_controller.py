@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""M0.11d experimental persistent, single-process CLI CD controller.
+"""Player controller: one process that owns the drive, the track server and Sonos playback.
 
 All STOP actions demand two immediate ownership proofs. No group operations,
 no autonomous Sonos STOP on exit. Never writes PCM to disk. POSIX terminal.
@@ -143,7 +143,7 @@ END_TOLERANCE_SECONDS = 6
 
 # A start that never reaches PLAYING is given up after this long, whatever
 # Sonos reports (e.g. stuck in TRANSITIONING). The error is then released,
-# so PLAY or STOP on the device can clear it (D-231).
+# so PLAY or STOP on the device can clear it.
 STARTUP_LIMIT_SECONDS = 30
 
 
@@ -165,14 +165,14 @@ class Controller:
         self.metadata_snapshot = None  # asynchronously loaded, TOC-qualified display info
         self.album_prefix = DEFAULT_ALBUM_PREFIX  # [sonos] album_prefix, before the album name
         self.use_queue = True        # [sonos] use_queue: play from the queue to show artist/album
-        # Our disc block in the Sonos queue (D-230): {'first': 1-based position,
+        # Our disc block in the Sonos queue: {'first': 1-based position,
         # 'tracks': [track numbers], 'urls': [url per track]} or None.
         self._queue_block = None
         self.auto_advance = True     # [playback] continue: next track after a track ends
         self._pending_advance = None
         self.stopped_since = None
         self.status_hook = None  # optional read-only snapshot publisher
-        self.disc_status = None  # optional M0.19 independent disc observation
+        self.disc_status = None  # optional independent disc observation (DiscMonitor)
         self.find_many = find_many or sonos_group.find_players
         self._joined = {}
         self._group_coord = None
@@ -213,7 +213,7 @@ class Controller:
             'stream': {
                 'active': active,
             },
-            # Which code runs on the device (OPS-02); read once per process.
+            # Which code runs on the device; read once per process.
             'software': software_info(),
         }
         if (self._display_progress is not None and owned and active
@@ -331,7 +331,7 @@ class Controller:
                     self.state = self.state.playback_confirmed()
                 elif self.state.mode == Mode.PAUSED:
                     self.state = self.state.resumed()
-                    print('[M0.11d] PLAYING confirmed', flush=True)
+                    print('[player] PLAYING confirmed', flush=True)
             elif transport == 'PAUSED_PLAYBACK' and self.state.mode in (Mode.PLAYING, Mode.PAUSED):
                 self._ownership(player, 'PAUSED_PLAYBACK')
                 if self.state.mode == Mode.PLAYING:
@@ -362,7 +362,7 @@ class Controller:
                     if first is not None:
                         self.state = self.state.followed(first)
                 url = self.owned_url
-                # In block mode Sonos plays on by itself (D-230).
+                # In block mode Sonos plays on by itself.
                 advance = (None if self._queue_block
                            else self._next_after_end(self._display_progress))
                 self.state = self.state.natural_end()
@@ -375,7 +375,7 @@ class Controller:
                 else:
                     # Like a CD player: the next track follows. The group stays.
                     self._pending_advance = advance
-                print('[M0.11d] STOPPED observed; local server closed', flush=True)
+                print('[player] STOPPED observed; local server closed', flush=True)
             elif transport == 'TRANSITIONING':
                 self.stopped_since = None
             elif transport not in ('STOPPED', 'TRANSITIONING', 'PLAYING'):
@@ -407,7 +407,7 @@ class Controller:
             # Play/pause in the Sonos app between our two reads: the next
             # refresh sees the new state. UID, group and URI are still checked
             # on every refresh, so nothing foreign is adopted here.
-            print(f'[M0.11d] transport changed during check ({exc}); rechecking', flush=True)
+            print(f'[player] transport changed during check ({exc}); rechecking', flush=True)
         except Exception as exc:
             self._fail(f'ownership/status check failed: {type(exc).__name__}: {exc}')
         if self._pending_advance is not None:
@@ -441,14 +441,14 @@ class Controller:
         members = self._group_members
         try:
             self.state = self.state.select(track)
-            print(f'[M0.11d] track ended; continuing with track {track}', flush=True)
+            print(f'[player] track ended; continuing with track {track}', flush=True)
             self.play(members=members)
         except BaseException as exc:
             # play() already set ERROR; keep a joined group for inspection.
             if self._joined:
                 self._group_uncertain = True
                 self._recovery_url = None
-            print(f'[M0.11d] continuing failed: {type(exc).__name__}: {exc}', flush=True)
+            print(f'[player] continuing failed: {type(exc).__name__}: {exc}', flush=True)
 
     def _enqueue_disc(self, player, host, meta, cover_url):
         """Append every track as one block at the END of the queue, play the
@@ -491,7 +491,7 @@ class Controller:
         self.state = self.state.followed(track)
         self._display_progress = None
         self._display_progress_poll_at = None
-        print(f'[M0.11d] Sonos is on track {track}; following', flush=True)
+        print(f'[player] Sonos is on track {track}; following', flush=True)
 
     def _block_intact(self, player):
         block = self._queue_block
@@ -514,7 +514,7 @@ class Controller:
 
     def _fail(self, message):
         self.state = self.state.failed(message)
-        print(f'[M0.11d] ERROR: {message}; no Sonos STOP sent', flush=True)
+        print(f'[player] ERROR: {message}; no Sonos STOP sent', flush=True)
         url = self.owned_url
         player = self.player
         self.owned_url = None
@@ -528,7 +528,7 @@ class Controller:
                 if player is not None:
                     remove_queue_block(player, self._queue_block)
             except Exception as cleanup:
-                print(f'[M0.11d] queue cleanup after error failed: {cleanup}', flush=True)
+                print(f'[player] queue cleanup after error failed: {cleanup}', flush=True)
             self._queue_block = None
         # An error here may mean the topology, URI or transport could not be
         # verified. Never issue unjoin on an ambiguous observation.
@@ -571,7 +571,7 @@ class Controller:
             cover = meta.get('cover_file') if isinstance(meta, dict) else None
             cover_path = cover_route(cover) and cover
             # Whole disc as a block in the Sonos queue, unless shuffle/repeat
-            # is on or [sonos] use_queue = false (D-230).
+            # is on or [sonos] use_queue = false.
             block = self.use_queue and queue_allowed(target)
             server_options = {}
             if cover_path:
@@ -617,7 +617,7 @@ class Controller:
                 try:
                     remove_queue_block(player, self._queue_block)
                 except Exception as cleanup:
-                    print(f'[M0.11d] queue cleanup failed: {cleanup}', flush=True)
+                    print(f'[player] queue cleanup failed: {cleanup}', flush=True)
                 self._queue_block = None
             # A failed/ambiguous play_uri may already have changed the coordinator.
             # Never unjoin after an uncertain Sonos write without URI proof.
@@ -782,7 +782,7 @@ class Controller:
         index = min(pos + 1, len(numbers)-1) if direction == 'next' else max(pos - 1, 0)
         new = numbers[index]
         if new == old:
-            print('[M0.11d] already at disc boundary', flush=True)
+            print('[player] already at disc boundary', flush=True)
             return
         if self._queue_block:
             self._jump_in_block(new)
@@ -933,9 +933,9 @@ def run(argv=None):
         server = ProcessServer(base, device, conf, ns.port)
         ctrl = Controller(state, ns.uid, ns.pi_host, ns.port, server)
     except Exception as exc:
-        print(f'[M0.11d] setup failed: {exc}', file=sys.stderr)
+        print(f'[player] setup failed: {exc}', file=sys.stderr)
         return 1
-    print('[M0.11d] interactive; help lists commands. No Sonos actions until play.', flush=True)
+    print('[player] interactive; help lists commands. No Sonos actions until play.', flush=True)
     print(ctrl.status(), flush=True)
     try:
         while True:
@@ -951,10 +951,10 @@ def run(argv=None):
                             break
                         print(ctrl.status(), flush=True)
                     except Exception as exc:
-                        print(f'[M0.11d] command rejected: {type(exc).__name__}: {exc}', flush=True)
+                        print(f'[player] command rejected: {type(exc).__name__}: {exc}', flush=True)
                 ctrl.refresh()
             except KeyboardInterrupt:
-                print('\n[M0.11d] Ctrl-C: no Sonos STOP', flush=True)
+                print('\n[player] Ctrl-C: no Sonos STOP', flush=True)
                 break
     finally:
         ctrl.close()

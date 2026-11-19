@@ -11,6 +11,12 @@ from integrations.outputs.sh1107 import DisplayConfig, image_to_frame
 from display_samples import all_screens, menu_screen, overview_screen
 
 
+def lit_pixels(image):
+    """Number of pixels that are not black."""
+    histogram = image.histogram()
+    return sum(histogram) - histogram[0]
+
+
 class CompactRendererTests(unittest.TestCase):
     def setUp(self):
         self.renderer = CompactRenderer()
@@ -70,8 +76,8 @@ class CompactRendererTests(unittest.TestCase):
             return self.renderer.render(compact_screen_from_model(model)).crop((2, 62, 126, 63))
         self.assertIsNone(bar(0, 100).getbbox())
         self.assertIsNone(bar(5, 0).getbbox())
-        self.assertEqual(sum(bool(p) for p in bar(50, 100).getdata()), 62)
-        self.assertEqual(sum(bool(p) for p in bar(200, 100).getdata()), 124)
+        self.assertEqual(lit_pixels(bar(50, 100)), 62)
+        self.assertEqual(lit_pixels(bar(200, 100)), 124)
 
     def test_optional_times_and_absent_disc_do_not_invent_progress(self):
         empty = compact_screen_from_model(DisplayModel(disc_present=False, title='stale',

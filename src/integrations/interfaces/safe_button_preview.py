@@ -1,4 +1,4 @@
-"""Opt-in, read-only GPIO preview of the M0.18 selected-target policy.
+"""Opt-in, read-only GPIO preview of the selected-target PLAY/PAUSE policy.
 
 Only status/get-target RPCs are sent. Never sends transport commands, never
 retries, never exposes device UIDs, and never blocks the GPIO sampling loop.

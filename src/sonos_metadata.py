@@ -2,7 +2,7 @@
 
 Pure functions: no network, no Sonos calls. The player passes the result to
 ``play_uri(meta=...)``. Metadata that arrives during playback is used from
-the next track on; a running track is never restarted for it (D-058).
+the next track on; a running track is never restarted for it.
 """
 from __future__ import annotations
 

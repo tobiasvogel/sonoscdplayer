@@ -24,6 +24,24 @@ from player_state import PlayerState, Mode
 
 
 
+
+def wait_until_listening(path, seconds=5.0):
+    """Wait until the service accepts connections on its socket.
+
+    The socket file appears at bind(), slightly before listen(); connecting
+    in between is refused, so only a successful connect counts.
+    """
+    deadline = time.monotonic() + seconds
+    while True:
+        try:
+            with socket.socket(socket.AF_UNIX) as probe:
+                probe.connect(path)
+            return
+        except (FileNotFoundError, ConnectionRefusedError):
+            if time.monotonic() > deadline:
+                raise
+            time.sleep(0.01)
+
 class DummyController:
     def __init__(self):
         self.calls = []
@@ -65,10 +83,7 @@ class ServiceTests(unittest.TestCase):
             c = DummyController()
             thread = threading.Thread(target=serve, args=(c, path), kwargs={'poll_seconds': 0.01}, daemon=True)
             thread.start()
-            for _ in range(500):  # up to 5 s on a loaded machine
-                if os.path.exists(path):
-                    break
-                time.sleep(0.01)
+            wait_until_listening(path)
             self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
             self.assertTrue(request(path, 'status')['ok'])
             self.assertTrue(request(path, 'next')['ok'])
@@ -90,10 +105,7 @@ class ServiceTests(unittest.TestCase):
                                       kwargs={'poll_seconds': 0.01, 'target_store': store}, daemon=True)
             with contextlib.redirect_stdout(io.StringIO()):
                 thread.start()
-                for _ in range(500):  # up to 5 s on a loaded machine
-                    if os.path.exists(path):
-                        break
-                    time.sleep(0.01)
+                wait_until_listening(path)
                 reply = request(path, 'get-target')
             self.assertTrue(reply['target_selection']['selected'])
             self.assertEqual(reply['target_selection']['speakers'], ['RINCON_A'])
@@ -111,10 +123,7 @@ class ServiceTests(unittest.TestCase):
             thread = threading.Thread(target=serve, args=(c, path),
                                       kwargs={'poll_seconds': 0.01}, daemon=True)
             thread.start()
-            for _ in range(500):  # up to 5 s on a loaded machine
-                if os.path.exists(path):
-                    break
-                time.sleep(0.01)
+            wait_until_listening(path)
             self.assertTrue(request(path, 'play', uid='TEST_UID', response_timeout=1)['ok'])
             self.assertEqual(c.calls, [('play','TEST_UID')])
 
@@ -296,7 +305,7 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(self.target.stops,0)
 
     def test_play_selected_retries_after_released_error(self):
-        """18.11.: PLAY on the device after a player error tries again."""
+        """PLAY on the device after a player error tries again."""
         from player_target_selection import SelectedTarget
         selection = SelectedTarget(verify=lambda uid: True)
         selection._uid = 'TEST_SPEAKER'
@@ -613,10 +622,7 @@ class ResponsiveStatusTest(unittest.TestCase):
                 except BaseException as ex: errors.append(ex)
             thread = threading.Thread(target=worker, daemon=True)
             thread.start()
-            for _ in range(200):
-                if Path(path).exists(): break
-                time.sleep(0.01)
-            self.assertTrue(Path(path).exists())
+            wait_until_listening(path)
             play_result = []
             play_thread = threading.Thread(target=lambda: play_result.append(raw_request(path, {'command':'play','uid':'TEST_UID'},timeout=15)), daemon=True)
             play_thread.start()
@@ -642,7 +648,7 @@ class ResponsiveStatusTest(unittest.TestCase):
 
 
 class ResetDiscCommandTests(unittest.TestCase):
-    """D-050: the menu's "Reset CD entry" goes to the metadata worker only."""
+    """the menu's "Reset CD entry" goes to the metadata worker only."""
     def run_service(self, metadata_worker):
         td = tempfile.TemporaryDirectory()
         self.addCleanup(td.cleanup)
@@ -650,10 +656,7 @@ class ResetDiscCommandTests(unittest.TestCase):
         threading.Thread(target=lambda: serve(BlockingController(), path, poll_seconds=0.03,
                                               metadata_worker=metadata_worker),
                          daemon=True).start()
-        for _ in range(200):
-            if Path(path).exists():
-                break
-            time.sleep(0.01)
+        wait_until_listening(path)
         return path
 
     def test_reset_goes_to_the_worker(self):

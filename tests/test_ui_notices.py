@@ -52,7 +52,7 @@ class NoticeModelTests(unittest.TestCase):
                 gray = renderer.render(item, size=size, grayscale=True)
                 self.assertEqual((rgb.mode, rgb.size), ("RGB", size))
                 self.assertEqual((gray.mode, gray.size), ("L", size))
-                self.assertTrue(set(gray.getdata()).issubset(set(range(0, 256, 17))))
+                self.assertTrue({value for value, count in enumerate(gray.histogram()) if count}.issubset(set(range(0, 256, 17))))
 
     def test_no_icons_still_renders(self):
         with TemporaryDirectory() as directory:

@@ -20,12 +20,12 @@ The player status reply also carries it under `software` (`version`, and
 Run from the repository root on an up-to-date `main`.
 
 1. **Tests pass**, on a development machine and on the device:
-   `PYTHONPATH=src python3 -m unittest discover -s tests -q`
+   `python3 -m pytest`
 2. **Device test done** for everything listed under *Unreleased* in the
    changelog that touches playback, buttons, display or network.
 3. **No private data**: no speaker names, Sonos UIDs, home paths, account
    names or passwords in the changes since the last release
-   (`git diff v<last>..HEAD` and `tests/test_no_local_paths.py`).
+   (`git diff v<last>..HEAD`; `python3 -m pytest -k local_paths` checks for home paths and account names).
 4. **Version and changelog**: put the new number into `VERSION`, rename
    *Unreleased* in `CHANGELOG.md` to `## <number> – <date>` and start a new,
    empty *Unreleased* section. The test suite checks that the number in
@@ -48,7 +48,7 @@ update plus a restart. Do it while nothing is playing.
 cd <repository>
 OLD=$(git rev-parse --short HEAD)
 git fetch --tags && git checkout v<number>      # or: git pull on main
-PYTHONPATH=src python3 -m unittest discover -s tests -q
+python3 -m pytest
 git diff --stat $OLD..HEAD -- systemd tools/render_runtime_units.py \
     src/integrations/sensors config
 ```

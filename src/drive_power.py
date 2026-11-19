@@ -1,4 +1,4 @@
-"""Optional, capability-driven optical drive power management (M0.12b-r4).
+"""Optional, capability-driven optical drive power management.
 
 All device commands run in the *service event-loop*, not from a background
 thread. The service never ticks this manager while a CD reader is attached.

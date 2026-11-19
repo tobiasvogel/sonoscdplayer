@@ -31,7 +31,7 @@ class ButtonActivityOrderTests(unittest.TestCase):
             done.set()
 
         executor = SelectedTargetExecutor(
-            "/tmp/not-connected-m019.sock",
+            "/tmp/not-connected.sock",
             reader=reader,
             sender=sender,
             report=report,
@@ -215,7 +215,7 @@ class ActivityPublisherTests(unittest.TestCase):
             return True
 
         pub = DriveActivityPublisher(
-            '/tmp/not-connected-m019.sock', sender=sender
+            '/tmp/not-connected.sock', sender=sender
         )
         pub.start()
         try:
@@ -228,7 +228,7 @@ class ActivityPublisherTests(unittest.TestCase):
             received,
             [
                 (
-                    '/tmp/not-connected-m019.sock',
+                    '/tmp/not-connected.sock',
                     'drive-activity',
                     None,
                 )
@@ -237,7 +237,7 @@ class ActivityPublisherTests(unittest.TestCase):
 
     def test_closed_publisher_rejects_new_events(self):
         pub = DriveActivityPublisher(
-            '/tmp/not-connected-m019.sock',
+            '/tmp/not-connected.sock',
             sender=lambda *args: None,
         )
         pub.close()
@@ -245,7 +245,7 @@ class ActivityPublisherTests(unittest.TestCase):
 
     def test_bounded_queue_drops_excess_events(self):
         pub = DriveActivityPublisher(
-            '/tmp/not-connected-m019.sock',
+            '/tmp/not-connected.sock',
             sender=lambda *args: None,
             max_pending=1,
         )

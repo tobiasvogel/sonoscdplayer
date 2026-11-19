@@ -1,4 +1,4 @@
-"""NET-01: WLAN setup via a temporary hotspot (D-223)."""
+"""WLAN setup via a temporary hotspot."""
 import http.client
 import subprocess
 import threading

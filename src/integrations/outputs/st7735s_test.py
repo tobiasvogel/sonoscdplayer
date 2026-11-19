@@ -58,7 +58,7 @@ def main(argv=None):
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--spi-device', type=int, default=0)
     parser.add_argument('--spi-hz', type=int, default=2_000_000)
-    # Defaults match the project module as wired and tested (18.11.).
+    # Defaults match the project module as wired and tested.
     parser.add_argument('--dc-pin', type=int, default=22)
     parser.add_argument('--rst-pin', type=int, default=27)
     parser.add_argument('--backlight-pin', type=int, default=None,

@@ -1,7 +1,6 @@
-"""M0.13a: pure, fail-safe LED view model (NO GPIO, network or Sonos calls).
+"""Pure, fail-safe LED view model (NO GPIO, network or Sonos calls).
 
-The connection LED shows the Raspberry Pi's own network connection (OUT-03,
-D-222), not the state of any Sonos speaker: the player runs headless, and the
+The connection LED shows the Raspberry Pi's own network connection, not the state of any Sonos speaker: the player runs headless, and the
 LED is how one sees that it is on the network. The observation comes from the
 read-only NetworkManager status; Ethernet has precedence over WLAN.
 """
@@ -28,7 +27,7 @@ class Network(str, Enum):
     CONNECTED = 'connected'        # LAN or WLAN connected
     CONNECTING = 'connecting'      # a connection is being established
     DISCONNECTED = 'disconnected'  # no network connection
-    HOTSPOT = 'hotspot'            # setup hotspot active (NET-01)
+    HOTSPOT = 'hotspot'            # setup hotspot active
 
 
 def classify_network(status) -> Network:
@@ -103,7 +102,7 @@ def derive_led_state(
     if power_fault is None and isinstance(disc, Mapping) and disc.get('mode') == 'NO_DRIVE':
         power_fault = PowerFault.DRIVE
 
-    # D-225: shutting down wins (the player stops meanwhile), then the drive,
+    # shutting down wins (the player stops meanwhile), then the drive,
     # then player errors.
     if shutting_down:
         power = Led(Pattern.SLOW_BLINK, 'shutting_down')

@@ -1,4 +1,4 @@
-"""M0.14a: opt-in Waveshare 1.5inch SSD1327 SPI0/CE0 test driver.
+"""Opt-in Waveshare 1.5inch SSD1327 SPI0/CE0 test driver.
 
 Hardware SPI: BCM10 MOSI, BCM11 SCLK, BCM8 CE0; DC and RESET configurable.
 No player or Sonos commands. Hardware imports deferred until --execute.
@@ -89,7 +89,7 @@ class Framebuffer:
             im=Image.new('L',(WIDTH,HEIGHT),0)
             draw=ImageDraw.Draw(im)
             font=ImageFont.load_default()
-            for y, label, gray in [(9,'SONOS CD',255),(32,'SSD1327',220),(55,'128 x 128',175),(78,'SPI0 / CE0',145),(101,'M0.14a',255)]:
+            for y, label, gray in [(9,'SONOS CD',255),(32,'SSD1327',220),(55,'128 x 128',175),(78,'SPI0 / CE0',145),(101,'TEST',255)]:
                 draw.text((8,y),label,font=font,fill=gray)
             p=im.load()
             for y in range(HEIGHT):

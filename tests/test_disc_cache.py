@@ -1,4 +1,4 @@
-"""META-01C: temporary SQLite and Cover cache, no network."""
+"""Temporary SQLite and Cover cache, no network."""
 from io import BytesIO
 from pathlib import Path
 import sqlite3

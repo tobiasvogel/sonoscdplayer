@@ -1,4 +1,4 @@
-"""ARC-DISPLAY-01C.7: integrated display priority and read-only boundaries.
+"""Integrated display priority and read-only boundaries.
 
 Since 01D the SSD1327 frame is drawn from the same semantic screen as the
 16x2 character projection; there is no second input controller.

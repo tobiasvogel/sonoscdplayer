@@ -37,7 +37,7 @@ CURRENT_TARGET_RETRY_SECONDS = 5.0
 # A power-off requested by the button service is not acknowledged to the UI;
 # if the system is still running after this long, show the normal UI again.
 LONG_PRESS_SCREEN_SECONDS = 90.0
-# INP-02: how long an acknowledged volume level stays visible.
+# how long an acknowledged volume level stays visible.
 VOLUME_OVERLAY_SECONDS = 2.0
 
 
@@ -58,7 +58,7 @@ class InteractiveMenu:
         self.renderer = MultiRenderer(language=self.language)
         self._target_rpc = target_rpc
         self._group_target_rpc = group_target_rpc
-        # disc_reset() -> True: forget the inserted CD's metadata (D-050);
+        # disc_reset() -> True: forget the inserted CD's metadata;
         # runs on a worker thread, never on the display loop.
         self._disc_reset = disc_reset
         self._disc_reset_busy = False
@@ -90,9 +90,9 @@ class InteractiveMenu:
         self._current_target = current_target
         # Called with the new language code after a confirmed menu choice.
         self._on_language_change = on_language_change
-        # WLAN setup through the hotspot (NET-01); None = not available here.
+        # WLAN setup through the hotspot; None = not available here.
         self.network_setup = network_setup
-        # On-device WLAN choice from the hotspot screen (D-224).
+        # On-device WLAN choice from the hotspot screen.
         self.wifi_entry = (WifiEntryController(network_setup,
                                                extra_characters=text_extra_characters)
                            if network_setup is not None else None)
@@ -672,7 +672,7 @@ class InteractiveMenu:
         netsetup = self.netsetup_snapshot()
         if netsetup is not None and not self.power_menu and (name, event) != ('power', 'short'):
             # The setup screen stays until done, timed out or cancelled; the
-            # encoder drives the on-device choice (D-224).
+            # encoder drives the on-device choice.
             if name in ('encoder', 'encoder_sw'):
                 return self.wifi_entry.event(name, event, now, netsetup)
             return False
@@ -756,7 +756,7 @@ class InteractiveMenu:
 
         This is the ONLY place that decides which screen wins:
         shutdown > notice > WLAN setup > POWER > volume > language > menu.
-        WLAN setup returns None (its screens have their own D-224 renderer),
+        WLAN setup returns None (its screens have their own renderer),
         as does an inactive menu without overlay. Read-only: no input,
         no player writes.
         """

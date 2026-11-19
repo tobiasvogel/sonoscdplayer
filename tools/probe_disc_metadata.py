@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""META-01A: read-only, idle-only TOC and CD-TEXT diagnostic.
+"""Read-only, idle-only TOC and CD-TEXT diagnostic.
 
 Run only when the SonosCDPlayer service is stopped (or after verifying it is
 idle). A shared nonblocking drive lock prevents concurrent local CD reads.

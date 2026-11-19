@@ -1,6 +1,6 @@
 """Hardware-independent definitions for the ordinary navigation pages.
 
-ARC-DISPLAY-01C/01D: a single source for menu order and heading keys.
+A single source for menu order and heading keys.
 The controller retains ownership of input and action execution. Renderer
 modules consume this catalog but do not redefine the menu content.
 """
@@ -10,7 +10,7 @@ from types import MappingProxyType
 MAIN_ITEMS = ("menu.targets", "menu.network", "menu.settings", "menu.back")
 NETWORK_ITEMS = ("network.status", "network.setup", "menu.back")
 SETTINGS_ITEMS = ("menu.language", "menu.rescan", "menu.reset_disc", "menu.back")
-# Confirmation before forgetting the inserted CD's stored metadata (D-050).
+# Confirmation before forgetting the inserted CD's stored metadata.
 # "Back" comes first so a hasty press changes nothing.
 RESET_DISC_ITEMS = ("menu.back", "menu.reset_disc_confirm")
 

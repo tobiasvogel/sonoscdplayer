@@ -1,4 +1,4 @@
-"""OPS-02: one version number, visible in the player status."""
+"""One version number, visible in the player status."""
 import subprocess
 import sys
 import tempfile

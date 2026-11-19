@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""META-01B: one-shot read-only DiscID / MusicBrainz diagnostic.
+"""One-shot read-only DiscID / MusicBrainz diagnostic.
 
 Stop the player before using this tool. Lookup happens after lock release.
 """

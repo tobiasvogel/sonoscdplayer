@@ -1,4 +1,4 @@
-"""ARC-DISPLAY-01B: pure character-cell layout for semantic screens.
+"""Pure character-cell layout for semantic screens.
 
 Layout is deterministic and read-only. Encoder events, menu intents and
 authorization remain owned by the existing UI/controller code. No Pillow,

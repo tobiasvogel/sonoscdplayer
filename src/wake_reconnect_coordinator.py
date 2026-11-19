@@ -1,4 +1,4 @@
-"""Pure M0.19 recovery evidence coordinator.
+"""Collect the evidence that a reconnected USB drive is the same drive.
 
 Consumes previously collected observations; performs no I/O.
 An accepted evidence assessment is NOT a successful motor wake.

@@ -44,7 +44,7 @@ class Config:
     poll_interval_ms: int
     power_hold_ms: int = 3000
     shift_registers: dict = field(default_factory=dict)
-    # D-012: auto-repeat of held volume buttons.
+    # auto-repeat of held volume buttons.
     volume_repeat_delay_ms: int = 750
     volume_repeat_interval_ms: int = 250
 

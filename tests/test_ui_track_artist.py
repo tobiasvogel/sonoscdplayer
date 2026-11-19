@@ -1,4 +1,4 @@
-"""Compilations: during playback the OLED shows the track's own artist (18.11.)."""
+"""Compilations: during playback the OLED shows the track's own artist."""
 import unittest
 
 from sonos_ui.player_adapter import project_status

@@ -1,4 +1,4 @@
-"""ARC-DISPLAY-01D: draw a SemanticScreen on the 128x128 SSD1327 OLED.
+"""Draw a SemanticScreen on the 128x128 SSD1327 OLED.
 
 InteractiveMenu.semantic_screen() decides WHAT is shown (and in which order
 overlays win); this module only decides HOW it looks on this display. The
@@ -69,7 +69,7 @@ def render_screen(screen: SemanticScreen, *, renderer, navigation_renderer=None,
 def graphic_frame_from_menu(menu, *, now: float):
     """The OLED image of an InteractiveMenu (shutdown screens excluded).
 
-    WLAN setup still has its own D-224 renderer; an inactive menu without
+    WLAN setup still has its own renderer; an inactive menu without
     overlay shows the speaker list, as before.
     """
     screen = menu.semantic_screen(now=now)

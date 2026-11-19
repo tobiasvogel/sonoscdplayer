@@ -1,4 +1,4 @@
-"""ARC-DISPLAY-01C.3: shared read-only semantic source for UI states."""
+"""Shared read-only semantic source for UI states."""
 import unittest
 from dataclasses import replace
 from types import SimpleNamespace

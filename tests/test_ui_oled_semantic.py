@@ -1,4 +1,4 @@
-"""ARC-DISPLAY-01D: the OLED is drawn from InteractiveMenu.semantic_screen().
+"""The OLED is drawn from InteractiveMenu.semantic_screen().
 
 The reference below is the OLED composition as it was before 01D (built
 from the unchanged drawing primitives). Every state must still give the

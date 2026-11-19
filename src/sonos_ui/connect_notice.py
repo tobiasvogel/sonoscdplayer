@@ -1,6 +1,6 @@
 """Read-only CONNECT preview notices driven by semantic input events.
 
-NetworkManager actions and real status collection belong to INP-03c/d.
+NetworkManager actions and real status collection belong to network_setup and network_status.
 The notice engine never sees hardware and does not perform network writes.
 """
 from .notice import Notice

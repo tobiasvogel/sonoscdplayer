@@ -1,5 +1,5 @@
-"""The whole CD as one block in the Sonos queue (D-230): Sonos plays on by
-itself, the Sonos app may skip, player and OLED follow (17.11.)."""
+"""The whole CD as one block in the Sonos queue: Sonos plays on by
+itself, the Sonos app may skip, player and OLED follow."""
 import re
 import unittest
 from types import SimpleNamespace
@@ -186,7 +186,7 @@ class QueueTests(unittest.TestCase):
         self.assertIsNone(self.c._queue_block)
 
     def test_resume_in_the_app_between_two_reads_is_no_error(self):
-        """18.11.: refresh read PAUSED_PLAYBACK, the ownership check then saw
+        """refresh read PAUSED_PLAYBACK, the ownership check then saw
         TRANSITIONING because the user pressed play in the Sonos app."""
         self.make(QueuePlayer())
         self.playing()
@@ -212,7 +212,7 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(self.c.state.mode, Mode.ERROR)
 
     def test_start_stuck_in_transitioning_is_given_up_and_released(self):
-        """18.11.: Sonos stayed TRANSITIONING; the device hung until restart."""
+        """Sonos stayed TRANSITIONING; the device hung until restart."""
         self.make(QueuePlayer())
         self.c.play()
         self.p.transport = 'TRANSITIONING'

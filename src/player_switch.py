@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""M0.11c experimental one-shot track switch. Explicit owned-stream guard.
+"""Experimental one-shot track switch. Explicit owned-stream guard.
 
 No grouping, no forced STOP on exit. STOP is issued ONLY for the previously
 started exact HTTP URI on the exact solo coordinator, immediately rechecked.
@@ -123,7 +123,7 @@ def run(argv=None, *, verify=verify_target, drive=detect_drive, toc=read_toc,
         config = pathlib.Path(args.config)
         if not config.is_absolute(): config = base/config
         if not config.is_file(): raise RuntimeError(f'Config missing: {config}')
-        print(f'[M0.11c] track {state.selected_track} -> {after.selected_track}; initial PLAY', flush=True)
+        print(f'[switch] track {state.selected_track} -> {after.selected_track}; initial PLAY', flush=True)
         start_server(device, state.selected_track, config)
         player = verify(args.uid)  # second STOPPED preflight
         if proc.poll() is not None: raise RuntimeError('Server ended before PLAY')
@@ -141,12 +141,12 @@ def run(argv=None, *, verify=verify_target, drive=detect_drive, toc=read_toc,
             if proc.poll() is not None: raise RuntimeError('Streaming server terminated')
             sleep(min(2, max(0, until-clock())))
         if not seen_playing: raise RuntimeError('No confirmed owned PLAYING; switch blocked')
-        print('[M0.11c] checking ownership for STOP', flush=True)
+        print('[switch] checking ownership for STOP', flush=True)
         # Phase 1: safely stop our old stream. The successor is only started after this.
         ownership_snapshot(player, args.uid, old_url)
         ownership_snapshot(player, args.uid, old_url)
         player.stop()
-        print('[M0.11c] owned stream stopped; replacing HTTP server', flush=True)
+        print('[switch] owned stream stopped; replacing HTTP server', flush=True)
         end_server()
         start_server(device, after.selected_track, config)
         player = verify(args.uid)  # strict STOPPED second preflight after new server
@@ -160,16 +160,16 @@ def run(argv=None, *, verify=verify_target, drive=detect_drive, toc=read_toc,
             if transport == 'PLAYING':
                 ownership_snapshot(player, args.uid, new_url)
                 confirmed = True
-            print(f'[M0.11c] second track Sonos={transport}', flush=True)
+            print(f'[switch] second track Sonos={transport}', flush=True)
             if confirmed and transport == 'STOPPED':
-                print('[M0.11c] second track natural end; no extra STOP', flush=True)
+                print('[switch] second track natural end; no extra STOP', flush=True)
                 return 0
             sleep(min(5, max(0, deadline-clock())))
         if not confirmed: raise RuntimeError('Second track never reached owned PLAYING')
-        print('[M0.11c] observation window ended; no extra STOP', flush=True)
+        print('[switch] observation window ended; no extra STOP', flush=True)
         return 0
     except (RuntimeError, OSError, ValueError, TimeoutError, KeyError) as exc:
-        print(f'[M0.11c] ABORT: {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
+        print(f'[switch] ABORT: {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
         return 1
     finally:
         # Never issue Sonos STOP from cleanup.

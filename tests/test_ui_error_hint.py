@@ -1,4 +1,4 @@
-"""After a player error the overview tells how to go on (18.11.)."""
+"""After a player error the overview tells how to go on."""
 import unittest
 from unittest.mock import patch
 
