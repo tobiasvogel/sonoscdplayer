@@ -8,7 +8,7 @@ import time
 import tomllib
 
 PIN=12
-# Keep in sync with src/config_paths.py; this script runs standalone at early boot.
+# Keep in sync with src/sonoscdplayer/system/config_paths.py; this script runs standalone at early boot.
 DEFAULT_CONFIG_DIR='/etc/sonoscdplayer'
 
 
@@ -32,7 +32,7 @@ def configured_power_pin(path):
 def configured_settings(path):
     """Return (power pin, GPIO warnings) from a local TOML configuration.
 
-    [gpio].warnings mirrors src/gpio_settings.py (standalone at early boot).
+    [gpio].warnings mirrors src/sonoscdplayer/system/gpio_settings.py (standalone at early boot).
     """
     with open(path, 'rb') as stream:
         document = tomllib.load(stream)

@@ -1,6 +1,6 @@
 """SonosCDPlayer version: the VERSION file plus, in a git checkout, the commit.
 
-`python3 src/version.py` prints it. The player logs it at start and puts it
+`python3 -m sonoscdplayer.system.version` (from src/) prints it. The player logs it at start and puts it
 in its status reply, so it is always clear which code runs on a device.
 """
 from __future__ import annotations

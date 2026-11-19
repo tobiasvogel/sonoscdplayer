@@ -172,7 +172,8 @@ class SetupPreflightTests(unittest.TestCase):
         for name in ('scripts', 'src', 'config'):
             (self.repo / name).mkdir(parents=True)
         (self.repo / 'scripts/packages.lst').write_text('git\n')
-        (self.repo / 'src/player_service.py').write_text('')
+        (self.repo / 'src/sonoscdplayer/player').mkdir(parents=True)
+        (self.repo / 'src/sonoscdplayer/player/service.py').write_text('')
         self.os_release = self.base / 'os-release'
         self.os_release.write_text('ID=debian\n')
         self.pi_model = self.base / 'model'

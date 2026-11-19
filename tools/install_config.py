@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Create the SonosCDPlayer configuration files at the standard location.
 
-The standard location is /etc/sonoscdplayer (see src/config_paths.py;
+The standard location is /etc/sonoscdplayer (see src/sonoscdplayer/system/config_paths.py;
 SONOSCDPLAYER_CONFIG_DIR overrides it). For each of player.toml,
 interface.toml and ui.toml the source is, in this order:
 

@@ -70,7 +70,7 @@ def inspect_runtime_units(repo: Path, service_user: str, venv: Path, flags: dict
         try:
             module.plan(Path(tmp), Path('/etc/systemd/system'),
                         Path('/etc/polkit-1/rules.d'),
-                        sensor_unit=(repo / 'src/integrations/sensors/apds-9306-065/service/apds9306d.service'
+                        sensor_unit=(repo / 'src/native/apds9306/service/apds9306d.service'
                                      if sensor else None),
                         target_unit=repo / 'systemd/sonoscdplayer.target',
                         early_led=early_led,
@@ -86,8 +86,8 @@ def check(args: argparse.Namespace, *, pi_model: Path = Path('/proc/device-tree/
     repo = args.repo.resolve()
     if not (repo / 'scripts/packages.lst').is_file():
         errors.append('Missing scripts/packages.lst')
-    if not (repo / 'src/player_service.py').is_file():
-        errors.append('Checkout does not contain src/player_service.py')
+    if not (repo / 'src/sonoscdplayer/player/service.py').is_file():
+        errors.append('Checkout does not contain src/sonoscdplayer/player/service.py')
     if os_release.is_file():
         data = dict(line.split('=', 1) for line in os_release.read_text().splitlines()
                     if '=' in line and not line.startswith('#'))
