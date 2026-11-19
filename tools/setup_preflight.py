@@ -132,7 +132,9 @@ def check(args: argparse.Namespace, *, pi_model: Path = Path('/proc/device-tree/
     if args.assembler and not (repo / 'tools/prepare_splash_assembler.sh').is_file():
         errors.append('Missing splash assembler preparation helper')
 
-    inspect_configs(repo, Path('/etc/sonoscdplayer'), args.config,
+    # Same override as the player (src/sonoscdplayer/system/config_paths.py).
+    config_dir = Path(os.environ.get('SONOSCDPLAYER_CONFIG_DIR') or '/etc/sonoscdplayer')
+    inspect_configs(repo, config_dir, args.config,
                     args.services or args.screens, errors)
     if args.services:
         inspect_runtime_units(repo, args.service_user, args.venv,

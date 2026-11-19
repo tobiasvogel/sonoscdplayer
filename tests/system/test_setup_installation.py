@@ -1,5 +1,6 @@
 """Headless checks for the installation helpers (no system changes)."""
 import importlib.util
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -93,13 +94,20 @@ class RuntimeServiceInstallationTests(unittest.TestCase):
 
 
 class SetupShellTests(unittest.TestCase):
+    def setUp(self):
+        # An empty configuration directory, so that the result does not depend
+        # on whether this machine has /etc/sonoscdplayer installed.
+        config_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(config_dir.cleanup)
+        self.env = dict(os.environ, SONOSCDPLAYER_CONFIG_DIR=config_dir.name)
+
     def test_syntax(self):
         subprocess.run(['bash', '-n', str(ROOT / 'scripts/setup.sh')], check=True)
 
     def test_no_choice_without_terminal(self):
         result = subprocess.run(['bash', str(ROOT / 'scripts/setup.sh'), '--dry-run',
                                  '--service-user', 'nobody', '--venv', '/tmp/setup-test-venv'],
-                                stdin=subprocess.DEVNULL, capture_output=True, text=True)
+                                stdin=subprocess.DEVNULL, env=self.env, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Missing --packages_opt selection', result.stderr)
 
@@ -110,7 +118,7 @@ class SetupShellTests(unittest.TestCase):
             '--packages', 'no', '--spi', 'no', '--i2c', 'no',
             '--config', 'no', '--sensor', 'yes', '--services', 'no',
             '--screens', 'no', '--color', 'never'],
-            stdin=subprocess.DEVNULL, capture_output=True, text=True)
+            stdin=subprocess.DEVNULL, env=self.env, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('requires --services yes', result.stderr)
 
@@ -120,7 +128,7 @@ class SetupShellTests(unittest.TestCase):
                '--packages', 'no', '--spi', 'no', '--i2c', 'no',
                '--config', 'no', '--sensor', 'no', '--services', 'no',
                '--screens', 'yes', '--color', 'never']
-        result = subprocess.run(cmd, stdin=subprocess.DEVNULL,
+        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, env=self.env,
                                 capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Missing --assembler selection', result.stderr)
@@ -131,7 +139,7 @@ class SetupShellTests(unittest.TestCase):
                '--packages', 'no', '--spi', 'no', '--i2c', 'no',
                '--config', 'no', '--sensor', 'no', '--services', 'no',
                '--screens', 'no', '--shutdown-services', 'yes', '--color', 'never']
-        result = subprocess.run(cmd, stdin=subprocess.DEVNULL,
+        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, env=self.env,
                                 capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('require --screens yes', result.stderr)
@@ -142,7 +150,7 @@ class SetupShellTests(unittest.TestCase):
                '--packages', 'no', '--spi', 'no', '--i2c', 'no',
                '--config', 'no', '--sensor', 'no', '--services', 'no',
                '--screens', 'yes', '--splash-assembler', 'yes', '--color', 'never']
-        result = subprocess.run(cmd, stdin=subprocess.DEVNULL,
+        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, env=self.env,
                                 capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Missing required configuration', result.stderr)
@@ -153,7 +161,7 @@ class SetupShellTests(unittest.TestCase):
                                  '--packages', 'no', '--spi', 'no', '--i2c', 'no',
                                  '--config', 'no', '--sensor', 'no', '--services', 'no',
                                  '--screens', 'no', '--color', 'never'],
-                                stdin=subprocess.DEVNULL, capture_output=True, text=True)
+                                stdin=subprocess.DEVNULL, env=self.env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('Preview only', result.stdout)
         self.assertNotIn('\x1b[', result.stdout)

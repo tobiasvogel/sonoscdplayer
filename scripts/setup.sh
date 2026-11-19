@@ -3,6 +3,8 @@
 # Interactive, explicit first-install orchestration; does not upgrade the OS.
 set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# Same override as the player (src/sonoscdplayer/system/config_paths.py).
+CONFIG_DIR="${SONOSCDPLAYER_CONFIG_DIR:-/etc/sonoscdplayer}"
 PACKAGES="$ROOT/scripts/packages.lst"
 
 usage() {
@@ -198,7 +200,7 @@ if [[ "$SENSOR" == yes ]]; then
   install -m 0755 "$SENSOR_DIR/apds9306" /usr/local/bin/apds9306
 fi
 if [[ "$SCREENS" == yes ]]; then
-  [[ -f /etc/sonoscdplayer/player.toml ]] || fail 'Screens require the installed player.toml'
+  [[ -f "$CONFIG_DIR/player.toml" ]] || fail 'Screens require the installed player.toml'
   if [[ "$ASSEMBLER" == yes ]]; then
     info 'Preparing pinned Raspberry Pi splash assembler'
     SPLASH_ASSEMBLER="$(bash "$ROOT/tools/prepare_splash_assembler.sh")"
@@ -214,8 +216,8 @@ if [[ "$SCREENS" == yes ]]; then
   sh "$ROOT/tools/install_screens.sh"
 fi
 if [[ "$SERVICES" == yes ]]; then
-  [[ -f /etc/sonoscdplayer/player.toml ]] || fail 'Missing player.toml; create configuration before service installation'
-  [[ -f /etc/sonoscdplayer/interface.toml ]] || fail 'Missing interface.toml; create configuration before service installation'
+  [[ -f "$CONFIG_DIR/player.toml" ]] || fail 'Missing player.toml; create configuration before service installation'
+  [[ -f "$CONFIG_DIR/interface.toml" ]] || fail 'Missing interface.toml; create configuration before service installation'
   [[ -x "$VENV/bin/python" ]] || fail 'Missing Python venv'
   out="$(mktemp -d)"
   trap 'rm -rf -- "${out:-}"' EXIT
