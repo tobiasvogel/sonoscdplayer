@@ -29,7 +29,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
-import config_paths  # noqa: E402
+from sonoscdplayer.system import config_paths  # noqa: E402
 
 NAMES = (config_paths.PLAYER_TOML, config_paths.INTERFACE_TOML, config_paths.UI_TOML)
 

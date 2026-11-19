@@ -217,7 +217,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.config is None:
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-        import config_paths
+        from sonoscdplayer.system import config_paths
         args.config = config_paths.player_config()
     try:
         return swap(args.config, args.new, services=args.services or [DEFAULT_SERVICE],

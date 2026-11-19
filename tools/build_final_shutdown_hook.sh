@@ -15,16 +15,16 @@ python3 "$ROOT/tools/generate_ssd1327_display_header.py" \
     --output "$BUILD_DIR/ssd1327_display_config.h"
 python3 "$ROOT/tools/build_shutdown_renderer.py" \
     --backend ssd1327 \
-    --wait "$ROOT/src/data/shutdown_screen.png" \
-    --final "$ROOT/src/data/pleasewait_screen.png" \
-    --reboot "$ROOT/src/data/reboot_screen.png" \
-    --transition "$ROOT/src/data/shutdown_screen.png" \
+    --wait "$ROOT/src/sonoscdplayer/assets/screens/shutdown_screen.png" \
+    --final "$ROOT/src/sonoscdplayer/assets/screens/pleasewait_screen.png" \
+    --reboot "$ROOT/src/sonoscdplayer/assets/screens/reboot_screen.png" \
+    --transition "$ROOT/src/sonoscdplayer/assets/screens/shutdown_screen.png" \
     --output "$BUILD_DIR/shutdown_frames.h"
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -static \
-    -I"$BUILD_DIR" -I"$ROOT/src/shutdown" \
-    "$ROOT/src/shutdown/final_shutdown_hook.c" \
-    "$ROOT/src/shutdown/backends/ssd1327.c" \
-    "$ROOT/src/shutdown/transport/linux_spi_gpio.c" \
+    -I"$BUILD_DIR" -I"$ROOT/src/native/shutdown" \
+    "$ROOT/src/native/shutdown/final_shutdown_hook.c" \
+    "$ROOT/src/native/shutdown/backends/ssd1327.c" \
+    "$ROOT/src/native/shutdown/transport/linux_spi_gpio.c" \
     -o "$BUILD_DIR/sonoscdplayer-final-shutdown-hook"
 chmod 0755 "$BUILD_DIR/sonoscdplayer-final-shutdown-hook"
 for verb in poweroff reboot halt kexec; do

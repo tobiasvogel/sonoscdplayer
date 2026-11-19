@@ -191,7 +191,7 @@ if [[ "$CONFIG" == yes ]]; then
   python3 "$ROOT/tools/install_config.py" --service-user "$SERVICE_USER" --apply
 fi
 if [[ "$SENSOR" == yes ]]; then
-  SENSOR_DIR="$ROOT/src/integrations/sensors/apds-9306-065/service"
+  SENSOR_DIR="$ROOT/src/native/apds9306/service"
   info 'Compiling APDS9306 sensor helpers'
   make -C "$SENSOR_DIR" service
   install -m 0755 "$SENSOR_DIR/apds9306d" /usr/local/bin/apds9306d

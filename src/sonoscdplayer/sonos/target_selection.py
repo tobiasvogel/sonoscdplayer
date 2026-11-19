@@ -1,0 +1,84 @@
+"""Target selection for the existing player service.
+
+Selection is NOT ownership and grants no transport command by itself.
+With a TargetStore the last selection survives restarts; a restored
+selection is not checked against Sonos until PLAY.
+All methods are invoked by the player service's serialized control worker.
+"""
+from sonoscdplayer.player.state import Mode
+from sonoscdplayer.sonos.groups import normalize_members, find_players, check_member
+
+
+def verify_solo_stopped(uid):
+    from sonoscdplayer.sonos.playback_start import find_target
+    player = find_target(uid)
+    if player.uid != uid:
+        raise RuntimeError('target identity mismatch')
+    group = player.group
+    members = list(group.members)
+    if len(members) != 1 or members[0].uid != uid or group.coordinator.uid != uid:
+        raise RuntimeError('target is not solo coordinator')
+    if player.get_current_transport_info()['current_transport_state'] != 'STOPPED':
+        raise RuntimeError('target is not stopped')
+    return True
+
+
+class SelectedTarget:
+    def __init__(self, verify=verify_solo_stopped, find_many=find_players, store=None):
+        self._uid = None
+        self._members = ()
+        self._verify = verify
+        self._find_many = find_many
+        self._store = store
+
+    def restore(self):
+        """Load the remembered selection without contacting any speaker."""
+        stored = self._store.load() if self._store is not None else None
+        if stored is None:
+            return False
+        self._uid, self._members = stored
+        return True
+
+    def summary(self):
+        # Status and set/clear replies carry no Sonos UID.
+        return {'selected': self._uid is not None, 'ready_for_playback': False}
+
+    def speakers(self):
+        """All selected UIDs (coordinator first) for get-target only.
+
+        The control socket is local and private to the service account; the
+        OLED menu needs them to show the remembered selection as checkmarks.
+        """
+        return [] if self._uid is None else [self._uid, *self._members]
+
+    def uid_for_explicit_action(self):
+        return self._uid
+
+    def members_for_explicit_action(self):
+        return self._members
+
+    def set(self, controller, uid, members=None):
+        if controller.state.mode != Mode.STOPPED or controller.owned_url:
+            raise ValueError('target selection requires stopped, unowned player')
+        # Reuse the same live verification performed before existing PLAY.
+        # Validates STOPPED solo coordinator and does not send Sonos writes.
+        selected_members = tuple(sorted(normalize_members(uid, members)))
+        self._verify(uid)
+        if selected_members:
+            discovered = self._find_many(selected_members)
+            if set(discovered) != set(selected_members):
+                raise RuntimeError('incomplete member discovery')
+            for member_uid in selected_members:
+                check_member(discovered[member_uid], member_uid)
+        self._uid = uid
+        self._members = selected_members
+        if self._store is not None:
+            self._store.save(uid, selected_members)
+
+    def clear(self, controller):
+        if controller.state.mode != Mode.STOPPED or controller.owned_url:
+            raise ValueError('cannot clear target during active ownership')
+        self._uid = None
+        self._members = ()
+        if self._store is not None:
+            self._store.clear()

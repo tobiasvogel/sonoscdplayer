@@ -15,10 +15,10 @@ if [[ "${1:-}" != "--inside" ]]; then
         exit 2
     }
     cc -std=gnu11 -O2 -Wall -Wextra -Werror -static \
-       -I"$ROOT/build/exitrd" -I"$ROOT/src/shutdown" \
-       "$ROOT/tests/exitrd_unmount_harness.c" \
-       "$ROOT/src/shutdown/backends/ssd1327.c" \
-       "$ROOT/src/shutdown/transport/linux_spi_gpio.c" \
+       -I"$ROOT/build/exitrd" -I"$ROOT/src/native/shutdown" \
+       "$ROOT/tests/system/exitrd_unmount_harness.c" \
+       "$ROOT/src/native/shutdown/backends/ssd1327.c" \
+       "$ROOT/src/native/shutdown/transport/linux_spi_gpio.c" \
        -o "$HARNESS"
     chmod 0755 "$HARNESS"
     echo "=== RUN ISOLATED HARNESS ==="

@@ -35,20 +35,20 @@ python3 "$ROOT/tools/generate_ssd1327_display_header.py" \
     --output "$BUILD_DIR/ssd1327_display_config.h"
 python3 "$ROOT/tools/build_shutdown_renderer.py" \
     --backend "$BACKEND" \
-    --wait "$ROOT/src/data/shutdown_screen.png" \
-    --final "$ROOT/src/data/pleasewait_screen.png" \
-    --reboot "$ROOT/src/data/reboot_screen.png" \
-    --transition "$ROOT/src/data/shutdown_screen.png" \
-    --safe "$ROOT/src/data/safetounplug_screen.png" \
+    --wait "$ROOT/src/sonoscdplayer/assets/screens/shutdown_screen.png" \
+    --final "$ROOT/src/sonoscdplayer/assets/screens/pleasewait_screen.png" \
+    --reboot "$ROOT/src/sonoscdplayer/assets/screens/reboot_screen.png" \
+    --transition "$ROOT/src/sonoscdplayer/assets/screens/shutdown_screen.png" \
+    --safe "$ROOT/src/sonoscdplayer/assets/screens/safetounplug_screen.png" \
     $(if [ "$DIAGNOSTIC" = 1 ]; then printf %s '--diagnostic'; fi) \
     --output "$BUILD_DIR/shutdown_frames.h"
 "$CC" -std=gnu11 -O2 -Wall -Wextra -Werror -static \
     -DSONOSCD_EXITRD_SAFE_APPROVED=0 -DSONOSCD_EXITRD_DIAGNOSTIC="$DIAGNOSTIC" \
     -DSONOSCD_EXITRD_UNVERIFIED_SAFE="$UNVERIFIED" \
-    -I"$BUILD_DIR" -I"$ROOT/src/shutdown" \
-    "$ROOT/src/shutdown/exitrd.c" \
-    "$ROOT/src/shutdown/backends/ssd1327.c" \
-    "$ROOT/src/shutdown/transport/linux_spi_gpio.c" \
+    -I"$BUILD_DIR" -I"$ROOT/src/native/shutdown" \
+    "$ROOT/src/native/shutdown/exitrd.c" \
+    "$ROOT/src/native/shutdown/backends/ssd1327.c" \
+    "$ROOT/src/native/shutdown/transport/linux_spi_gpio.c" \
     -o "$BUILD_DIR/shutdown"
 # Enforce a non-group-writable binary regardless of the invoking user\x27s umask.
 chmod 0755 "$BUILD_DIR/shutdown"

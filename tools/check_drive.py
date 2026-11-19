@@ -23,10 +23,10 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
-from disc_startup import optical_devices  # noqa: E402
-from drive_access import drive_lock  # noqa: E402
-from drive_check import DriveChecker, format_report  # noqa: E402
-import version  # noqa: E402
+from sonoscdplayer.drive.disc_startup import optical_devices  # noqa: E402
+from sonoscdplayer.drive.drive_lock import drive_lock  # noqa: E402
+from sonoscdplayer.drive.drive_check import DriveChecker, format_report  # noqa: E402
+from sonoscdplayer.system import version  # noqa: E402
 
 COULD_NOT_RUN = 3
 PLAYER_SERVICE = 'sonoscdplayer-player.service'

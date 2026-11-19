@@ -16,7 +16,7 @@ WorkingDirectory=@SONOSCDPLAYER_SRC@
 # Language chosen in the menu (ui.json); shared with the player's target.json.
 StateDirectory=sonoscdplayer
 StateDirectoryMode=0700
-ExecStart=/usr/bin/python3 -u -m integrations.outputs.oled_status --socket /run/sonoscdplayer/control.sock --gpio --execute --seconds 0 --adopt-boot-splash --ambient-auto
+ExecStart=/usr/bin/python3 -u -m sonoscdplayer.ui.display_service --socket /run/sonoscdplayer/control.sock --gpio --execute --seconds 0 --adopt-boot-splash --ambient-auto
 Restart=on-failure
 RestartSec=2s
 TimeoutStopSec=5s

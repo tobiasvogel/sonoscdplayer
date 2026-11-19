@@ -8,7 +8,7 @@ Changes for users are listed in [`CHANGELOG.md`](../CHANGELOG.md).
 Check which version runs:
 
 ```sh
-python3 src/version.py                  # e.g. "SonosCDPlayer 0.9.0 (2b620d4)"
+(cd src && python3 -m sonoscdplayer.system.version)  # e.g. "SonosCDPlayer 0.9.0 (2b620d4)"
 journalctl -u sonoscdplayer-player.service -b | grep '\[version\]'
 ```
 
@@ -50,7 +50,7 @@ OLD=$(git rev-parse --short HEAD)
 git fetch --tags && git checkout v<number>      # or: git pull on main
 python3 -m pytest
 git diff --stat $OLD..HEAD -- systemd tools/render_runtime_units.py \
-    src/integrations/sensors config
+    src/native/apds9306 config
 ```
 
 The last command shows what needs more than a restart:
@@ -58,14 +58,14 @@ The last command shows what needs more than a restart:
 | Changed | Then |
 |---|---|
 | `systemd/` or `tools/render_runtime_units.py` | Render the units again and install them (see [Configuration](CONFIGURATION.md)) |
-| `src/integrations/sensors/…` | Rebuild the sensor service: `make service && sudo make install` in its `service/` directory |
+| `src/native/apds9306/…` | Rebuild the sensor service: `make service && sudo make install` in its `service/` directory |
 | `config/*.example.toml` | Compare with `/etc/sonoscdplayer/*.toml`; new options have defaults, so this is only needed to use them |
 
 Then restart the services and check the version:
 
 ```sh
 sudo systemctl restart sonoscdplayer-player sonoscdplayer-led sonoscdplayer-oled sonoscdplayer-buttons
-python3 src/version.py
+(cd src && python3 -m sonoscdplayer.system.version)
 ```
 
 **Back to the previous version:** `git checkout <previous tag or $OLD>`,

@@ -23,21 +23,21 @@ The tests of the statically built shutdown hook are skipped until it has been bu
 
 ## Layout
 
-Files are named after the part of the player they cover:
+The folders mirror `src/sonoscdplayer/`:
 
-| Prefix | Covers |
+| Folder | Covers |
 |---|---|
-| `test_streaming` | RAM ring buffer and HTTP track server |
-| `test_disc_*`, `test_metadata_*` | CD-TEXT, MusicBrainz, metadata cache, covers, language rules |
-| `test_player_*` | State machine, controller, control socket, Sonos playback, groups, target RPCs |
-| `test_drive_*`, `test_disc_state` | Drive power, idle, wake-up, USB reconnect, disc detection, the drive check tool |
-| `test_input_*` | Buttons, encoder, safe transport buttons, volume, POWER, CONNECT |
-| `test_led`, `test_ambient_brightness` | Status LEDs and ambient light |
-| `test_oled_*` | SSD1327 driver and the OLED status service |
-| `test_sh1107*`, `test_st7735s*`, `test_display_*` | Further display controllers, their renderers and display profiles |
-| `test_ui_*` | Menu, speaker selection, rendering, notices, languages, network status |
-| `test_system_screens` | Localized start, shutdown and restart screens |
-| `test_shutdown_*` | Shutdown handover, late shutdown hook, frame renderer, experimental exitrd |
-| `test_install` | Config files, systemd units, no-local-paths guard |
+| `audio/` | RAM ring buffer and the HTTP track server |
+| `drive/` | Disc detection, drive lock, power, idle and wake-up, USB reconnect, eject, the drive check tool |
+| `metadata/` | CD-TEXT, MusicBrainz, metadata cache and worker, covers, language rules |
+| `player/` | State machine, controller, control socket, Sonos playback and queue, groups, speaker selection |
+| `ui/` | Display service, menu, speaker selection screens, rendering, notices, languages, system screens, display profiles |
+| `network_setup/` | WLAN setup through the hotspot and on the device |
+| `hardware/displays/` | SSD1327, SH1107 and ST7735S controllers and their renderers |
+| `hardware/inputs/` | Buttons, encoder, shift register, PLAY/PAUSE policy, volume, POWER, CONNECT |
+| `hardware/leds/` | Status LEDs |
+| `hardware/sensors/` | Ambient light sensor and its daemon (C test in `c/`) |
+| `system/` | Installation and setup script, configuration files, systemd units, version, stack dump, shutdown screens and handover |
+| `helpers/` | Fakes and sample data shared by several test folders (on the import path) |
 
 New tests go into the file for the part they cover; add a new file only for a new part of the player.

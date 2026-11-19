@@ -18,7 +18,7 @@ StateDirectory=sonoscdplayer
 StateDirectoryMode=0700
 UMask=0077
 # The installed SoCo dependency lives in the project venv, not system Python.
-ExecStart=@SONOSCDPLAYER_PYTHON@ -u player_service.py --config @SONOSCDPLAYER_PLAYER_CONFIG@ --socket /run/sonoscdplayer/control.sock
+ExecStart=@SONOSCDPLAYER_PYTHON@ -u -m sonoscdplayer.player.service --config @SONOSCDPLAYER_PLAYER_CONFIG@ --socket /run/sonoscdplayer/control.sock
 # Do not automatically restart the Sonos owner until crash/ownership behavior is validated.
 Restart=no
 TimeoutStopSec=15

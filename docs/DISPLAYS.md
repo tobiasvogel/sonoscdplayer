@@ -18,7 +18,7 @@ await their connection to the player.
 but it has no partial refresh and a full image takes about 20 seconds. That is
 too slow for track and status changes and for navigating the menus. No driver
 for it is included; its geometry is kept as a reference profile
-(`REFERENCE_PROFILES` in `sonos_ui/display_profiles.py`) so that it is never
+(`REFERENCE_PROFILES` in `sonoscdplayer/ui/displays/profiles.py`) so that it is never
 offered as a player display.
 
 ## Choosing pins

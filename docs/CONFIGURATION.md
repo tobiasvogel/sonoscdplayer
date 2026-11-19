@@ -63,9 +63,9 @@ The configuration files are only read, never written by the services. What is ch
 | `metadata.sqlite3` | Album and track names found for each CD (CD-TEXT, MusicBrainz), written by the player |
 | `covers/` | One cached cover image per album, if covers are enabled (`[ui.cover] mode`); at most `max_dimension_px` (default 512), JPEG quality `jpeg_quality` (default 85), together at most `budget_mb` (default 100 MB). When the budget is full, stored covers are kept and new ones are not stored |
 
-After a restart the player restores this selection without contacting any speaker and never starts playback on its own. The display menu asks the player for it and shows the remembered speakers as checked. PLAY checks the speakers as usual; if one is not available, an error is shown and the selection is kept. Choosing other speakers replaces the file; deleting it forgets the selection. Outside systemd the directory can be set with `player_service.py --state-dir`.
+After a restart the player restores this selection without contacting any speaker and never starts playback on its own. The display menu asks the player for it and shows the remembered speakers as checked. PLAY checks the speakers as usual; if one is not available, an error is shown and the selection is kept. Choosing other speakers replaces the file; deleting it forgets the selection. Outside systemd the directory can be set with `python3 -m sonoscdplayer.player.service --state-dir`.
 
-A CD's names are looked up once and then kept. To look them up again (e.g. after a correction on MusicBrainz), choose **Settings → Reset CD entry** on the device with the CD inserted; this forgets the stored names of this CD only, also a manually chosen release, and searches again. The same is available as `player_remote.py reset-disc`.
+A CD's names are looked up once and then kept. To look them up again (e.g. after a correction on MusicBrainz), choose **Settings → Reset CD entry** on the device with the CD inserted; this forgets the stored names of this CD only, also a manually chosen release, and searches again. The same is available on the command line: `cd src && python3 -m sonoscdplayer.player.remote reset-disc`.
 
 ## Playing on
 
@@ -113,7 +113,7 @@ sh tools/install_screens.sh            # --dry-run shows the planned changes, in
 
 The lines are kept in one marked block at the end of `config.txt` (under `[all]`), and a backup is written to `config.txt.sonoscdplayer.bak`. Identical lines set by hand elsewhere are moved into the block. If one of these pins or `splash_screen` is set differently, the script stops without changing anything. After changing the pins in `player.toml`, run the script again; changes take effect at the next start.
 
-The boot splash is built from `src/data/start_screen.png` with the localized text and assembled with `splash_assembler.py` from the Raspberry Pi [utils](https://github.com/raspberrypi/utils) (`splashasm` folder). The script looks for it in `~/src/utils/splashasm/` and `~/utils/splashasm/`; set `SPLASH_ASSEMBLER=/path/to/splash_assembler.py` otherwise. The firmware splash requires the beta bootloader (`raspi-config nonint do_beta_mode B1`, done by `scripts/setup.sh`).
+The boot splash is built from `src/sonoscdplayer/assets/screens/start_screen.png` with the localized text and assembled with `splash_assembler.py` from the Raspberry Pi [utils](https://github.com/raspberrypi/utils) (`splashasm` folder). The script looks for it in `~/src/utils/splashasm/` and `~/utils/splashasm/`; set `SPLASH_ASSEMBLER=/path/to/splash_assembler.py` otherwise. The firmware splash requires the beta bootloader (`raspi-config nonint do_beta_mode B1`, done by `scripts/setup.sh`).
 
 ## systemd units
 

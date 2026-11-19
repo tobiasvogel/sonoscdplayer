@@ -220,6 +220,8 @@ Some features are optional or hardware-specific. Consult each guide for its requ
 
 Contributions are welcome, including software improvements, hardware compatibility reports, testing feedback, translations, wiring diagrams, documentation, and enclosure designs.
 
+The Python code is one package, `src/sonoscdplayer/`, organized by area: `audio` (reading and streaming the CD), `drive` (the optical drive), `metadata`, `sonos`, `player` (the player service), `ui` (the display service and menu), `hardware` (displays, buttons, LEDs, sensors), `network_setup` and `system`. Native C code is in `src/native/`. Tests mirror the package under `tests/` and run with `python3 -m pytest`.
+
 For substantial code changes, please open an issue describing the proposed improvement or problem before beginning work. The project favours maintainable implementations and incremental, hardware-backed testing.
 
 Do not commit credentials, private network information, personal Sonos device identifiers, local configuration files containing private details, or copyrighted CD audio recordings.

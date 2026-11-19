@@ -3,7 +3,7 @@
 
 The versioned files under systemd/ are templates with @SONOSCDPLAYER_*@
 placeholders; they contain no installation paths or account names. All units
-read their configuration from the standard location (src/config_paths.py,
+read their configuration from the standard location (src/sonoscdplayer/system/config_paths.py,
 /etc/sonoscdplayer by default).
 
 POWER actions (with the polkit rule), drive-activity wake events, CONNECT
@@ -20,7 +20,7 @@ import re
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-import config_paths  # noqa: E402
+from sonoscdplayer.system import config_paths  # noqa: E402
 
 
 UNITS = (
@@ -97,16 +97,16 @@ def render(source_dir, *, checkout, python_venv, user, power_actions=True,
     ) if enabled)
     commands = {
         UNITS[0]: (
-            f'{python_venv} -u player_service.py --config {player_config} '
+            f'{python_venv} -u -m sonoscdplayer.player.service --config {player_config} '
             '--socket /run/sonoscdplayer/control.sock'
         ),
         UNITS[1]: (
-            f'/usr/bin/python3 -u -m integrations.outputs.led_pwm '
+            f'/usr/bin/python3 -u -m sonoscdplayer.hardware.leds.led_service '
             f'--config {player_config} --socket /run/sonoscdplayer/control.sock '
             '--gpio --execute --seconds 0'
         ),
         UNITS[2]: (
-            f'{python_venv} -u -m integrations.outputs.oled_status '
+            f'{python_venv} -u -m sonoscdplayer.ui.display_service '
             f'--socket /run/sonoscdplayer/control.sock '
             f'--display-config {player_config} --gpio --execute --seconds 0 '
             f'--ambient-auto --ui-modern --ui-config {ui_config} '
@@ -115,7 +115,7 @@ def render(source_dir, *, checkout, python_venv, user, power_actions=True,
             f'--oled-recover-on-error --ui-target-rpc{oled_power}'
         ),
         UNITS[3]: (
-            f'{python_venv} -u -m integrations.interfaces.interface_input '
+            f'{python_venv} -u -m sonoscdplayer.hardware.inputs.button_service '
             f'--config {interface_config} --gpio --commands '
             '--socket /run/sonoscdplayer/control.sock '
             '--ui-events-socket /run/sonoscdplayer-ui/events.sock '
@@ -177,13 +177,14 @@ def check_checkout(checkout):
     """Refuse a --checkout that is not the src directory of a checkout.
 
     Services start with WorkingDirectory=<checkout> and `python -m
-    integrations...`; a wrong directory only fails at runtime otherwise.
+    sonoscdplayer...`; a wrong directory only fails at runtime otherwise.
     """
     root = Path(checkout)
-    missing = [name for name in ('player_service.py', 'integrations')
+    service = Path('sonoscdplayer', 'player', 'service.py')
+    missing = [str(name) for name in (service,)
                if not (root / name).exists()]
     if missing:
-        hint = ' (did you mean its src/ subdirectory?)' if (root / 'src' / 'player_service.py').exists() else ''
+        hint = ' (did you mean its src/ subdirectory?)' if (root / 'src' / service).exists() else ''
         raise ValueError(f'--checkout {checkout} lacks {", ".join(missing)}{hint}')
 
 

@@ -5,7 +5,7 @@ The late-shutdown executable does not need Python, Pillow, or filesystem images.
 Each frame combines the icon from the artwork PNG (upper part) with the
 localized status text, rendered here at build time in the UI language from
 ui.toml. Changing the language therefore requires rebuilding the shutdown
-programs. Layout and font live in src/system_screen.py (shared with the OLED
+programs. Layout and font live in src/sonoscdplayer/ui/system_screens.py (shared with the OLED
 start screen); the C programs need neither Python nor the font.
 """
 import argparse
@@ -16,8 +16,8 @@ from PIL import Image, ImageOps, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
-import system_screen  # noqa: E402
-from system_screen import (  # noqa: E402,F401  (re-exported for tests)
+from sonoscdplayer.ui import system_screens as system_screen  # noqa: E402
+from sonoscdplayer.ui.system_screens import (  # noqa: E402,F401  (re-exported for tests)
     ICON_BOTTOM, TEXT_FONT, TEXT_MARGIN, layout_text)
 
 FRAME_NAMES = ('wait', 'transition', 'reboot', 'final', 'safe')
@@ -40,7 +40,7 @@ def frame_text(name: str, language: str) -> str:
 
 
 def configured_language() -> str:
-    from sonos_ui.ui_config import load_ui_config
+    from sonoscdplayer.ui.config import load_ui_config
     return load_ui_config().language
 
 
@@ -91,7 +91,7 @@ def generate(wait: Path, final: Path, reboot: Path, transition: Path, output: Pa
     """
     if backend != 'ssd1327':
         raise ValueError('unsupported backend: ' + backend)
-    from sonos_ui.i18n import available_languages
+    from sonoscdplayer.ui.i18n import available_languages
     languages = available_languages()
     default = language if language is not None else configured_language()
     if default not in languages:

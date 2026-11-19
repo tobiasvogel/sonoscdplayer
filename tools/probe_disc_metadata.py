@@ -14,11 +14,11 @@ import tomllib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
-from cd_toc import read_toc
-from config_paths import player_config
-from disc_metadata import build_local_metadata, read_cdtext
-from drive_access import drive_lock
-from disc_startup import optical_devices
+from sonoscdplayer.audio.table_of_contents import read_toc
+from sonoscdplayer.system.config_paths import player_config
+from sonoscdplayer.metadata.local_metadata import build_local_metadata, read_cdtext
+from sonoscdplayer.drive.drive_lock import drive_lock
+from sonoscdplayer.drive.disc_startup import optical_devices
 
 
 def metadata_flags(path: Path) -> tuple[bool, bool]:

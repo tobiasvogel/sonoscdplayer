@@ -1,0 +1,82 @@
+"""Bounded single-attempt set-target request on the existing player socket.
+
+Worker-only code. No GPIO, playback or Sonos calls. Never log UID.
+"""
+import json
+import socket
+
+DEFAULT_SOCKET = '/run/sonoscdplayer/control.sock'
+
+
+def submit_target(uid, *, members=None, socket_path=DEFAULT_SOCKET, timeout=4.0):
+    if not isinstance(uid, str) or not uid or len(uid)>128:
+        raise ValueError('invalid target')
+    request_data = {'command':'set-target','uid':uid}
+    if members is not None:
+        from sonoscdplayer.sonos.groups import normalize_members
+        request_data['members'] = sorted(normalize_members(uid, members))
+    request = json.dumps(request_data,separators=(',',':'))+'\n'
+    with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as sock:
+        sock.settimeout(timeout)
+        sock.connect(str(socket_path))
+        sock.sendall(request.encode('utf-8'))
+        response=bytearray()
+        while b'\n' not in response and len(response)<=16384:
+            chunk=sock.recv(4096)
+            if not chunk:
+                break
+            response.extend(chunk)
+    if b'\n' not in response or len(response)>16384:
+        raise RuntimeError('invalid player response')
+    reply=json.loads(response.split(b'\n',1)[0])
+    if not isinstance(reply,dict) or reply.get('ok') is not True:
+        raise RuntimeError('player rejected target')
+    selection=reply.get('target_selection')
+    if not isinstance(selection,dict) or selection.get('selected') is not True:
+        raise RuntimeError('missing target acknowledgement')
+    return True
+
+
+def read_target(*, socket_path=DEFAULT_SOCKET, timeout=2.0):
+    """UIDs of the player's current (possibly restored) selection; read-only."""
+    with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as sock:
+        sock.settimeout(timeout)
+        sock.connect(str(socket_path))
+        sock.sendall(b'{"command":"get-target"}\n')
+        response=bytearray()
+        while b'\n' not in response and len(response)<=16384:
+            chunk=sock.recv(4096)
+            if not chunk:
+                break
+            response.extend(chunk)
+    if b'\n' not in response or len(response)>16384:
+        raise RuntimeError('invalid player response')
+    reply=json.loads(response.split(b'\n',1)[0])
+    selection=reply.get('target_selection') if isinstance(reply,dict) else None
+    if reply.get('ok') is not True or not isinstance(selection,dict):
+        raise RuntimeError('player did not report a target')
+    speakers=selection.get('speakers',[]) if selection.get('selected') is True else []
+    if not isinstance(speakers,list) or not all(
+            isinstance(uid,str) and uid and len(uid)<=128 for uid in speakers):
+        raise RuntimeError('invalid target report')
+    return frozenset(speakers)
+
+
+def reset_disc(*, socket_path=DEFAULT_SOCKET, timeout=4.0):
+    """Ask the player to forget the inserted CD's stored metadata."""
+    with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as sock:
+        sock.settimeout(timeout)
+        sock.connect(str(socket_path))
+        sock.sendall(b'{"command":"reset-disc"}\n')
+        response=bytearray()
+        while b'\n' not in response and len(response)<=16384:
+            chunk=sock.recv(4096)
+            if not chunk:
+                break
+            response.extend(chunk)
+    if b'\n' not in response or len(response)>16384:
+        raise RuntimeError('invalid player response')
+    reply=json.loads(response.split(b'\n',1)[0])
+    if not isinstance(reply,dict) or reply.get('ok') is not True:
+        raise RuntimeError('player rejected the reset')
+    return True

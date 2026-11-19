@@ -17,7 +17,7 @@ confidence_threshold = 90
 minimum_margin = 15
 # Minimum number of CD-TEXT track titles for ambiguous DiscIDs.
 minimum_track_titles = 3
-# Optional independent community language packs under src/metadata_rules/.
+# Optional independent community language packs under src/sonoscdplayer/metadata/language_rules_data/.
 # Not tied to the device's UI language.
 rule_languages = []
 # Exact trailing (...) or [...] descriptors. Extend in any language.

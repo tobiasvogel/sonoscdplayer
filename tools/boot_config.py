@@ -37,8 +37,8 @@ class ConflictError(ValueError):
 
 
 def desired_lines(player_config, splash=None):
-    from integrations.outputs.display_pins import load_display_pins
-    from integrations.outputs.led_pwm import load_config
+    from sonoscdplayer.hardware.displays.pins import load_display_pins
+    from sonoscdplayer.hardware.leds.led_service import load_config
     leds = load_config(str(player_config))
     display = load_display_pins(player_config)
     lines = [f'gpio={leds.power_pin}=op,dh',        # power LED on from the start

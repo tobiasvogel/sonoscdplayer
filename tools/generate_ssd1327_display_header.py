@@ -4,8 +4,8 @@ import argparse
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.integrations.outputs.display_pins import load_display_pins
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+from sonoscdplayer.hardware.displays.pins import load_display_pins
 
 
 def render_header(pins):

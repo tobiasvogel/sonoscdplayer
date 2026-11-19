@@ -14,17 +14,17 @@ import tomllib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
-from cd_toc import read_toc
-from config_paths import player_config, ui_config
-from disc_musicbrainz import identity_from_toc, lookup_disc
-from disc_metadata import read_cdtext, build_local_metadata
-from disc_matching import MatchingPolicy, decide_release, merged_metadata
-from metadata_language_rules import load_language_rules
-from disc_cache import DiscCache
-from disc_covers import CoverCache
-from cover_preferences import read_cover_preferences
-from disc_startup import optical_devices
-from drive_access import drive_lock
+from sonoscdplayer.audio.table_of_contents import read_toc
+from sonoscdplayer.system.config_paths import player_config, ui_config
+from sonoscdplayer.metadata.musicbrainz import identity_from_toc, lookup_disc
+from sonoscdplayer.metadata.local_metadata import read_cdtext, build_local_metadata
+from sonoscdplayer.metadata.release_matching import MatchingPolicy, decide_release, merged_metadata
+from sonoscdplayer.metadata.language_rules import load_language_rules
+from sonoscdplayer.metadata.cache import DiscCache
+from sonoscdplayer.metadata.cover_store import CoverCache
+from sonoscdplayer.metadata.cover_preferences import read_cover_preferences
+from sonoscdplayer.drive.disc_startup import optical_devices
+from sonoscdplayer.drive.drive_lock import drive_lock
 
 
 def read_settings(path):

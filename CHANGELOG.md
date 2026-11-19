@@ -6,6 +6,12 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- Code reorganized into one package, `src/sonoscdplayer/`, by area (audio,
+  drive, metadata, sonos, player, ui, hardware, network_setup, system), with
+  self-explanatory file names; C code in `src/native/`, images and fonts in
+  `src/sonoscdplayer/assets/`; tests in `tests/<area>/`. Services start with
+  `python3 -m sonoscdplayer.…`: **render and install the systemd units
+  again after updating** (see docs/RELEASE.md).
 - CD-TEXT is read with a 45 s limit instead of 15 s; some slim drives need
   about 20 s on a CD with many tracks.
 - Drive check: read speed WARN limit 1.25x (was 1.5x); the report names the

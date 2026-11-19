@@ -21,7 +21,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
-import config_paths  # noqa: E402
+from sonoscdplayer.system import config_paths  # noqa: E402
 INSTALL = Path('/usr/local/libexec/sonoscdplayer-exitrd')
 UNIT = Path('/etc/systemd/system/sonoscdplayer-exitrd.service')
 CONFIG = config_paths.player_config()

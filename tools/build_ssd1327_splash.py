@@ -4,8 +4,8 @@ import argparse
 from pathlib import Path
 from PIL import Image, ImageOps
 import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.integrations.outputs.display_pins import DisplayPins, load_display_pins
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+from sonoscdplayer.hardware.displays.pins import DisplayPins, load_display_pins
 
 INIT=[(0xfd,0x12),(0xae,),(0x15,0,63),(0x75,0,127),
       (0x81,128),(0xa0,0x51),(0xa1,0),(0xa2,0),(0xa4,),
@@ -59,10 +59,10 @@ def main():
     a=p.parse_args()
     if a.png is None:
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-        from system_screen import screen_image
-        from sonos_ui.i18n import available_languages
-        from sonos_ui.ui_config import load_ui_config
-        from ui_state import UiState
+        from sonoscdplayer.ui.system_screens import screen_image
+        from sonoscdplayer.ui.i18n import available_languages
+        from sonoscdplayer.ui.config import load_ui_config
+        from sonoscdplayer.ui.language_state import UiState
         # The firmware cannot read the menu language at boot: build it in.
         language = (UiState(log=lambda message: None).language(available_languages())
                     or load_ui_config().language)

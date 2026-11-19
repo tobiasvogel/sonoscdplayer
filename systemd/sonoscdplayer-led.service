@@ -19,7 +19,7 @@ WorkingDirectory=@SONOSCDPLAYER_SRC@
 # Stop the early boot breathing LED (root, '+') and wait until it has released
 # the pin; '-' tolerates an early LED unit that is not installed.
 ExecStartPre=-+/usr/bin/systemctl stop sonoscdplayer-early-power-led.service
-ExecStart=/usr/bin/python3 -u -m integrations.outputs.led_pwm --config @SONOSCDPLAYER_PLAYER_CONFIG@ --socket /run/sonoscdplayer/control.sock --gpio --execute --seconds 0
+ExecStart=/usr/bin/python3 -u -m sonoscdplayer.hardware.leds.led_service --config @SONOSCDPLAYER_PLAYER_CONFIG@ --socket /run/sonoscdplayer/control.sock --gpio --execute --seconds 0
 Restart=on-failure
 RestartSec=2s
 TimeoutStopSec=5s
