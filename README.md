@@ -88,7 +88,7 @@ A typical build consists of:
 
 The reference build combines physical buttons and a rotary encoder on a custom PCB, but alternative control layouts are a design goal. The repository also contains 3D-printable enclosure parts; a complete, tested assembly guide is still in preparation.
 
-The **ASUS SDRW-08U1MT** is the reference optical drive. Idle spin-down and wake-up have been verified with this drive connected through a powered USB hub. The **TSSTcorp CDDVDW TS-U633J** was also evaluated but proved unstable in the tested setup. These results are not an exhaustive compatibility list.
+The **ASUS SDRW-08U1MT** is the reference optical drive. Idle spin-down and wake-up have been verified with this drive connected through a powered USB hub. The **TSSTcorp CDDVDW TS-U633J** was also evaluated but proved unstable in the tested setup. These results are not an exhaustive compatibility list. To test another drive, run `python3 tools/check_drive.py` with an audio CD inserted; see [Checking a CD drive](docs/DRIVE_CHECK.md).
 
 The [SonosCDPlayer website](https://sonoscdplayer.diy) is intended to collect tested components, hardware configurations, and community builds over time.
 
@@ -209,6 +209,7 @@ Additional documentation is available in the [`docs/`](docs/) directory.
 | [Power button](docs/POWER_BUTTON.md) | Power controls, permissions, and activation |
 | [Shutdown and restart screens](docs/SHUTDOWN_SCREENS.md) | OLED screens while shutting down or restarting, installation, optional exitrd |
 | [Status LEDs](docs/STATUS_LEDS.md) | Meaning of the power and connection (network) LEDs |
+| [Checking a CD drive](docs/DRIVE_CHECK.md) | Test whether a USB CD drive suits the player and share the result |
 | [Displays](docs/DISPLAYS.md) | Supported and evaluated display modules; [SH1107](docs/SH1107.md) and [ST7735S](docs/ST7735S.md) details |
 | [Releases and updates](docs/RELEASE.md) | Version number, making a release, updating the device |
 | [Changelog](CHANGELOG.md) | Changes per version |

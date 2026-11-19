@@ -6,6 +6,9 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- `tools/check_drive.py` checks whether a CD drive suits the player
+  (read speed, spin-down and wake-up, eject, USB reconnect, CD-TEXT) and
+  prints a report that can be shared; see `docs/DRIVE_CHECK.md`.
 - Log lines are tagged by component (`[player]`, `[service]`, `[disc]`,
   `[drive-wake]`, …) instead of internal milestone names such as `[M0.11d]`.
 - Tests run with pytest (`python3 -m pytest`, settings in `pytest.ini`).

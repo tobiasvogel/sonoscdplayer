@@ -30,7 +30,7 @@ Files are named after the part of the player they cover:
 | `test_streaming` | RAM ring buffer and HTTP track server |
 | `test_disc_*`, `test_metadata_*` | CD-TEXT, MusicBrainz, metadata cache, covers, language rules |
 | `test_player_*` | State machine, controller, control socket, Sonos playback, groups, target RPCs |
-| `test_drive_*`, `test_disc_state` | Drive power, idle, wake-up, USB reconnect, disc detection |
+| `test_drive_*`, `test_disc_state` | Drive power, idle, wake-up, USB reconnect, disc detection, the drive check tool |
 | `test_input_*` | Buttons, encoder, safe transport buttons, volume, POWER, CONNECT |
 | `test_led`, `test_ambient_brightness` | Status LEDs and ambient light |
 | `test_oled_*` | SSD1327 driver and the OLED status service |
