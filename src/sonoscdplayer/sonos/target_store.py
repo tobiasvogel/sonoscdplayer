@@ -20,6 +20,8 @@ VERSION = 1
 
 
 class TargetStore:
+    """Reads and writes ``target.json`` in the state directory."""
+
     def __init__(self, directory=None, *, log=print):
         self.path = Path(directory if directory is not None else default_state_dir()) / FILE_NAME
         self._log = log
@@ -42,8 +44,10 @@ class TargetStore:
             return None
 
     def save(self, uid, members):
+        """Remember coordinator and members; False if the file cannot be written."""
         return write_json(self.path, {'version': VERSION, 'coordinator': uid,
                                       'members': sorted(members)}, log=self._log)
 
     def clear(self):
+        """Forget the remembered selection."""
         return remove(self.path, log=self._log)

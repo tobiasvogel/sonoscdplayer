@@ -3,7 +3,7 @@ import unittest
 from dataclasses import replace
 from types import SimpleNamespace, SimpleNamespace as NS
 from sonoscdplayer.player.service import handle_command
-from sonoscdplayer.sonos.target_selection import SelectedTarget, verify_solo_stopped
+from sonoscdplayer.sonos.target_selection import SelectedTarget
 from sonoscdplayer.player.state import Mode
 from sonoscdplayer.ui.menu.interactive_menu import InteractiveMenu
 from sonoscdplayer.ui.menu.speakers.multi_target import from_devices
@@ -65,14 +65,14 @@ class TargetSelectionRPCTests(unittest.TestCase):
         self.selection._verify=lambda uid: (_ for _ in ()).throw(RuntimeError('grouped'))
         reply=self.request('set-target',uid='RINCON_234')
         self.assertFalse(reply['ok'])
-        self.assertEqual(self.selection.uid_for_explicit_action(),'RINCON_123')
+        self.assertEqual(self.selection.coordinator_uid(),'RINCON_123')
 
     def test_active_session_refuses_selection_and_clear(self):
         self.request('set-target',uid='RINCON_123')
         self.controller.state.mode=Mode.PLAYING
         self.assertFalse(self.request('clear-target')['ok'])
         self.assertFalse(self.request('set-target',uid='RINCON_234')['ok'])
-        self.assertEqual(self.selection.uid_for_explicit_action(),'RINCON_123')
+        self.assertEqual(self.selection.coordinator_uid(),'RINCON_123')
 
     def test_uid_not_allowed_in_get_or_clear(self):
         self.assertFalse(self.request('get-target',uid='RINCON_123')['ok'])
@@ -86,17 +86,6 @@ class TargetSelectionRPCTests(unittest.TestCase):
     def test_bad_uid_rejected(self):
         self.assertFalse(self.request('set-target',uid='bad uid')['ok'])
         self.assertFalse(self.selection.summary()['selected'])
-
-    def test_solo_live_preflight_checks_stopped(self):
-        from unittest.mock import patch
-        player=SimpleNamespace(uid='RINCON_123')
-        player.group=SimpleNamespace(coordinator=player,members=(player,))
-        player.get_current_transport_info=lambda: {'current_transport_state':'STOPPED'}
-        with patch('sonoscdplayer.sonos.playback_start.find_target',return_value=player):
-            self.assertTrue(verify_solo_stopped('RINCON_123'))
-            player.group.members=(player,SimpleNamespace(uid='other'))
-            with self.assertRaises(RuntimeError):
-                verify_solo_stopped('RINCON_123')
 
 
 def accepted_notice(menu, now):
@@ -124,7 +113,7 @@ class GroupPlaySelectedTests(unittest.TestCase):
         reply = handle_command(c, {'command':'set-target','uid':'A','members':['B']},s)
         self.assertTrue(reply['ok'],reply)
         self.assertEqual(c.calls,[])
-        self.assertEqual(s.members_for_explicit_action(),('B',))
+        self.assertEqual(s.member_uids(),('B',))
 
     def test_only_explicit_play_selected_uses_saved_members(self):
         c = Controller()
@@ -203,15 +192,15 @@ class RememberedTargetTests(unittest.TestCase):
 
     def test_selection_is_restored_after_restart_without_contacting_sonos(self):
         from unittest import mock
-        with mock.patch('sonoscdplayer.sonos.target_selection.check_member'):
+        with mock.patch('sonoscdplayer.sonos.target_selection.require_member_ready'):
             first = self.selection()
             self.assertTrue(self.request(first, 'set-target', uid='RINCON_A',
                                          members=['RINCON_C', 'RINCON_B'])['ok'])
         contacted = []
         restarted = self.selection(verify=contacted.append)
         self.assertTrue(restarted.restore())
-        self.assertEqual(restarted.uid_for_explicit_action(), 'RINCON_A')
-        self.assertEqual(restarted.members_for_explicit_action(), ('RINCON_B', 'RINCON_C'))
+        self.assertEqual(restarted.coordinator_uid(), 'RINCON_A')
+        self.assertEqual(restarted.member_uids(), ('RINCON_B', 'RINCON_C'))
         self.assertEqual(contacted, [])
         self.assertEqual(self.controller.calls, [])
 
@@ -233,7 +222,7 @@ class RememberedTargetTests(unittest.TestCase):
             raise RuntimeError('target not found')
         self.controller.play = unreachable
         self.assertFalse(self.request(selection, 'play-selected')['ok'])
-        self.assertEqual(selection.uid_for_explicit_action(), 'RINCON_A')
+        self.assertEqual(selection.coordinator_uid(), 'RINCON_A')
         self.assertEqual(self.store.load(), ('RINCON_A', ()))
 
     def test_clear_forgets_the_selection(self):
@@ -277,7 +266,7 @@ class RememberedTargetTests(unittest.TestCase):
         store = type(self.store)(self.state_dir.parent / 'blocker', log=self.logs.append)
         selection = SelectedTarget(verify=lambda uid: None, store=store)
         self.assertTrue(self.request(selection, 'set-target', uid='RINCON_A')['ok'])
-        self.assertEqual(selection.uid_for_explicit_action(), 'RINCON_A')
+        self.assertEqual(selection.coordinator_uid(), 'RINCON_A')
         self.assertTrue(any('not saved' in line for line in self.logs))
 
     def test_state_directory_follows_systemd(self):

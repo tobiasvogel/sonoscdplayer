@@ -1,7 +1,8 @@
-"""Read-only SoCo discovery snapshots; no Sonos transport writes.
+"""Search the network for Sonos speakers, for the speaker menu.
 
-UIDs stay in memory, not in CLI output or preview filenames. A stable key
-maps a visible name to one exact device only within the current snapshot.
+The result is a snapshot of names and UIDs; nothing is sent to the speakers.
+UIDs stay in memory and are never printed. An entry in the menu refers to
+one speaker only within the snapshot it came from.
 """
 from __future__ import annotations
 from dataclasses import dataclass
@@ -11,11 +12,13 @@ from sonoscdplayer.ui.i18n import Translator
 
 @dataclass(frozen=True)
 class Speaker:
+    """A speaker as shown in the menu."""
     uid: str
     name: str
 
 @dataclass(frozen=True)
 class DiscoverySnapshot:
+    """Speakers found by one search, sorted by name."""
     speakers: tuple[Speaker, ...]
     searching: bool = False
     error: str | None = None

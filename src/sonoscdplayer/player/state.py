@@ -115,3 +115,19 @@ class PlayerState:
     def _require_stopped(self):
         if self.mode != Mode.STOPPED:
             raise TransitionError(f'Only permitted in STOPPED; current state {self.mode.value}')
+
+
+def state_for_disc(disc, selected_track: int) -> PlayerState:
+    """Initial state for a disc, with ``selected_track`` selected.
+
+    ``disc`` is the table of contents. The track number is checked against
+    it, so that no unknown track number can reach a Sonos command.
+
+    Raises:
+        TransitionError: the track is not on the disc.
+        KeyError/ValueError: from ``disc.get_track`` for an unknown track.
+    """
+    numbers = tuple(track.number for track in disc.tracks)
+    state = PlayerState().disc_loaded(numbers).select(selected_track)
+    disc.get_track(state.selected_track)
+    return state

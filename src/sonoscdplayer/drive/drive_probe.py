@@ -34,32 +34,45 @@ def probe(path):
     return True, f"CD-DA, {len(tracks)} audio tracks"
 
 
-def main():
-    paths = sorted(glob.glob("/sys/class/block/sr*"), key=lambda p: int(os.path.basename(p)[2:]) if os.path.basename(p)[2:].isdigit() else 9999)
-    if not paths:
-        print("FAIL: no optical drives in /sys/class/block")
-        return 1
+def find_audio_cd_drive(*, report=print, probe_drive=probe,
+                        block_root="/sys/class/block") -> str:
+    """Return the one drive (``/dev/srN``) that holds a readable audio CD.
 
+    Every optical drive is probed with cd-info; ``report`` receives one line
+    per drive.
+
+    Raises:
+        RuntimeError: no drive, no drive with an audio CD, or more than one.
+    """
+    paths = sorted(glob.glob(os.path.join(block_root, "sr*")),
+                   key=lambda p: int(os.path.basename(p)[2:]) if os.path.basename(p)[2:].isdigit() else 9999)
+    if not paths:
+        raise RuntimeError("no optical drive found")
     valid = []
     for sys_path in paths:
-        name = os.path.basename(sys_path)
-        device_path = "/dev/" + name
+        device_path = "/dev/" + os.path.basename(sys_path)
         if not os.path.exists(device_path):
-            print(f"SKIP {device_path}: device node missing")
+            report(f"SKIP {device_path}: device node missing")
             continue
-        ok, description = probe(device_path)
-        print(f"{'PASS' if ok else 'SKIP'} {device_path}: {description}")
+        ok, description = probe_drive(device_path)
+        report(f"{'PASS' if ok else 'SKIP'} {device_path}: {description}")
         if ok:
             valid.append(device_path)
+    if not valid:
+        raise RuntimeError("no drive with a readable audio CD")
+    if len(valid) > 1:
+        raise RuntimeError("several drives hold an audio CD; select one explicitly")
+    return valid[0]
 
-    if len(valid) == 1:
-        print(f"SELECTED_DEVICE={valid[0]}")
-        return 0
-    if len(valid) == 0:
-        print("FAIL: no drive with readable audio CD")
-    else:
-        print("FAIL: multiple audio-CD drives; explicit selection required")
-    return 1
+
+def main():
+    try:
+        device = find_audio_cd_drive()
+    except RuntimeError as exc:
+        print(f"FAIL: {exc}")
+        return 1
+    print(f"SELECTED_DEVICE={device}")
+    return 0
 
 
 if __name__ == "__main__":

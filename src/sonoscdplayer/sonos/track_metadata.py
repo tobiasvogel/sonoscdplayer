@@ -108,6 +108,7 @@ def queue_allowed(player):
 
 
 def didl_item(didl):
+    """SoCo queue item for a DIDL-Lite string (for add_to_queue)."""
     from soco.data_structures_entry import from_didl_string
     return from_didl_string(didl)[0]
 
@@ -136,6 +137,7 @@ def remove_queue_item(player, entry):
 
 
 def playing_from_queue(player):
+    """True if the speaker currently plays from its Sonos queue."""
     try:
         uri = player.avTransport.GetMediaInfo([('InstanceID', 0)])['CurrentURI']
     except Exception:

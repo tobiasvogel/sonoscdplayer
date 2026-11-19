@@ -33,7 +33,7 @@ from sonoscdplayer.metadata.local_metadata import read_cdtext
 from sonoscdplayer.drive.drive_lock import drive_lock
 from sonoscdplayer.sonos.track_metadata import album_prefix_from_config, use_queue_from_config
 from sonoscdplayer.drive.eject import eject_verified_idle
-from sonoscdplayer.player.state import PlayerState, Mode
+from sonoscdplayer.player.state import Mode, PlayerState, state_for_disc
 from sonoscdplayer.drive.power import DrivePowerManager, load_config
 from sonoscdplayer.drive.wake_validation import wait_for_woken_disc
 from sonoscdplayer.drive.usb_identity import usb_identity, recovered_device
@@ -42,8 +42,6 @@ from sonoscdplayer.sonos.target_selection import SelectedTarget
 from sonoscdplayer.sonos.target_store import TargetStore, default_state_dir
 from sonoscdplayer.sonos.volume import VolumeControl, parse_volume_command
 from sonoscdplayer.sonos.groups import normalize_members
-from sonoscdplayer.sonos.play_track import make_url, prepare_selection
-from sonoscdplayer.sonos.playback_start import detect_drive
 from sonoscdplayer.system.package_paths import SOURCE_ROOT
 
 MAX_REQUEST = 1024
@@ -133,15 +131,15 @@ def handle_command(controller, request, selection=None, eject=None, volume=None)
             eject()
             return response(controller, ok=True)
         if command == 'play-selected':
-            if selection is None or selection.uid_for_explicit_action() is None:
+            if selection is None or selection.coordinator_uid() is None:
                 raise ValueError('no confirmed target')
             # This is the ONLY new route for group PLAY. It requires a separate
             # explicit command; selecting targets cannot start music.
             if controller.state.mode == Mode.ERROR and controller.can_reset():
                 # PLAY after a released error: clear it and try again.
                 controller.reset()
-            controller.play(selection.uid_for_explicit_action(),
-                            members=selection.members_for_explicit_action())
+            controller.play(selection.coordinator_uid(),
+                            members=selection.member_uids())
             return response(controller, ok=True)
         if command == 'sonos-status':
             reply = response(controller, ok=True)
@@ -728,10 +726,10 @@ def run(argv=None):
                         if threading.current_thread() is threading.main_thread() else None)
     try:
         refuse_existing_control_socket(ns.socket)
-        disc_status, toc = inspect_initial_disc(base, requested_device=ns.device)
+        disc_status, toc = inspect_initial_disc(requested_device=ns.device)
         device = disc_status.device or '/dev/sr0'  # placeholder, never opened without a READY TOC
         identity = usb_identity(device) if disc_status.device is not None else None
-        state = prepare_selection(toc, 1) if toc is not None else PlayerState()
+        state = state_for_disc(toc, 1) if toc is not None else PlayerState()
         with conf.open('rb') as handle:
             settings = tomllib.load(handle)
             shutdown_policy = settings.get('service', {}).get('shutdown_policy', 'stop_owned')

@@ -55,3 +55,24 @@ class PlayerStateTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+# ---- initial state for a disc --------------------------------------------------
+
+def _disc(numbers=(1, 2, 3)):
+    from types import SimpleNamespace
+    return SimpleNamespace(tracks=[SimpleNamespace(number=n) for n in numbers],
+                           get_track=lambda n: {k: str(k) for k in numbers}[n])
+
+
+def test_state_for_disc_selects_the_track():
+    from sonoscdplayer.player.state import Mode, state_for_disc
+    state = state_for_disc(_disc(), 2)
+    assert (state.mode, state.selected_track) == (Mode.STOPPED, 2)
+
+
+def test_state_for_disc_refuses_a_track_not_on_the_disc():
+    import pytest
+    from sonoscdplayer.player.state import TransitionError, state_for_disc
+    with pytest.raises(TransitionError):
+        state_for_disc(_disc(), 4)

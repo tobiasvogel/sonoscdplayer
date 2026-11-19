@@ -8,7 +8,7 @@ UID = 'RINCON_REVIEW_COORD'
 MEMBER_UID = 'RINCON_REVIEW_MEMBER'
 URL = 'http://192.0.2.10:8765/track/1.wav'
 FOREIGN_URL = 'https://example.invalid/foreign.mp3'
-from sonoscdplayer.sonos import groups as sonos_group
+from sonoscdplayer.sonos import groups
 from sonoscdplayer.player.controller import Controller
 from sonoscdplayer.player.state import PlayerState, Mode
 from sonoscdplayer.player.service import handle_command
@@ -415,7 +415,7 @@ class StagedGroupTests(unittest.TestCase):
         reply=handle_command(FakeController(),{'command':'set-target','uid':'A','members':['B']},sel)
         self.assertTrue(reply['ok'],reply)
         self.assertEqual(checked,['A'])
-        self.assertEqual(sel.members_for_explicit_action(),('B',))
+        self.assertEqual(sel.member_uids(),('B',))
         self.assertNotIn('B',str(reply))
         self.assertEqual(member.unjoins,0)
 
@@ -423,7 +423,7 @@ class StagedGroupTests(unittest.TestCase):
         sel=SelectedTarget(verify=lambda uid:True)
         reply=handle_command(FakeController(),{'command':'play','uid':'A','members':['B']},sel)
         self.assertFalse(reply['ok'])
-        self.assertIsNone(sel.uid_for_explicit_action())
+        self.assertIsNone(sel.coordinator_uid())
 
     def test_grouped_member_rejected_without_mutation(self):
         member=StagingSpeaker('B')
@@ -432,7 +432,7 @@ class StagedGroupTests(unittest.TestCase):
         sel=SelectedTarget(verify=lambda uid:True,find_many=lambda uids:{'B':member})
         reply=handle_command(FakeController(),{'command':'set-target','uid':'A','members':['B']},sel)
         self.assertFalse(reply['ok'])
-        self.assertIsNone(sel.uid_for_explicit_action())
+        self.assertIsNone(sel.coordinator_uid())
 
     def test_uncertain_release_remains_tracked(self):
         a,b=StagingSpeaker('A'),StagingSpeaker('B')
@@ -633,7 +633,7 @@ class GroupRecoveryTests(unittest.TestCase):
     def test_foreign_coordinator_uri_never_unjoins_member(self):
         coordinator, member = self._group()
         coordinator.uri = FOREIGN_URL
-        outcome = sonos_group.release(
+        outcome = groups.release(
             coordinator, {MEMBER_UID: member}, owned_url=URL)
         self.assertEqual(outcome[MEMBER_UID], 'kept: foreign playback')
         self.assertEqual(member.operations, [])
@@ -641,7 +641,7 @@ class GroupRecoveryTests(unittest.TestCase):
     def test_changed_group_topology_never_unjoins_member(self):
         coordinator, member = self._group()
         coordinator.group.members.append(FakeSonos(uid='RINCON_FOREIGN'))
-        outcome = sonos_group.release(
+        outcome = groups.release(
             coordinator, {MEMBER_UID: member}, owned_url=URL)
         self.assertEqual(outcome[MEMBER_UID], 'kept: topology changed')
         self.assertEqual(member.operations, [])
@@ -651,9 +651,9 @@ class GroupRecoveryTests(unittest.TestCase):
         def fail():
             raise TimeoutError('unjoin outcome unknown')
         member.unjoin = fail
-        outcome = sonos_group.release(
+        outcome = groups.release(
             coordinator, {MEMBER_UID: member}, owned_url=URL)
-        remaining = sonos_group.unresolved_members(
+        remaining = groups.unresolved_members(
             {MEMBER_UID: member}, outcome)
         self.assertEqual(list(remaining), [MEMBER_UID])
         self.assertEqual(outcome[MEMBER_UID], 'kept: unjoin failed')

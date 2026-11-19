@@ -6,6 +6,11 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- The former one-shot test programs `playback_start`, `play_track` and
+  `switch_track` are gone; what the player used from them now lives in
+  `sonos/speaker_checks.py`, `audio/track_server_process.py`,
+  `drive/drive_probe.py` and `player/state.py`, with clearer names and
+  English messages.
 - Code reorganized into one package, `src/sonoscdplayer/`, by area (audio,
   drive, metadata, sonos, player, ui, hardware, network_setup, system), with
   self-explanatory file names; C code in `src/native/`, images and fonts in

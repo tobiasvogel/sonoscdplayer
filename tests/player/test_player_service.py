@@ -280,7 +280,7 @@ class RecoveryTests(unittest.TestCase):
         self.assertFalse(handle_command(self.ctrl,{'command':'stop','force':True})['ok'])
         self.assertFalse(handle_command(self.ctrl,{'command':'next','uid':'TEST_SPEAKER','force':True})['ok'])
         self.assertEqual(self.target.stops,0)
-        with patch('sonoscdplayer.sonos.playback_start.find_target',return_value=self.target):
+        with patch('sonoscdplayer.sonos.speaker_checks.find_speaker',return_value=self.target):
             r=handle_command(self.ctrl,{'command':'stop','uid':'TEST_SPEAKER','force':True})
         self.assertTrue(r['ok']);self.assertEqual(self.target.stops,1)
 
@@ -288,7 +288,7 @@ class RecoveryTests(unittest.TestCase):
         self.ctrl.play('TEST_SPEAKER')
         self.ctrl._fail('start aborted')
         self.assertEqual(self.ctrl.state.mode.value,'ERROR')
-        with patch('sonoscdplayer.sonos.playback_start.find_target',return_value=self.target):
+        with patch('sonoscdplayer.sonos.speaker_checks.find_speaker',return_value=self.target):
             r=handle_command(self.ctrl,{'command':'stop','uid':'TEST_SPEAKER','force':True})
         self.assertTrue(r['ok'])
         self.assertEqual(r['state']['player']['mode'],'STOPPED')
@@ -336,7 +336,7 @@ class RecoveryTests(unittest.TestCase):
 
     def test_force_stop_refuses_group(self):
         other=Target();self.target.group.members.append(other)
-        with patch('sonoscdplayer.sonos.playback_start.find_target',return_value=self.target):
+        with patch('sonoscdplayer.sonos.speaker_checks.find_speaker',return_value=self.target):
             r=handle_command(self.ctrl,{'command':'stop','uid':'TEST_SPEAKER','force':True})
         self.assertFalse(r['ok']);self.assertEqual(self.target.stops,0)
 
@@ -389,7 +389,7 @@ class ShutdownTests(unittest.TestCase):
         self.assertEqual(self.target.stops,0)
     def test_live_read_only_does_not_attach(self):
         self.playing()
-        with patch('sonoscdplayer.sonos.playback_start.find_target', return_value=self.target):
+        with patch('sonoscdplayer.sonos.speaker_checks.find_speaker', return_value=self.target):
             reply=handle_command(self.ctrl,{'command':'sonos-status','uid':'TEST_SPEAKER'})
         self.assertTrue(reply['ok'])
         self.assertEqual(reply['live_sonos']['transport'],'PLAYING')
@@ -687,7 +687,7 @@ class EarlySocketGuardTests(unittest.TestCase):
             config.write_text('', encoding='utf-8')
             occupied = Path(directory) / 'control.sock'
             occupied.touch()
-            with (patch('sonoscdplayer.player.service.detect_drive', side_effect=AssertionError('drive touched')),
+            with (patch('sonoscdplayer.player.service.inspect_initial_disc', side_effect=AssertionError('drive touched')),
                   patch('sonoscdplayer.player.service.read_toc', side_effect=AssertionError('CD read'))):
                 self.assertEqual(run(['--config', str(config), '--socket', str(occupied)]), 1)
             self.assertTrue(occupied.exists())

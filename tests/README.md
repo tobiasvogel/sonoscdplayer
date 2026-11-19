@@ -30,6 +30,7 @@ The folders mirror `src/sonoscdplayer/`:
 | `audio/` | RAM ring buffer and the HTTP track server |
 | `drive/` | Disc detection, drive lock, power, idle and wake-up, USB reconnect, eject, the drive check tool |
 | `metadata/` | CD-TEXT, MusicBrainz, metadata cache and worker, covers, language rules |
+| `sonos/` | Finding and checking speakers before and during playback |
 | `player/` | State machine, controller, control socket, Sonos playback and queue, groups, speaker selection |
 | `ui/` | Display service, menu, speaker selection screens, rendering, notices, languages, system screens, display profiles |
 | `network_setup/` | WLAN setup through the hotspot and on the device |

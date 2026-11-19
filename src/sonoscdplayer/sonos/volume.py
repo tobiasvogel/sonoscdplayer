@@ -18,7 +18,7 @@ from __future__ import annotations
 import time
 
 from sonoscdplayer.player.state import Mode
-from sonoscdplayer.sonos.groups import find_players
+from sonoscdplayer.sonos.groups import find_speakers
 
 MAX_STEP = 10            # largest relative change per request
 IDLE_CHECK_SECONDS = 5.0  # reuse of the "nothing is playing" check
@@ -45,6 +45,7 @@ def _relative(player, step):
 
 
 def _group_relative(coordinator, step):
+    """Change the group volume; return the coordinator's new volume."""
     group = coordinator.group
     setter = getattr(group, 'set_relative_volume', None)
     if setter is not None:
@@ -59,7 +60,9 @@ def _group_relative(coordinator, step):
 
 
 class VolumeControl:
-    def __init__(self, *, find_many=find_players, clock=time.monotonic,
+    """Applies the volume buttons to the right speakers (see module docstring)."""
+
+    def __init__(self, *, find_many=find_speakers, clock=time.monotonic,
                  idle_check_seconds=IDLE_CHECK_SECONDS):
         self._find_many = find_many
         self._clock = clock
@@ -69,6 +72,12 @@ class VolumeControl:
         self._idle_until = 0.0
 
     def adjust(self, controller, selection, step):
+        """Change the volume by ``step``; return the new volume (0..100).
+
+        Raises:
+            ValueError: the player state allows no volume change.
+            RuntimeError: a speaker is missing, changed or plays something else.
+        """
         mode = controller.state.mode
         if mode in (Mode.PLAYING, Mode.PAUSED):
             return self._adjust_owned(controller, step)
@@ -85,10 +94,10 @@ class VolumeControl:
         return _group_relative(player, step)
 
     def _selected_players(self, selection):
-        uid = selection.uid_for_explicit_action() if selection is not None else None
+        uid = selection.coordinator_uid() if selection is not None else None
         if uid is None:
             raise ValueError('no confirmed target')
-        uids = (uid, *selection.members_for_explicit_action())
+        uids = (uid, *selection.member_uids())
         if uids != self._players_key:
             found = self._find_many(uids)
             if set(found) != set(uids):

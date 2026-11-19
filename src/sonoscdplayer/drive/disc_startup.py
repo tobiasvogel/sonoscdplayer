@@ -56,13 +56,13 @@ def classify_unavailable(device: str | None, media_status=None,
                       error=error if mode == DiscMode.UNREADABLE else None)
 
 
-def inspect_initial_disc(base, *, requested_device='auto',
+def inspect_initial_disc(*, requested_device='auto',
                          detect=None, read=None, candidates=None,
                          media_status=None):
     """Return (DiscStatus, DiscTOC | None). Query TOC only for detected CD-DA."""
     from sonoscdplayer.audio.table_of_contents import read_toc
-    from sonoscdplayer.sonos.playback_start import detect_drive
-    detect = detect if detect is not None else detect_drive
+    from sonoscdplayer.drive.drive_probe import find_audio_cd_drive
+    detect = detect if detect is not None else find_audio_cd_drive
     read = read if read is not None else read_toc
     paths = tuple(candidates) if candidates is not None else optical_devices()
     if requested_device != 'auto':
@@ -71,7 +71,7 @@ def inspect_initial_disc(base, *, requested_device='auto',
         return DiscStatus(DiscMode.NO_DRIVE), None
 
     try:
-        device = detect(base) if requested_device == 'auto' else requested_device
+        device = detect() if requested_device == 'auto' else requested_device
         if device not in paths:
             raise RuntimeError('selected drive is not among available devices')
         disc = read(device)

@@ -19,13 +19,15 @@ import threading
 import time
 
 from sonoscdplayer.audio.table_of_contents import read_toc
-from sonoscdplayer.sonos.play_track import make_url, prepare_selection, verify_target
-from sonoscdplayer.player.state import Mode
+from sonoscdplayer.audio.track_server_process import (forward_server_output, track_stream_url,
+                                                      wait_for_reader_start)
+from sonoscdplayer.drive.drive_probe import find_audio_cd_drive
+from sonoscdplayer.player.state import Mode, state_for_disc
 from sonoscdplayer.system.version import info as software_info
-from sonoscdplayer.sonos.switch_track import TransportChanged, ownership_snapshot
+from sonoscdplayer.sonos.speaker_checks import (TransportChanged, find_solo_stopped_speaker,
+                                                require_our_stream)
 from sonoscdplayer.ui.menu.playback_progress import verified_progress
-from sonoscdplayer.sonos import groups as sonos_group
-from sonoscdplayer.sonos.playback_start import detect_drive, stream_lines, wait_reader
+from sonoscdplayer.sonos import groups
 from sonoscdplayer.metadata.status_summary import status_metadata
 from sonoscdplayer.sonos.track_metadata import (DEFAULT_ALBUM_PREFIX, cover_route, didl_item, playing_from_queue,
                             queue_allowed, queue_item_is_ours, remove_queue_block, track_didl)
@@ -67,10 +69,10 @@ class ProcessServer:
         self.proc = p
         with self._reader_lock:
             self._reader_active = True  # conservative until reader reports completion
-        threading.Thread(target=stream_lines,
+        threading.Thread(target=forward_server_output,
                          args=(p, events, time.monotonic(), self._observe_line), daemon=True).start()
         try:
-            wait_reader(events, p, timeout=30)
+            wait_for_reader_start(events, p, timeout=30)
             if self.startup_prebuffer:
                 wait_startup_pcm(events, p, timeout=self.startup_timeout)
             if p.poll() is not None:
@@ -124,19 +126,6 @@ def routed_source_ip(target_ip):
     return result
 
 
-def ownership_for_transport(player, uid, url, expected, members=frozenset()):
-    """Read-only, strict identity/topology/URI/transport gate; no automatic adoption."""
-    if player.uid != uid:
-        raise RuntimeError('ownership denied: UID changed')
-    if not sonos_group.is_expected_group(player, uid, members):
-        raise RuntimeError('ownership denied: unexpected topology')
-    transport = player.get_current_transport_info()['current_transport_state']
-    if transport != expected:
-        raise TransportChanged(f'ownership denied: transport {transport}, expected {expected}')
-    if player.get_current_track_info().get('uri') != url:
-        raise RuntimeError('ownership denied: exact URI mismatch')
-
-
 
 # A track counts as played out when its last verified position was this close
 # to its end (progress is polled every 2 s; Sonos stops shortly after the end).
@@ -150,7 +139,7 @@ STARTUP_LIMIT_SECONDS = 30
 
 class Controller:
     """A single owner: only this instance's exact URI may be stopped."""
-    def __init__(self, state, uid, host, port, server, verify=verify_target, route=None, find_many=None):
+    def __init__(self, state, uid, host, port, server, verify=find_solo_stopped_speaker, route=None, find_many=None):
         self.state, self.uid = state, uid
         self.host, self.port = host, port
         self.server, self.verify = server, verify
@@ -174,7 +163,7 @@ class Controller:
         self.stopped_since = None
         self.status_hook = None  # optional read-only snapshot publisher
         self.disc_status = None  # optional independent disc observation (DiscMonitor)
-        self.find_many = find_many or sonos_group.find_players
+        self.find_many = find_many or groups.find_speakers
         self._joined = {}
         self._group_coord = None
         self._group_members = frozenset()
@@ -182,7 +171,7 @@ class Controller:
         self._recovery_url = None
 
     def _url(self, track):
-        return make_url(self.host, self.port, track)
+        return track_stream_url(self.host, self.port, track)
 
     def status(self):
         return (f'mode={self.state.mode.value} track={self.state.selected_track}/'
@@ -230,14 +219,14 @@ class Controller:
 
     def _ownership(self, player, expected):
         self._follow_sonos(player)
-        return ownership_for_transport(player, self.uid, self.owned_url,
+        return require_our_stream(player, self.uid, self.owned_url,
                                        expected, frozenset(self._joined))
 
     def _release_group(self, *, owned_url=None):
         if not self._joined:
             return True
-        result = sonos_group.release(self._group_coord, self._joined, owned_url=owned_url)
-        remaining = sonos_group.unresolved_members(self._joined, result)
+        result = groups.release(self._group_coord, self._joined, owned_url=owned_url)
+        remaining = groups.unresolved_members(self._joined, result)
         self._joined = remaining
         self._group_uncertain = bool(remaining)
         if remaining and owned_url is not None:
@@ -252,7 +241,7 @@ class Controller:
         """Read-only status; no Sonos mutations or hidden retry."""
         if not self._joined:
             return {'state': 'clear', 'remaining': 0, 'can_resolve': False}
-        result = sonos_group.inspect_recovery(self._group_coord, self._joined)
+        result = groups.inspect_recovery(self._group_coord, self._joined)
         return {'state': result['state'], 'remaining': len(self._joined),
                 'standalone': len(result['standalone']),
                 'attached': len(result['attached']),
@@ -268,7 +257,7 @@ class Controller:
             raise RuntimeError('recovery requires inactive player')
         if not self._joined:
             return self.inspect_group_recovery()
-        observed = sonos_group.inspect_recovery(self._group_coord, self._joined)
+        observed = groups.inspect_recovery(self._group_coord, self._joined)
         if observed['state'] == 'blocked':
             raise RuntimeError('recovery blocked by unknown topology')
         for uid in observed['standalone']:
@@ -285,9 +274,9 @@ class Controller:
         # Recheck the coordinator URI before issuing any group mutation.
         if self._group_coord.get_current_track_info().get('uri') != self._recovery_url:
             raise RuntimeError('recovery stream ownership changed')
-        result = sonos_group.release(self._group_coord, self._joined,
+        result = groups.release(self._group_coord, self._joined,
                                      owned_url=self._recovery_url)
-        self._joined = sonos_group.unresolved_members(self._joined, result)
+        self._joined = groups.unresolved_members(self._joined, result)
         self._group_uncertain = bool(self._joined)
         if not self._joined:
             self._group_coord = None
@@ -299,8 +288,8 @@ class Controller:
         coordinator = self._group_coord
         if coordinator is None or coordinator.uid != uid:
             raise RuntimeError('retained coordinator mismatch')
-        sonos_group.refresh_topology(coordinator)
-        if not sonos_group.is_expected_group(coordinator, uid, self._group_members):
+        groups.refresh_topology(coordinator)
+        if not groups.is_expected_group(coordinator, uid, self._group_members):
             raise RuntimeError('retained group topology changed')
         if coordinator.get_current_transport_info()['current_transport_state'] != 'STOPPED':
             raise RuntimeError('retained coordinator is not STOPPED')
@@ -326,7 +315,8 @@ class Controller:
                 self._follow_sonos(player)
             if transport == 'PLAYING':
                 self.stopped_since = None
-                ownership_snapshot(player, self.uid, self.owned_url, frozenset(self._joined))
+                require_our_stream(player, self.uid, self.owned_url, 'PLAYING',
+                                   frozenset(self._joined))
                 self.seen_playing = True
                 if self.state.mode == Mode.STARTING:
                     self.state = self.state.playback_confirmed()
@@ -455,7 +445,7 @@ class Controller:
         """Append every track as one block at the END of the queue, play the
         selected one. The user's own queue entries are never touched."""
         tracks = list(self.state.track_numbers)
-        urls = [make_url(host, self.port, n) for n in tracks]
+        urls = [track_stream_url(host, self.port, n) for n in tracks]
         first = None
         for index, (number, url) in enumerate(zip(tracks, urls)):
             didl = track_didl(url, meta or {}, number, album_prefix=self.album_prefix,
@@ -543,7 +533,7 @@ class Controller:
         candidate = uid if uid is not None else self.uid
         if not isinstance(candidate, str) or not candidate.strip():
             raise ValueError('PLAY requires target UID')
-        wanted = sonos_group.normalize_members(candidate, members)
+        wanted = groups.normalize_members(candidate, members)
         if self._group_uncertain:
             raise RuntimeError('group cleanup uncertain; manual recovery required')
         retained = bool(self._joined) and candidate == self.uid and wanted == self._group_members
@@ -556,9 +546,9 @@ class Controller:
             if set(member_players) != set(wanted):
                 raise RuntimeError('member discovery incomplete')
             for member_uid, member in member_players.items():
-                sonos_group.check_member(member, member_uid)
+                groups.require_member_ready(member, member_uid)
         host = self.route(target.ip_address) if self.route is not None else self.host
-        url = make_url(host, self.port, self.state.selected_track)
+        url = track_stream_url(host, self.port, self.state.selected_track)
         self.server.close()
         # Publish STARTING before the potentially long, synchronous PCM prebuffer.
         # No Sonos command has been sent and ownership is not claimed here.
@@ -583,17 +573,17 @@ class Controller:
             player = self._verify_retained_group(candidate) if retained else self.verify(candidate)
             if wanted and not retained:
                 for member_uid, member in member_players.items():
-                    sonos_group.check_member(member, member_uid)
+                    groups.require_member_ready(member, member_uid)
             if self.route is not None and self.route(player.ip_address) != host:
                 raise RuntimeError('route to target changed during startup')
             if not self.server.alive():
                 raise RuntimeError('server exited before Sonos PLAY')
             if wanted and not retained:
                 try:
-                    self._joined = sonos_group.form(player, member_players)
+                    self._joined = groups.form(player, member_players)
                     self._group_coord = player
                     self._group_members = wanted
-                except sonos_group.GroupRollbackIncomplete as rollback:
+                except groups.GroupRollbackIncomplete as rollback:
                     self._joined = rollback.remaining
                     self._group_coord = player
                     self._group_members = wanted
@@ -692,7 +682,7 @@ class Controller:
             player = self.verify_existing()
             if player.uid != self.uid:
                 raise RuntimeError('target UID changed')
-            if not sonos_group.is_expected_group(player, self.uid, self._group_members):
+            if not groups.is_expected_group(player, self.uid, self._group_members):
                 raise RuntimeError('target group changed; refusing local release')
             state = player.get_current_transport_info()['current_transport_state']
             self.last_transport = state
@@ -735,12 +725,12 @@ class Controller:
         Never affects a group. Never chooses a device implicitly. No retries.
         The operator intentionally overrides the normal owned-stream restriction.
         """
-        from sonoscdplayer.sonos.playback_start import find_target
+        from sonoscdplayer.sonos.speaker_checks import find_speaker
         if not uid:
             raise ValueError('force STOP requires explicit target UID')
         if self.owned_url and self.uid != uid:
             raise RuntimeError('another target has active local session; force STOP refused')
-        target = (discover or find_target)(uid)
+        target = (discover or find_speaker)(uid)
         for _ in range(2):
             if target.uid != uid:
                 raise RuntimeError('force STOP UID mismatch')
@@ -886,10 +876,10 @@ class Controller:
     @staticmethod
     def sonos_live_status(uid, *, discover=None):
         """Read-only inspection; never attaches or changes playback ownership."""
-        from sonoscdplayer.sonos.playback_start import find_target
+        from sonoscdplayer.sonos.speaker_checks import find_speaker
         if not isinstance(uid, str) or not uid:
             raise ValueError('explicit UID required')
-        player = (discover or find_target)(uid)
+        player = (discover or find_speaker)(uid)
         if player.uid != uid:
             raise RuntimeError('live status target UID mismatch')
         group = player.group
@@ -921,16 +911,16 @@ def run(argv=None):
     if ns.device != 'auto' and not re.fullmatch(r'/dev/sr\d+', ns.device):
         ap.error('--device must be auto or /dev/srN')
     try:
-        make_url(ns.pi_host, ns.port, ns.track)
+        track_stream_url(ns.pi_host, ns.port, ns.track)
         base = SOURCE_ROOT
         conf = pathlib.Path(ns.config)
         if not conf.is_absolute():
             conf = base / conf
         if not conf.is_file():
             raise RuntimeError(f'missing config: {conf}')
-        device = detect_drive(base) if ns.device == 'auto' else ns.device
+        device = find_audio_cd_drive() if ns.device == 'auto' else ns.device
         disc = read_toc(device)
-        state = prepare_selection(disc, ns.track)
+        state = state_for_disc(disc, ns.track)
         server = ProcessServer(base, device, conf, ns.port)
         ctrl = Controller(state, ns.uid, ns.pi_host, ns.port, server)
     except Exception as exc:

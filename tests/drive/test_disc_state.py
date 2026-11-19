@@ -55,7 +55,7 @@ class DiscStateTests(unittest.TestCase):
     def test_absent_drive_never_runs_probe_or_toc(self):
         def forbidden(*args):
             raise AssertionError('must not inspect absent drive')
-        state, toc = inspect_initial_disc(ROOT, candidates=(),
+        state, toc = inspect_initial_disc(candidates=(),
                                           detect=forbidden, read=forbidden)
         self.assertEqual(state.mode, DiscMode.NO_DRIVE)
         self.assertIsNone(toc)
@@ -81,9 +81,9 @@ class DiscStateTests(unittest.TestCase):
         self.assertEqual(result.mode, DiscMode.UNREADABLE)
 
     def test_no_cd_still_has_device_and_no_stale_toc(self):
-        def unavailable(_):
+        def unavailable():
             raise RuntimeError('no readable audio CD')
-        state, toc = inspect_initial_disc(ROOT, candidates=('/dev/sr0',),
+        state, toc = inspect_initial_disc(candidates=('/dev/sr0',),
             detect=unavailable, media_status=lambda _: CDS_NO_DISC)
         self.assertEqual(state.mode, DiscMode.NO_DISC)
         self.assertEqual(state.device, '/dev/sr0')
@@ -91,9 +91,9 @@ class DiscStateTests(unittest.TestCase):
         self.assertIsNone(toc)
 
     def test_ambiguous_multiple_drives_not_adopted(self):
-        def unavailable(_):
+        def unavailable():
             raise RuntimeError('no unique CD-DA drive')
-        state, toc = inspect_initial_disc(ROOT,
+        state, toc = inspect_initial_disc(
             candidates=('/dev/sr0', '/dev/sr1'), detect=unavailable)
         self.assertEqual(state.mode, DiscMode.UNREADABLE)
         self.assertIsNone(state.device)
@@ -101,8 +101,8 @@ class DiscStateTests(unittest.TestCase):
 
     def test_ready_uses_existing_detector_and_toc(self):
         disc = SimpleNamespace(tracks=(object(), object()))
-        state, toc = inspect_initial_disc(ROOT, candidates=('/dev/sr1',),
-            detect=lambda _: '/dev/sr1', read=lambda _: disc)
+        state, toc = inspect_initial_disc(candidates=('/dev/sr1',),
+            detect=lambda: '/dev/sr1', read=lambda _: disc)
         self.assertEqual(state, DiscStatus.ready('/dev/sr1', 2))
         self.assertIs(toc, disc)
 

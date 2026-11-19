@@ -73,10 +73,10 @@ class FakeSelection:
     def __init__(self, uid='A', members=()):
         self.uid, self.members = uid, tuple(members)
 
-    def uid_for_explicit_action(self):
+    def coordinator_uid(self):
         return self.uid
 
-    def members_for_explicit_action(self):
+    def member_uids(self):
         return self.members
 
 

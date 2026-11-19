@@ -1,7 +1,9 @@
-"""Temporary Sonos groups. Selection alone never invokes these functions.
+"""Temporary Sonos groups for playing on several speakers at once.
 
-Group mutations require an explicit future player action and live checks.
-Never forget members whose release remains uncertain.
+At PLAY the player joins the selected member speakers to the coordinator;
+at STOP it releases exactly that group again. Every step is checked live,
+and a member whose release is uncertain is kept in the list, never
+forgotten. Choosing speakers in the menu does not call anything here.
 """
 from __future__ import annotations
 import re
@@ -11,6 +13,12 @@ UID_RE = re.compile(r'[A-Za-z0-9_:-]{1,128}\Z')
 MAX_MEMBERS = 15
 
 def normalize_members(coordinator_uid, members):
+    """Validate member UIDs and return them as a frozenset.
+
+    Raises:
+        ValueError: not a collection, an invalid UID, the coordinator itself
+            as member, or more than MAX_MEMBERS members.
+    """
     if members is None:
         return frozenset()
     if isinstance(members, (str, bytes)) or not isinstance(members, (list, tuple, set, frozenset)):
@@ -25,19 +33,26 @@ def normalize_members(coordinator_uid, members):
     return frozenset(result)
 
 def refresh_topology(player):
+    """Make SoCo read the current group layout instead of a cached one."""
     state = getattr(player, 'zone_group_state', None)
     clear = getattr(state, 'clear_cache', None)
     if callable(clear):
         clear()
 
 def is_expected_group(player, coordinator_uid, members=frozenset()):
+    """True if the player's group is exactly the coordinator plus ``members``."""
     group = player.group
     actual = [p.uid for p in group.members]
     expected = set(members) | {coordinator_uid}
     return (group.coordinator.uid == coordinator_uid and
             len(actual) == len(set(actual)) and set(actual) == expected)
 
-def check_member(player, uid):
+def require_member_ready(player, uid):
+    """Check that a member speaker is alone and stopped before joining it.
+
+    Raises:
+        RuntimeError: another UID, grouped, or playing.
+    """
     if player.uid != uid:
         raise RuntimeError('member identity changed')
     refresh_topology(player)
@@ -46,7 +61,12 @@ def check_member(player, uid):
     if player.get_current_transport_info()['current_transport_state'] != 'STOPPED':
         raise RuntimeError('member has active transport')
 
-def find_players(uids, *, discover=None, timeout=5):
+def find_speakers(uids, *, discover=None, timeout=5):
+    """Find each UID exactly once; return {uid: speaker}.
+
+    Raises:
+        RuntimeError: a UID was not found, or found more than once.
+    """
     if discover is None:
         from soco import discover
     found = {}
@@ -59,16 +79,31 @@ def find_players(uids, *, discover=None, timeout=5):
     return found
 
 def unresolved_members(joined, outcome):
+    """Members whose release did not succeed, from release()'s outcome."""
     return {uid: p for uid, p in joined.items()
             if outcome.get(uid) not in ('released', 'already left')}
 
 class GroupRollbackIncomplete(RuntimeError):
+    """Forming a group failed and not every joined member could be released.
+
+    ``remaining`` holds those members; they need a manual check in the app.
+    """
+
     def __init__(self, remaining):
         super().__init__('temporary group rollback incomplete; manual recovery required')
         self.remaining = dict(remaining)
 
 def release(coordinator, joined, *, owned_url=None):
-    """Undo only an exact group we created; preserve unknown outcomes."""
+    """Release the members the player joined, if the group is still ours.
+
+    Args:
+        coordinator: the group coordinator.
+        joined: {uid: speaker} of the members the player joined.
+        owned_url: if given, release only while the coordinator still plays it.
+
+    Returns:
+        {uid: outcome}: 'released', 'already left' or a 'kept: …' reason.
+    """
     if not joined:
         return {}
     try:
@@ -109,7 +144,15 @@ def release(coordinator, joined, *, owned_url=None):
     return outcome
 
 def form(coordinator, members, *, settle=3.0, sleep=time.sleep, clock=time.monotonic):
-    """Only caller-authorized joins; rollback records incomplete cleanup."""
+    """Join ``members`` ({uid: speaker}) to the coordinator; return them.
+
+    Coordinator and members must be alone and stopped. If the group does not
+    form within ``settle`` seconds, the joined members are released again.
+
+    Raises:
+        RuntimeError: a precondition failed or the group did not form.
+        GroupRollbackIncomplete: releasing after a failure was incomplete.
+    """
     joined = {}
     try:
         if not is_expected_group(coordinator, coordinator.uid):
@@ -117,7 +160,7 @@ def form(coordinator, members, *, settle=3.0, sleep=time.sleep, clock=time.monot
         if coordinator.get_current_transport_info()['current_transport_state'] != 'STOPPED':
             raise RuntimeError('coordinator transport active')
         for uid, player in members.items():
-            check_member(player, uid)
+            require_member_ready(player, uid)
         for uid, player in members.items():
             joined[uid] = player
             player.join(coordinator)
