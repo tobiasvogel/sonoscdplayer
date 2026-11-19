@@ -5,11 +5,12 @@ while the player is idle and holding the existing drive lock (drive/drive_lock.p
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import re
 import subprocess
 
 from sonoscdplayer.audio.table_of_contents import DiscTOC
+from sonoscdplayer.metadata.track_titles import without_redundant_track_numbers
 
 _DISC = re.compile(r'^\s*CD-TEXT for Disc:\s*$', re.IGNORECASE)
 _TRACK = re.compile(r'^\s*CD-TEXT for Track\s+(\d+):\s*$', re.IGNORECASE)
@@ -170,5 +171,9 @@ NO_CDTEXT = ('disabled', {}, {}, None)
 def local_metadata_from_cdtext(toc, cdtext=None) -> LocalDiscMetadata:
     """Combine the verified TOC with a CD-TEXT reading taken by the player."""
     status, disc_fields, track_fields, error = cdtext or NO_CDTEXT
-    return build_local_metadata(toc, cdtext_status=status, disc_fields=disc_fields,
-                                track_fields=track_fields, error=error)
+    metadata = build_local_metadata(toc, cdtext_status=status, disc_fields=disc_fields,
+                                    track_fields=track_fields, error=error)
+    # Keep the raw disc probe unchanged; normalize only player/cache metadata.
+    titles = without_redundant_track_numbers(tuple(track.title for track in metadata.tracks))
+    return replace(metadata, tracks=tuple(replace(track, title=title)
+                                          for track, title in zip(metadata.tracks, titles)))

@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 from sonoscdplayer.audio.table_of_contents import DiscTOC, Track
 from sonoscdplayer.metadata.local_metadata import (build_local_metadata, parse_cd_info_cdtext,
-                           parse_cd_info_identifiers, read_cdtext)
+                           parse_cd_info_identifiers, read_cdtext, local_metadata_from_cdtext)
 
 
 class CDTextTests(unittest.TestCase):
@@ -60,6 +60,42 @@ CDDB TITLE: Not from disc
                                                    99: {'TITLE': 'Foreign'}})
         self.assertEqual(len(model.tracks), 2)
         self.assertIsNone(model.tracks[1].title)
+
+    def test_numbered_cdtext_normalized_for_player_but_raw_probe_stays_raw(self):
+        # A 21-track CD with the same structure as a real-world regression.
+        titles = (
+            'D Ueberraschig', 'De Brief', 'De grossi Fund', 'Uf em Campingplatz',
+            'De Retter Tschips', 'Liebi isch schoen', 'S schlechte Wetter',
+            'De Chorb isch leer', 'Fischers Fritz', 'Chilbisong', 'PET Pirate',
+            'D Iiladig', 'D Gripp', 'D Alpakas packet aa', 'Aqua Zumba',
+            'Am Jules sini Schatzcharte', 'De Schatz', 'De 1. August (Lied)',
+            'Im Altersheim', "S' Velolied (Bonus-Lied)", "S' Wanderlied (Bonus-Lied)",
+        )
+        toc = DiscTOC(tuple(Track(i, (i-1)*75, i*75, 2, False)
+                            for i in range(1, 22)), 21*75)
+        fields = {i: {'TITLE': f'{i:02d} {title}', 'PERFORMER': 'Testartist',
+                      'ISRC': f'CH0000000{i:03d}'}
+                  for i, title in enumerate(titles, 1)}
+        disc = {'TITLE': 'Testalbum', 'PERFORMER': 'Testartist'}
+        raw = build_local_metadata(toc, cdtext_status='available',
+                                   disc_fields=disc, track_fields=fields)
+        self.assertEqual(raw.tracks[0].title, '01 D Ueberraschig')
+        normalized = local_metadata_from_cdtext(toc, ('available', disc, fields, None))
+        self.assertEqual(tuple(t.title for t in normalized.tracks), titles)
+        self.assertEqual(normalized.album, 'Testalbum')
+        self.assertEqual(normalized.tracks[0].artist, 'Testartist')
+        self.assertEqual(normalized.tracks[0].isrc, fields[1]['ISRC'])
+
+    def test_inconsistent_cdtext_prefixes_are_preserved(self):
+        tracks = {1: {'TITLE': '01 Erster Titel'}, 2: {'TITLE': '99 Luftballons'}}
+        normalized = local_metadata_from_cdtext(self.toc, ('available', {}, tracks, None))
+        self.assertEqual([t.title for t in normalized.tracks],
+                         ['01 Erster Titel', '99 Luftballons'])
+
+    def test_single_numbered_cdtext_title_is_preserved(self):
+        tracks = {1: {'TITLE': '01 Erster Titel'}}
+        normalized = local_metadata_from_cdtext(self.toc, ('available', {}, tracks, None))
+        self.assertEqual(normalized.tracks[0].title, '01 Erster Titel')
 
     def test_no_other_sections_masquerade_as_cdtext(self):
         disc, tracks = parse_cd_info_cdtext('CDDB:\n TITLE: Online\n')
