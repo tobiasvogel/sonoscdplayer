@@ -6,6 +6,11 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- CD-TEXT is read with a 45 s limit instead of 15 s; some slim drives need
+  about 20 s on a CD with many tracks.
+- Drive check: read speed WARN limit 1.25x (was 1.5x); the report names the
+  USB adapter id as such. Panasonic/Matshita UJ265 and LG GTC0N added as
+  reference drives.
 - `tools/check_drive.py` checks whether a CD drive suits the player
   (read speed, spin-down and wake-up, eject, USB reconnect, CD-TEXT) and
   prints a report that can be shared; see `docs/DRIVE_CHECK.md`.

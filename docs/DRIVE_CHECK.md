@@ -31,6 +31,18 @@ drive look bad.
    sudo systemctl start sonoscdplayer-player.service
    ```
 
+## Tested drives
+
+| Drive | Read speed at disc start | Wake-up until audio | Result |
+|---|---|---|---|
+| ASUS SDRW-08U1MT (firmware A103) | 2.7× | 8.0 s | SUITABLE |
+| Panasonic/Matshita BD-MLT UJ265 (firmware 1.01) | 1.4× | 8.6 s | SUITABLE |
+| LG HL-DT-ST DVDRAM GTC0N (firmware 1.00) | 1.3× | 10.4 s | SUITABLE; cd-info needs up to about 20 s for CD-TEXT |
+
+All three are reference drives of the project (tested with drive check
+0.9.0; read speed limits as of today). The TSSTcorp CDDVDW TS-U633J was
+unstable in an earlier setup.
+
 ## The checks
 
 | Check | What it tests | Result |
@@ -40,7 +52,7 @@ drive look bad.
 | Recognized again after a USB reconnect | USB vendor, product and serial number are readable | WARN without a serial number: after a USB reconnect the player waits for a restart instead of continuing |
 | CD-TEXT | Titles stored on the CD can be read | SKIP if the CD has none; WARN if reading fails (titles then come only from MusicBrainz) |
 | MusicBrainz disc ID | The disc ID can be computed from the track list | SKIP without `python3-libdiscid` |
-| Audio read speed | 20 s of audio from the start of the disc, the slowest part | FAIL below 1.1× playback speed, WARN below 1.5× |
+| Audio read speed | 20 s of audio from the start of the disc, the slowest part | FAIL below 1.1× playback speed, WARN below 1.25×. Slim drives read the start of a disc at about 1.3×, which is enough |
 | Jump to the end of the disc | The last 10 s of the last track | FAIL if not readable |
 | Same audio on a second read | 5 s from the middle of the longest track, read twice | WARN if the reads differ |
 | Spin down when idle, wake up for PLAY | `sg_start --stop`, wait, `sg_start --start`, then track list and audio again | WARN if the drive refuses to spin down; FAIL if waking with audio takes 30 s or more (the player gives up then), WARN from 15 s |
@@ -53,7 +65,8 @@ not run.
 
 ## Sharing the result
 
-The report names the drive model, its firmware version, the USB ids and the
+The report names the drive model, its firmware version, the USB id of the adapter (the
+USB-to-SATA bridge, often the same for different drives) and the
 test CD's track count and length. It contains no serial number, CD titles,
 host name or user name. Please post it, together with how the drive is
 powered (directly or through a powered USB hub), as an issue at
@@ -65,9 +78,9 @@ Example (illustrative values):
 ```
 SonosCDPlayer drive check 0.9.0
 
-Drive:    VENDOR MODEL-123 (firmware 1.00)
-USB:      1234:5678
-Test CD:  12 audio tracks, 48:31
+Drive:       VENDOR MODEL-123 (firmware 1.00)
+USB adapter: 1234:5678
+Test CD:     12 audio tracks, 48:31
 
   PASS  Disc in the drive                          the drive reports a disc
   PASS  Audio CD table of contents                 12 audio tracks read with cdparanoia

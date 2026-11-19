@@ -179,8 +179,9 @@ def test_missing_permission_names_the_cdrom_group():
     assert 'cdrom' in report.results[0].summary
 
 
-@pytest.mark.parametrize('speed, status', [(1.0, FAIL), (1.3, WARN), (1.6, PASS)])
+@pytest.mark.parametrize('speed, status', [(1.0, FAIL), (1.2, WARN), (1.3, PASS)])
 def test_read_speed_thresholds(speed, status):
+    # 1.3x is what slim drives reach at the start of a disc; playback works.
     drive = SimulatedDrive(read_speed=speed)
     report = make_checker(drive).run(software_version='0.9.0', include_eject=False)
     assert results_by_key(report)['read_speed'].status == status
@@ -286,7 +287,7 @@ def test_report_contains_no_serial_number_or_titles(tmp_path):
     report = checker.run(software_version='0.9.0')
     text = format_report(report) + json.dumps(report.as_dict())
     assert 'HL-DT-ST DVDRAM GP57EB40 (firmware PF00)' in text
-    assert 'USB:      152e:2571' in text
+    assert 'USB adapter: 152e:2571' in text
     for private in ('SERIAL', 'Secret'):
         assert private not in text
 

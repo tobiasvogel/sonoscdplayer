@@ -88,7 +88,7 @@ A typical build consists of:
 
 The reference build combines physical buttons and a rotary encoder on a custom PCB, but alternative control layouts are a design goal. The repository also contains 3D-printable enclosure parts; a complete, tested assembly guide is still in preparation.
 
-The **ASUS SDRW-08U1MT** is the reference optical drive. Idle spin-down and wake-up have been verified with this drive connected through a powered USB hub. The **TSSTcorp CDDVDW TS-U633J** was also evaluated but proved unstable in the tested setup. These results are not an exhaustive compatibility list. To test another drive, run `python3 tools/check_drive.py` with an audio CD inserted; see [Checking a CD drive](docs/DRIVE_CHECK.md).
+Reference optical drives are the **ASUS SDRW-08U1MT**, the **Panasonic/Matshita BD-MLT UJ265** and the **LG HL-DT-ST DVDRAM GTC0N**, each confirmed with the drive check below. Idle spin-down and wake-up were first verified with the ASUS drive connected through a powered USB hub. The **TSSTcorp CDDVDW TS-U633J** was also evaluated but proved unstable in the tested setup. These results are not an exhaustive compatibility list. To test another drive, run `python3 tools/check_drive.py` with an audio CD inserted; see [Checking a CD drive](docs/DRIVE_CHECK.md).
 
 The [SonosCDPlayer website](https://sonoscdplayer.diy) is intended to collect tested components, hardware configurations, and community builds over time.
 

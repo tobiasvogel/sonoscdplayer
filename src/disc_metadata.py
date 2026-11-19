@@ -107,7 +107,11 @@ def parse_cd_info_identifiers(output: str) -> tuple[str | None, dict[int, str]]:
     return mcn, isrcs
 
 
-def read_cdtext(device: str, *, timeout: int = 15,
+#: Some slim drives need about 20 s for cd-info on a CD with many tracks.
+CDTEXT_TIMEOUT_SECONDS = 45
+
+
+def read_cdtext(device: str, *, timeout: int = CDTEXT_TIMEOUT_SECONDS,
                 runner=subprocess.run) -> tuple[str, dict, dict, str | None]:
     """Return (status, disc fields, track fields, sanitized error).
 

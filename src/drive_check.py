@@ -35,7 +35,9 @@ PASS, WARN, FAIL, SKIP = 'PASS', 'WARN', 'FAIL', 'SKIP'
 # Reading must be clearly faster than playback: the player reads each track
 # while Sonos already plays it, and the drive also has to seek and spin up.
 MINIMUM_READ_SPEED = 1.1        # below: FAIL, playback would stall
-RECOMMENDED_READ_SPEED = 1.5    # below: WARN, little reserve
+# Slim drives read the start of a disc (inner tracks) at about 1.3x and
+# reach about 4x towards the end; that is enough for playback.
+RECOMMENDED_READ_SPEED = 1.25   # below: WARN, little reserve
 
 # The player gives up starting playback after 30 seconds.
 MAXIMUM_WAKE_SECONDS = 30.0     # at or above: FAIL
@@ -467,11 +469,12 @@ def format_report(report: DriveCheckReport) -> str:
     drive = report.drive
     name = ' '.join(part for part in (drive.vendor, drive.model) if part) or 'unknown drive'
     lines = [f'SonosCDPlayer drive check {report.software_version}', '',
-             f'Drive:    {name}' + (f' (firmware {drive.firmware})' if drive.firmware else '')]
+             f'Drive:       {name}' + (f' (firmware {drive.firmware})' if drive.firmware else '')]
     if drive.usb_vendor_id:
-        lines.append(f'USB:      {drive.usb_vendor_id}:{drive.usb_product_id}')
+        # The id belongs to the USB-to-SATA bridge, not to the drive itself.
+        lines.append(f'USB adapter: {drive.usb_vendor_id}:{drive.usb_product_id}')
     if report.disc:
-        lines.append(f'Test CD:  {report.disc}')
+        lines.append(f'Test CD:     {report.disc}')
     lines.append('')
     width = max((len(result.title) for result in report.results), default=0)
     for result in report.results:
