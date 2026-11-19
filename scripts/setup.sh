@@ -114,7 +114,13 @@ else
   done
   EARLY=no POWER=no WAKE=no CONNECT=no NETWORK=no ENABLE=no START=no
 fi
-ask_yes_no SCREENS 'Configure existing SSD1327 firmware/boot and shutdown screens?'
+if [[ "$SENSOR" == yes && "$SERVICES" != yes ]]; then
+  fail 'APDS9306 sensor service requires --services yes; no binaries have been installed.'
+fi
+ask_yes_no SCREENS 'Install SSD1327 boot settings, C renderer and final shutdown hook?'
+if [[ "$SCREENS" == yes && "$SERVICES" != yes ]]; then
+  warn 'Shutdown screen systemd units are not installed unless services are selected.'
+fi
 
 info "Repository: $ROOT"
 info "Service account: $SERVICE_USER; Python venv: $VENV"
@@ -126,7 +132,9 @@ if [[ "$APPLY" == no ]]; then
 fi
 [[ $EUID -eq 0 ]] || fail 'Use sudo for --apply (only after reviewing the plan).'
 command -v python3 >/dev/null || fail 'python3 is required'
-command -v raspi-config >/dev/null || fail 'raspi-config is required on Raspberry Pi OS'
+if [[ "$SPI" == yes || "$I2C" == yes ]]; then
+  command -v raspi-config >/dev/null || fail 'raspi-config is required to configure SPI or I2C'
+fi
 
 if [[ "$PACKAGES_OPT" == yes ]]; then
   mapfile -t pkgs < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$PACKAGES")
@@ -180,7 +188,11 @@ if [[ "$SCREENS" == yes ]]; then
   [[ -f /etc/sonoscdplayer/player.toml ]] || fail 'Screens require the installed player.toml'
   info 'Building C shutdown display helper'
   sh "$ROOT/tools/build_shutdown_renderer.sh"
-  warn 'Boot and shutdown screen installer updates installed components; new firmware assembler may need separate installation.'
+  info 'Installing C shutdown renderer and final shutdown hook'
+  install -d -m 0755 /usr/local/libexec /usr/lib/systemd/system-shutdown
+  install -m 0755 "$ROOT/build/shutdown/sonoscdplayer-shutdown-display" /usr/local/libexec/sonoscdplayer-shutdown-display
+  install -m 0755 "$ROOT/systemd/sonoscdplayer-final-shutdown-hook" /usr/lib/systemd/system-shutdown/sonoscdplayer-final-screen
+  warn 'The optional sentinel and early shutdown systemd units still require a separate explicit installation. Firmware splash assembler may also be missing.'
   info 'Updating configured boot and existing shutdown screens'
   sh "$ROOT/tools/install_screens.sh"
 fi

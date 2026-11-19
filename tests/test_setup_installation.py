@@ -57,6 +57,11 @@ class RuntimeServiceInstallationTests(unittest.TestCase):
                          target_unit=self.target, early_led=True)
         self.assertEqual(len(files), 7)
 
+    def test_missing_requested_early_led_refused(self):
+        with self.assertRaisesRegex(ValueError, 'Missing required rendered unit'):
+            mod.plan(self.rendered, self.units, self.polkit,
+                     target_unit=self.target, early_led=True)
+
     def test_preview_no_side_effects(self):
         result = subprocess.run([sys.executable, str(ROOT / 'tools/install_runtime_services.py'),
                                  '--rendered-dir', str(self.rendered), '--target-unit', str(self.target),
@@ -76,6 +81,17 @@ class SetupShellTests(unittest.TestCase):
                                 stdin=subprocess.DEVNULL, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Missing --packages_opt selection', result.stderr)
+
+    def test_sensor_without_services_refused_before_install(self):
+        result = subprocess.run([
+            'bash', str(ROOT / 'scripts/setup.sh'), '--dry-run',
+            '--service-user', 'nobody', '--venv', '/tmp/setup-test-venv',
+            '--packages', 'no', '--spi', 'no', '--i2c', 'no',
+            '--config', 'no', '--sensor', 'yes', '--services', 'no',
+            '--screens', 'no', '--color', 'never'],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('requires --services yes', result.stderr)
 
     def test_fully_specified_preview(self):
         result = subprocess.run(['bash', str(ROOT / 'scripts/setup.sh'), '--dry-run',

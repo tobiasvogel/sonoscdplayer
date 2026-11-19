@@ -28,7 +28,7 @@ def plan(rendered, unit_dir, polkit_dir, sensor_unit=None, target_unit=None, ear
         source = rendered / name
         if source.is_file() and not source.is_symlink():
             files.append((source, (unit_dir if name.endswith('.service') else polkit_dir) / name))
-        elif name in UNITS[:4]:
+        elif name in UNITS[:4] or (early_led and name == UNITS[4]):
             raise ValueError(f'Missing required rendered unit: {source}')
     if target_unit:
         if not target_unit.is_file() or target_unit.is_symlink():

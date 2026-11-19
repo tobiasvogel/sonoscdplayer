@@ -33,9 +33,9 @@ The setup calls the existing project helpers:
 - The APDS9306 `service/Makefile` (`make service`) to build both C programs;
   binaries are installed separately, not with `make install` (which would
   implicitly enable and start the sensor service).
-- `tools/build_shutdown_renderer.sh` to compile the C shutdown renderer, and
-  `tools/install_screens.sh` to update boot settings and previously installed
-  shutdown components.
+- `tools/build_shutdown_renderer.sh` to compile the C shutdown renderer,
+  followed by installation of the renderer and final shutdown hook, and
+  `tools/install_screens.sh` to update the boot configuration and existing components.
 
 Existing different service files or `.service.d/*.conf` drop-ins require manual
 review and migration; they are not automatically overwritten or removed.
@@ -43,9 +43,10 @@ The optional early-power-LED helper is copied only when explicitly selected.
 The experimental exitrd is **not** installed automatically; use the documented
 `tools/manage_experimental_exitrd.sh` procedure separately. The firmware
 splash assembler from Raspberry Pi utils is likewise not cloned or built
-implicitly. `install_screens.sh` reports when it is unavailable. A new
-shutdown screen service/hook installation is not yet automated by this first
-setup revision; the screen installer refreshes components already installed.
+implicitly. `install_screens.sh` reports when it is unavailable. The final shutdown hook is now installed when screens are selected. The optional
+OLED sentinel and early shutdown systemd units are **not** installed automatically;
+they still require an explicit, separately reviewed installation.
+Selecting the APDS9306 sensor also requires selecting systemd service installation.
 
 Before running `--start-services`, verify your actual GPIO wiring and display,
 configuration, Sonos target and intended ownership. Setup does not start a CD
