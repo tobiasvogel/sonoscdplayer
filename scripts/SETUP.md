@@ -6,6 +6,19 @@ chosen. Use `--dry-run` for an overview without changes or `--apply` to proceed.
 The mode itself is also asked when omitted. `--color auto|always|never` controls
 ANSI colours (auto requires an interactive terminal and respects `NO_COLOR`).
 
+## Interactive suggestions
+
+Interactive prompts display suggested values to help first-time installers.
+Press **Enter** to explicitly accept the displayed suggestion, or type another
+value. `[Y/n]` suggests yes; `[y/N]` suggests no for hardware-specific or
+potentially disruptive options (such as starting services immediately).
+The service account suggestion is the existing account invoking `sudo`, or
+`pi` if that account exists. If neither can be found, an account name must be
+entered. The suggested, root-managed venv path is
+`/opt/sonoscdplayer/.venv`. Suggestions are not inferred for command-line
+automation: omitted flags still fail without an interactive terminal.
+The `--apply` confirmation remains mandatory and separate from these prompts.
+
 Run from any directory within a local checkout. Example for an unattended **preview**:
 
 ```sh

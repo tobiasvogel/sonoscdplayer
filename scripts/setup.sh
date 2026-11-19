@@ -66,23 +66,40 @@ ok() { printf '%s[ OK ]%s %s\n' "$GREEN" "$RESET" "$*"; }
 warn() { printf '%s[WARN]%s %s\n' "$YELLOW" "$RESET" "$*" >&2; }
 fail() { printf '%s[FAIL]%s %s\n' "$RED" "$RESET" "$*" >&2; exit 1; }
 
+# Suggestions apply only to interactive answers. CLI arguments are never inferred.
+# Pressing Enter explicitly accepts the displayed suggestion.
 ask_yes_no() {
-  local name="$1" question="$2" value="${!1}" answer
+  local name="$1" question="$2" value="${!1}" suggested="${3:-yes}" answer choice
+  case "$suggested" in
+    yes) choice='Y/n' ;;
+    no) choice='y/N' ;;
+    *) fail "Invalid suggested answer for $question: $suggested" ;;
+  esac
   if [[ -z "$value" ]]; then
     [[ -t 0 ]] || fail "Missing --${name,,} selection for non-interactive setup: $question"
     while true; do
-      read -r -p "$question [y/n]: " answer || fail 'Input closed'
-      case "$answer" in y|Y|yes|YES) value=yes; break;; n|N|no|NO) value=no; break;; *) warn 'Please answer y or n (no default).';; esac
+      read -r -p "$question [$choice]: " answer || fail 'Input closed'
+      case "$answer" in
+        '') value="$suggested"; break ;;
+        y|Y|yes|YES) value=yes; break ;;
+        n|N|no|NO) value=no; break ;;
+        *) warn 'Please answer y or n, or press Enter to accept the suggestion.' ;;
+      esac
     done
   fi
   case "$value" in yes|no) ;; *) fail "Invalid value for $question: $value (expected yes or no)" ;; esac
   printf -v "$name" '%s' "$value"
 }
 ask_text() {
-  local name="$1" question="$2" value="${!1}"
+  local name="$1" question="$2" value="${!1}" suggested="${3:-}" answer
   if [[ -z "$value" ]]; then
     [[ -t 0 ]] || fail "Missing required value: $question"
-    read -r -p "$question: " value || fail 'Input closed'
+    if [[ -n "$suggested" ]]; then
+      read -r -p "$question [$suggested]: " answer || fail 'Input closed'
+    else
+      read -r -p "$question: " answer || fail 'Input closed'
+    fi
+    value="${answer:-$suggested}"
   fi
   [[ -n "$value" ]] || fail "Empty value: $question"
   printf -v "$name" '%s' "$value"
@@ -96,25 +113,33 @@ if [[ -z "$APPLY" ]]; then
     case "$mode" in p|P) APPLY=no; break;; i|I) APPLY=yes; break;; *) warn 'Choose p or i (no default).';; esac
   done
 fi
-ask_text SERVICE_USER 'Existing non-root service account'
+# Raspberry Pi OS does not guarantee that an account named 'pi' exists.
+# Prefer the account invoking sudo; fall back to 'pi' only if it exists.
+suggested_user=''
+if [[ "${SUDO_USER:-}" =~ ^[a-z_][a-z0-9_-]{0,31}$ && "${SUDO_USER:-}" != root ]] && getent passwd "$SUDO_USER" >/dev/null; then
+  suggested_user="$SUDO_USER"
+elif getent passwd pi >/dev/null; then
+  suggested_user=pi
+fi
+ask_text SERVICE_USER 'Existing non-root service account' "$suggested_user"
 [[ "$SERVICE_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ && "$SERVICE_USER" != root ]] || fail 'Invalid service account name'
 getent passwd "$SERVICE_USER" >/dev/null || fail 'Service account does not exist; create it explicitly before setup'
-ask_text VENV 'Absolute path for the Python virtual environment'
+ask_text VENV 'Absolute path for the Python virtual environment' '/opt/sonoscdplayer/.venv'
 [[ "$VENV" == /* && "$VENV" != *[[:space:]]* ]] || fail 'Virtual environment path must be absolute and contain no whitespace'
 ask_yes_no PACKAGES_OPT 'Install operating-system packages?'
 ask_yes_no SPI 'Enable SPI interface?'
 ask_yes_no I2C 'Enable I2C interface?'
 ask_yes_no CONFIG 'Create missing configuration files?'
-ask_yes_no SENSOR 'Build/install the APDS9306 C sensor service?'
+ask_yes_no SENSOR 'Build/install the APDS9306 C sensor service?' no
 ask_yes_no SERVICES 'Render and install systemd services and Polkit rules?'
 if [[ "$SERVICES" == yes ]]; then
-  ask_yes_no EARLY 'Install early-boot Power LED service? (SSD1327 reference wiring)'
-  ask_yes_no POWER 'Enable POWER actions in rendered services?'
+  ask_yes_no EARLY 'Install early-boot Power LED service? (SSD1327 reference wiring)' no
+  ask_yes_no POWER 'Enable POWER actions in rendered services?' no
   ask_yes_no WAKE 'Enable optical-drive wake from buttons?'
   ask_yes_no CONNECT 'Enable CONNECT gestures?'
-  ask_yes_no NETWORK 'Enable WLAN setup?'
+  ask_yes_no NETWORK 'Enable WLAN setup?' no
   ask_yes_no ENABLE 'Enable installed services at boot?'
-  ask_yes_no START 'Start services now?'
+  ask_yes_no START 'Start services now?' no
 else
   for unwanted in EARLY POWER WAKE CONNECT NETWORK ENABLE START; do
     [[ -z "${!unwanted}" ]] || fail "--services no conflicts with option $unwanted"
@@ -124,11 +149,11 @@ fi
 if [[ "$SENSOR" == yes && "$SERVICES" != yes ]]; then
   fail 'APDS9306 sensor service requires --services yes; no binaries have been installed.'
 fi
-ask_yes_no SCREENS 'Install SSD1327 boot settings, C renderer and final shutdown hook?'
+ask_yes_no SCREENS 'Install SSD1327 boot settings, C renderer and final shutdown hook?' no
 if [[ "$SCREENS" == yes ]]; then
   ask_yes_no ASSEMBLER 'Prepare pinned Raspberry Pi splash assembler from upstream Git?'
   if [[ "$SERVICES" == yes ]]; then
-    ask_yes_no SHUTDOWN 'Install optional OLED shutdown sentinel and early shutdown screen services?'
+    ask_yes_no SHUTDOWN 'Install optional OLED shutdown sentinel and early shutdown screen services?' no
   else
     [[ -z "$SHUTDOWN" ]] || fail '--shutdown-services conflicts with --services no'
     SHUTDOWN=no
