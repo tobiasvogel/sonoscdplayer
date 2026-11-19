@@ -67,6 +67,33 @@ class MusicBrainzTests(unittest.TestCase):
         self.assertIn('toc=', calls[0].full_url)
         self.assertIn('SonosCDPlayer', calls[0].get_header('User-agent'))
 
+    def test_redundant_musicbrainz_track_number_prefixes(self):
+        data = {'releases': [{'id': 'numbered', 'title': 'Album',
+                 'media': [{'track-count': 3, 'tracks': [
+                     {'title': '01 Erster Titel'},
+                     {'title': '02. Zweiter Titel'},
+                     {'title': '03 - Dritter Titel'}]}]}]}
+        result = parse_release_candidates(data, track_count=3)
+        self.assertEqual(result[0].track_titles,
+                         ('Erster Titel', 'Zweiter Titel', 'Dritter Titel'))
+
+    def test_preserve_numeric_titles_when_not_consistent_sequence(self):
+        data = {'releases': [{'id': 'numeric', 'title': 'Album',
+                 'media': [{'track-count': 3, 'tracks': [
+                     {'title': '99 Luftballons'},
+                     {'title': '02 Ein Lied'},
+                     {'title': 'Another Song'}]}]}]}
+        result = parse_release_candidates(data, track_count=3)
+        self.assertEqual(result[0].track_titles,
+                         ('99 Luftballons', '02 Ein Lied', 'Another Song'))
+
+    def test_single_numbered_title_is_not_modified(self):
+        data = {'releases': [{'id': 'single', 'title': 'Album',
+                 'media': [{'track-count': 2, 'tracks': [
+                     {'title': '01 A Song'}, {'title': None}]}]}]}
+        result = parse_release_candidates(data, track_count=2)
+        self.assertEqual(result[0].track_titles, ('01 A Song', None))
+
     def test_compilation_keeps_artist_per_track(self):
         document = {'releases': [{'id': 'one', 'title': 'Hits', 'artist-credit': [
                         {'name': 'Various Artists'}],

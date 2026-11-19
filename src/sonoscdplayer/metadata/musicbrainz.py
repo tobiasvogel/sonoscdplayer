@@ -78,6 +78,31 @@ def artist_credit(value):
     return ''.join(parts) or None
 
 
+_NUMBERED_TITLE = re.compile(r'^\s*(\d{1,2})(?:[.)][ \t]*|[ \t]+-[ \t]+|[ \t]+)(\S.*)$')
+
+
+def _without_redundant_track_numbers(titles):
+    """Remove prefixes only when MusicBrainz titles form a numbered sequence.
+
+    A single title beginning with a number may be the actual song title.
+    Preserve incomplete or inconsistently numbered lists unchanged.
+    """
+    numbered = []
+    for position, title in enumerate(titles, 1):
+        if not title:
+            continue
+        match = _NUMBERED_TITLE.fullmatch(title)
+        if match is None or int(match.group(1)) != position:
+            return tuple(titles)
+        numbered.append((position - 1, match.group(2)))
+    if len(numbered) < 2:
+        return tuple(titles)
+    result = list(titles)
+    for index, title in numbered:
+        result[index] = title
+    return tuple(result)
+
+
 def parse_release_candidates(data, *, track_count):
     """Retain candidates; only attach titles when the medium is unambiguous."""
     if not isinstance(data, dict) or not isinstance(data.get('releases', []), list):
@@ -110,7 +135,8 @@ def parse_release_candidates(data, *, track_count):
                 titles.append(title_value if isinstance(title_value, str) else None)
                 artists.append(artist_credit(track.get('artist-credit'))
                                or artist_credit(recording.get('artist-credit')))
-            matching_media.append((tuple(titles), tuple(artists)))
+            matching_media.append((_without_redundant_track_numbers(titles),
+                                   tuple(artists)))
         candidates.append(ReleaseCandidate(
             release_id, title, artist_credit(release.get('artist-credit')),
             release.get('country') if isinstance(release.get('country'), str) else None,
