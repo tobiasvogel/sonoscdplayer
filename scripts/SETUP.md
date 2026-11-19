@@ -62,3 +62,24 @@ Before running `--start-services`, verify your actual GPIO wiring and display,
 configuration, Sonos target and intended ownership. Setup does not start a CD
 stream or select speakers by itself. Always test the whole setup on a fresh
 Raspberry Pi before claiming a reproducible beginner installation.
+
+## Preflight and explicit installation confirmation
+
+`tools/setup_preflight.py` is invoked after all choices are collected and
+**before** `--apply` can change the system. It validates the Raspberry Pi OS
+platform, required commands, package templates, existing TOML files, expected
+source files, existing service conflicts and drop-ins (by rendering units into
+a temporary directory), and availability of the selected screen components.
+The preflight does not install packages, modify configuration, or call systemctl.
+The `--dry-run` mode runs the same checks, but hardware/OS mismatches are
+warnings so the plan can be reviewed on a development computer.
+
+In interactive `--apply`, after successful preflight the operator must type
+`APPLY` exactly to confirm the displayed choices. For unattended execution,
+provide `--confirm-apply` explicitly with `--apply`; omitting this flag fails
+before any system changes. This confirmation authorizes selected operations,
+not a reboot or an OS upgrade. Do not use `--confirm-apply` with `--dry-run`.
+
+Preflight cannot prove correct GPIO wiring, Sonos availability or that a
+Raspberry Pi firmware accepts the requested splash format. A full Pi acceptance
+test remains necessary before describing the installer as production-ready.

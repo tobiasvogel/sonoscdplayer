@@ -13,22 +13,24 @@ Usage: bash scripts/setup.sh [--apply|--dry-run] [--service-user NAME] [--venv P
   [--power-actions yes|no] [--drive-activity-events yes|no]
   [--connect-gestures yes|no] [--network-setup yes|no]
   [--screens yes|no] [--shutdown-services yes|no] [--splash-assembler yes|no]
-  [--enable-services yes|no] [--start-services yes|no]
+  [--enable-services yes|no] [--start-services yes|no] [--confirm-apply]
   [--color auto|always|never]
 
 --dry-run prints a plan and makes no system changes.
 Missing choices are asked interactively; without a terminal they are errors.
+--apply always requires a final typed confirmation or --confirm-apply.
 Existing configuration and different service files are never overwritten.
 The setup does not change hostname, run full-upgrade, or reboot.
 EOF
 }
 
-APPLY='' COLOR=auto
+APPLY='' COLOR=auto CONFIRM_APPLY=no
 SERVICE_USER='' VENV=''
 PACKAGES_OPT='' SPI='' I2C='' CONFIG='' SENSOR='' SERVICES='' EARLY='' POWER='' WAKE='' CONNECT='' NETWORK='' SCREENS='' SHUTDOWN='' ASSEMBLER='' ENABLE='' START=''
 while (($#)); do
   case "$1" in
     --help|-h) usage; exit 0 ;;
+    --confirm-apply) CONFIRM_APPLY=yes; shift ;;
     --apply) [[ -z "$APPLY" ]] || { echo "Choose exactly one mode" >&2; exit 2; }; APPLY=yes; shift ;;
     --dry-run) [[ -z "$APPLY" ]] || { echo "Choose exactly one mode" >&2; exit 2; }; APPLY=no; shift ;;
     --service-user) SERVICE_USER="${2:?Missing service user}"; shift 2 ;;
@@ -140,11 +142,32 @@ info "Service account: $SERVICE_USER; Python venv: $VENV"
 info "Packages=$PACKAGES_OPT SPI=$SPI I2C=$I2C Config=$CONFIG Sensor=$SENSOR Services=$SERVICES Screens=$SCREENS"
 info "EarlyLED=$EARLY Power=$POWER Wake=$WAKE Connect=$CONNECT Network=$NETWORK Enable=$ENABLE Start=$START"
 info "SplashAssembler=$ASSEMBLER ShutdownServices=$SHUTDOWN"
+# The preflight is read-only. It also checks rendered units against installed files.
+preflight=(python3 "$ROOT/tools/setup_preflight.py" --repo "$ROOT"
+  --service-user "$SERVICE_USER" --venv "$VENV"
+  --mode "$( [[ "$APPLY" == yes ]] && printf apply || printf preview )"
+  --packages "$PACKAGES_OPT" --spi "$SPI" --i2c "$I2C"
+  --config "$CONFIG" --sensor "$SENSOR" --services "$SERVICES"
+  --screens "$SCREENS" --assembler "$ASSEMBLER"
+  --early-led "$EARLY" --shutdown-services "$SHUTDOWN"
+  --power-actions "$POWER" --drive-activity-events "$WAKE"
+  --connect-gestures "$CONNECT" --network-setup "$NETWORK")
+if [[ "$APPLY" == no && "$CONFIRM_APPLY" == yes ]]; then
+  fail '--confirm-apply requires --apply'
+fi
+info 'Running read-only preflight checks'
+"${preflight[@]}" || fail 'Preflight failed; no installation steps were started.'
 if [[ "$APPLY" == no ]]; then
   ok 'Preview only; no system modifications performed. Rerun with --apply to install.'
   exit 0
 fi
 [[ $EUID -eq 0 ]] || fail 'Use sudo for --apply (only after reviewing the plan).'
+if [[ "$CONFIRM_APPLY" != yes ]]; then
+  [[ -t 0 ]] || fail 'Non-interactive --apply requires --confirm-apply'
+  answer=''
+  read -r -p 'Type APPLY to confirm all selected system changes: ' answer || fail 'Input closed'
+  [[ "$answer" == APPLY ]] || fail 'Installation not confirmed; nothing changed.'
+fi
 command -v python3 >/dev/null || fail 'python3 is required'
 if [[ "$SPI" == yes || "$I2C" == yes ]]; then
   command -v raspi-config >/dev/null || fail 'raspi-config is required to configure SPI or I2C'

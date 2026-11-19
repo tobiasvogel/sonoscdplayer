@@ -136,7 +136,7 @@ class SetupShellTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('require --screens yes', result.stderr)
 
-    def test_valid_selected_screens_preview(self):
+    def test_incomplete_screens_preview_reports_missing_prerequisites(self):
         cmd = ['bash', str(ROOT / 'scripts/setup.sh'), '--dry-run',
                '--service-user', 'nobody', '--venv', '/tmp/setup-test-venv',
                '--packages', 'no', '--spi', 'no', '--i2c', 'no',
@@ -144,8 +144,8 @@ class SetupShellTests(unittest.TestCase):
                '--screens', 'yes', '--splash-assembler', 'yes', '--color', 'never']
         result = subprocess.run(cmd, stdin=subprocess.DEVNULL,
                                 capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('SplashAssembler=yes', result.stdout)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Missing required configuration', result.stderr)
 
     def test_fully_specified_preview(self):
         result = subprocess.run(['bash', str(ROOT / 'scripts/setup.sh'), '--dry-run',
@@ -161,3 +161,85 @@ class SetupShellTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SetupPreflightTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.base = Path(self.temp.name)
+        self.repo = self.base / 'repo'
+        for name in ('scripts', 'src', 'config'):
+            (self.repo / name).mkdir(parents=True)
+        (self.repo / 'scripts/packages.lst').write_text('git\n')
+        (self.repo / 'src/player_service.py').write_text('')
+        self.os_release = self.base / 'os-release'
+        self.os_release.write_text('ID=debian\n')
+        self.pi_model = self.base / 'model'
+        self.pi_model.write_bytes(b'Raspberry Pi 4 Model B\x00')
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('setup_preflight',
+                                                     ROOT / 'tools/setup_preflight.py')
+        self.preflight = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.preflight)
+
+    def args(self, **overrides):
+        from argparse import Namespace
+        values = dict(repo=self.repo, service_user='nobody', venv=self.base / '.venv',
+                      mode='preview', packages=False, spi=False, i2c=False,
+                      config=False, sensor=False, services=False, screens=False,
+                      assembler=False, early_led=False, shutdown_services=False,
+                      power_actions=False, drive_activity_events=False,
+                      connect_gestures=False, network_setup=False)
+        values.update(overrides)
+        return Namespace(**values)
+
+    def test_preview_on_other_hardware_warns_not_fails(self):
+        self.pi_model.write_text('Generic VM')
+        errors, warnings = self.preflight.check(
+            self.args(), pi_model=self.pi_model, os_release=self.os_release)
+        self.assertEqual(errors, [])
+        self.assertTrue(any('Raspberry Pi' in item for item in warnings))
+
+    def test_apply_on_other_hardware_fails_closed(self):
+        from unittest.mock import patch
+        self.pi_model.write_text('Generic VM')
+        with patch.object(self.preflight.os, 'geteuid', return_value=0):
+            errors, _ = self.preflight.check(
+                self.args(mode='apply'), pi_model=self.pi_model,
+                os_release=self.os_release)
+        self.assertTrue(any('Raspberry Pi' in item for item in errors))
+
+    def test_config_template_validation_before_install(self):
+        errors = []
+        for name in self.preflight.CONFIG_NAMES:
+            (self.repo / 'config' / name.replace('.toml', '.example.toml')).write_text('[broken\n')
+        self.preflight.inspect_configs(self.repo, self.base / 'etc', True, True, errors)
+        self.assertEqual(len(errors), 3)
+        self.assertFalse((self.base / 'etc').exists())
+
+    def test_missing_config_caught_before_install(self):
+        errors = []
+        self.preflight.inspect_configs(self.repo, self.base / 'etc', False, True, errors)
+        self.assertEqual(len(errors), 2)
+        self.assertTrue(all('Missing required' in error for error in errors))
+
+    def test_symlink_config_refused(self):
+        cfg = self.base / 'etc'
+        cfg.mkdir()
+        (cfg / 'player.toml').symlink_to(self.repo / 'scripts/packages.lst')
+        errors = []
+        self.preflight.inspect_configs(self.repo, cfg, False, False, errors)
+        self.assertTrue(any('symlink' in item for item in errors))
+
+    def test_apply_confirmation_not_valid_in_preview(self):
+        command = ['bash', str(ROOT / 'scripts/setup.sh'), '--dry-run',
+                   '--confirm-apply', '--service-user', 'nobody',
+                   '--venv', str(self.base / '.venv'), '--packages', 'no',
+                   '--spi', 'no', '--i2c', 'no', '--config', 'no',
+                   '--sensor', 'no', '--services', 'no', '--screens', 'no',
+                   '--color', 'never']
+        result = subprocess.run(command, stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('--confirm-apply requires --apply', result.stderr)
