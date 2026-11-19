@@ -22,6 +22,8 @@ Current capabilities include:
 - **Display interface:** Show playback status, navigate menus, and select Sonos speakers using physical controls.
 - **RAM-only audio buffering:** Stream CD audio using bounded memory without creating persistent audio copies.
 - **Disc management:** Detect disc changes, handle verified USB drive reconnection, and eject discs using a physical button on tested hardware.
+- **CD metadata and artwork:** Read CD-TEXT, retrieve MusicBrainz metadata, and store metadata and cover images in a local cache.
+- **Wi-Fi setup:** Configure a network on the device or through a temporary setup hotspot.
 - **System services:** Run the player and hardware interfaces through local services with configurable behaviour.
 
 These foundations are implemented, but not every feature is enabled by default or validated across different hardware combinations. First-time setup, some device controls, broader hardware compatibility, and long-term reliability still require additional work.
@@ -84,9 +86,9 @@ A typical build consists of:
 
 ### Hardware compatibility
 
-The reference build combines physical buttons and a rotary encoder on a custom PCB, but alternative control layouts are a design goal.
+The reference build combines physical buttons and a rotary encoder on a custom PCB, but alternative control layouts are a design goal. The repository also contains 3D-printable enclosure parts; a complete, tested assembly guide is still in preparation.
 
-Audio playback and drive handling have been tested with multiple USB optical drives, including the **ASUS SDRW-08U1MT** and **TSSTcorp CDDVDW TS-U633J**. Tested functionality may vary by setup; the examples are not an exhaustive compatibility list.
+The **ASUS SDRW-08U1MT** is the reference optical drive. Idle spin-down and wake-up have been verified with this drive connected through a powered USB hub. The **TSSTcorp CDDVDW TS-U633J** was also evaluated but proved unstable in the tested setup. These results are not an exhaustive compatibility list.
 
 The [SonosCDPlayer website](https://sonoscdplayer.diy) is intended to collect tested components, hardware configurations, and community builds over time.
 
@@ -109,11 +111,11 @@ SonosCDPlayer supports conventional CD playback controls through configurable ph
 
 Physical playback buttons and disc ejection have been validated on reference hardware.
 
-Volume buttons are implemented but not yet validated on reference hardware.
+Volume buttons have been tested on reference hardware.
 
 A Power button implementation provides a display-based power menu and long-press shutdown request. These system actions require explicit configuration.
 
-**Important:** Hardware controls may run in diagnostic or preview modes unless their execution paths are enabled. A fresh installation does not automatically activate every available control function.
+**Important:** Hardware controls may run in diagnostic or preview modes unless their execution paths are enabled. A fresh installation does not automatically activate every available control function for now.
 
 See [Power button](docs/POWER_BUTTON.md) for details.
 
@@ -121,7 +123,7 @@ See [Power button](docs/POWER_BUTTON.md) for details.
 
 SonosCDPlayer discovers available Sonos devices on the local network and provides a display-based interface for choosing a playback target.
 
-Users can select an individual speaker or a combination of supported speakers. The player can create a temporary group for CD playback when the target devices are in an appropriate state.
+Users can select an individual speaker or a combination of supported speakers. The player can create a temporary group for CD playback when the target devices are in an appropriate state. A disc-wide track queue enables navigation from the Sonos app; targeted hardware validation of the latest start and transition handling remains open.
 
 Speaker selection and playback remain separate operations:
 
@@ -147,7 +149,7 @@ The active configuration lives in **`/etc/sonoscdplayer/`** (`player.toml`, `int
 
 A configuration update utility offers dry-run checks, structural validation against an optional reference, backup creation, and rollback support. Perform service-affecting updates while the player is idle. See [Updating the player configuration](docs/CONFIG_UPDATE.md).
 
-To join a new Wi-Fi network, hold CONNECT for 10 seconds: the player opens a temporary setup hotspot and shows its name, password and a web address on the display. See [Wi-Fi setup](docs/NETWORK_SETUP.md).
+To join a Wi-Fi network, use the device menu to select a network and enter its password, or hold CONNECT for 10 seconds to open a temporary setup hotspot with a web page. Both methods have been tested on reference hardware; additional failure and timeout scenarios remain open. See [Wi-Fi setup](docs/NETWORK_SETUP.md).
 
 ## Display and languages
 
@@ -155,9 +157,9 @@ SonosCDPlayer provides a display-based interface for playback information, devic
 
 The current reference implementation uses an OLED display. Drivers and test tools for a smaller monochrome OLED (SH1107) and a color LCD (ST7735S) are included and await their connection to the player; a four-color e-paper module was evaluated and found unsuitable. See [Displays](docs/DISPLAYS.md).
 
-The implemented interface includes playback and disc status, interactive menus, Sonos target selection, and rotary encoder navigation. English and German are available, with an initial language set in TOML and session-only switching from the display menu. Adaptive brightness is supported on suitable reference hardware.
+The implemented interface includes playback and disc status, interactive menus, Sonos target selection, and rotary encoder navigation. English and German are available; the selected language is retained across restarts in local application state. Adaptive brightness is supported on suitable reference hardware.
 
-Richer album metadata, cover artwork, and further interface improvements are planned.
+CD-TEXT, MusicBrainz metadata and album artwork on the reference OLED are implemented and have been tested on hardware. Further interface improvements and metadata edge-case testing remain open.
 
 See [Display languages and translations](docs/I18N.md) for details.
 
@@ -177,14 +179,17 @@ The roadmap distinguishes working foundations from features still under developm
 - [x] Implement and hardware-test physical playback buttons.
 - [x] Detect disc changes and handle verified optical drive reconnection.
 - [x] Implement and hardware-test physical disc ejection on reference hardware.
+- [x] Verify optical-drive idle spin-down and wake-up using a powered USB hub on reference hardware.
+- [x] Implement and hardware-test CD-TEXT, MusicBrainz lookup, and local metadata and cover caching.
+- [x] Implement and hardware-test device-based Wi-Fi selection and setup hotspot.
 
 ### Work in progress and planned features
 
 - [ ] Complete hardware validation of remaining device controls and their integration.
-- [ ] Validate optical drive idle spin-down and wake-up behaviour on reference and additional hardware.
+- [ ] Validate optical-drive idle spin-down and wake-up over extended operation and on additional hardware.
 - [ ] Complete boot, shutdown, restart, and long-term reliability testing.
-- [ ] Develop guided first-time network setup and recovery.
-- [ ] Add richer CD metadata, album artwork, and related display features.
+- [ ] Validate remaining Wi-Fi setup failure, timeout, and recovery scenarios.
+- [ ] Complete hardware tests for disc-wide Sonos navigation and remaining metadata edge cases.
 - [ ] Expand and validate support for additional hardware configurations and interchangeable interfaces.
 - [ ] Publish reproducible installation instructions and a hardware compatibility guide.
 - [ ] Provide a complete bill of materials, wiring documentation, and a tested build guide.
