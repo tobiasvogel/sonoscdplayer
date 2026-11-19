@@ -12,7 +12,8 @@ Usage: bash scripts/setup.sh [--apply|--dry-run] [--service-user NAME] [--venv P
   [--config yes|no] [--sensor yes|no] [--services yes|no] [--early-led yes|no]
   [--power-actions yes|no] [--drive-activity-events yes|no]
   [--connect-gestures yes|no] [--network-setup yes|no]
-  [--screens yes|no] [--enable-services yes|no] [--start-services yes|no]
+  [--screens yes|no] [--shutdown-services yes|no] [--splash-assembler yes|no]
+  [--enable-services yes|no] [--start-services yes|no]
   [--color auto|always|never]
 
 --dry-run prints a plan and makes no system changes.
@@ -24,7 +25,7 @@ EOF
 
 APPLY='' COLOR=auto
 SERVICE_USER='' VENV=''
-PACKAGES_OPT='' SPI='' I2C='' CONFIG='' SENSOR='' SERVICES='' EARLY='' POWER='' WAKE='' CONNECT='' NETWORK='' SCREENS='' ENABLE='' START=''
+PACKAGES_OPT='' SPI='' I2C='' CONFIG='' SENSOR='' SERVICES='' EARLY='' POWER='' WAKE='' CONNECT='' NETWORK='' SCREENS='' SHUTDOWN='' ASSEMBLER='' ENABLE='' START=''
 while (($#)); do
   case "$1" in
     --help|-h) usage; exit 0 ;;
@@ -44,6 +45,8 @@ while (($#)); do
     --connect-gestures) CONNECT="${2:?}"; shift 2 ;;
     --network-setup) NETWORK="${2:?}"; shift 2 ;;
     --screens) SCREENS="${2:?}"; shift 2 ;;
+    --shutdown-services) SHUTDOWN="${2:?}"; shift 2 ;;
+    --splash-assembler) ASSEMBLER="${2:?}"; shift 2 ;;
     --enable-services) ENABLE="${2:?}"; shift 2 ;;
     --start-services) START="${2:?}"; shift 2 ;;
     --color) COLOR="${2:?}"; shift 2 ;;
@@ -118,14 +121,25 @@ if [[ "$SENSOR" == yes && "$SERVICES" != yes ]]; then
   fail 'APDS9306 sensor service requires --services yes; no binaries have been installed.'
 fi
 ask_yes_no SCREENS 'Install SSD1327 boot settings, C renderer and final shutdown hook?'
-if [[ "$SCREENS" == yes && "$SERVICES" != yes ]]; then
-  warn 'Shutdown screen systemd units are not installed unless services are selected.'
+if [[ "$SCREENS" == yes ]]; then
+  ask_yes_no ASSEMBLER 'Prepare pinned Raspberry Pi splash assembler from upstream Git?'
+  if [[ "$SERVICES" == yes ]]; then
+    ask_yes_no SHUTDOWN 'Install optional OLED shutdown sentinel and early shutdown screen services?'
+  else
+    [[ -z "$SHUTDOWN" ]] || fail '--shutdown-services conflicts with --services no'
+    SHUTDOWN=no
+    warn 'Optional shutdown services require --services yes.'
+  fi
+else
+  [[ -z "$ASSEMBLER" && -z "$SHUTDOWN" ]] || fail 'Splash assembler and shutdown services require --screens yes'
+  ASSEMBLER=no SHUTDOWN=no
 fi
 
 info "Repository: $ROOT"
 info "Service account: $SERVICE_USER; Python venv: $VENV"
 info "Packages=$PACKAGES_OPT SPI=$SPI I2C=$I2C Config=$CONFIG Sensor=$SENSOR Services=$SERVICES Screens=$SCREENS"
 info "EarlyLED=$EARLY Power=$POWER Wake=$WAKE Connect=$CONNECT Network=$NETWORK Enable=$ENABLE Start=$START"
+info "SplashAssembler=$ASSEMBLER ShutdownServices=$SHUTDOWN"
 if [[ "$APPLY" == no ]]; then
   ok 'Preview only; no system modifications performed. Rerun with --apply to install.'
   exit 0
@@ -160,6 +174,22 @@ if [[ "$SENSOR" == yes ]]; then
   install -m 0755 "$SENSOR_DIR/apds9306d" /usr/local/bin/apds9306d
   install -m 0755 "$SENSOR_DIR/apds9306" /usr/local/bin/apds9306
 fi
+if [[ "$SCREENS" == yes ]]; then
+  [[ -f /etc/sonoscdplayer/player.toml ]] || fail 'Screens require the installed player.toml'
+  if [[ "$ASSEMBLER" == yes ]]; then
+    info 'Preparing pinned Raspberry Pi splash assembler'
+    SPLASH_ASSEMBLER="$(bash "$ROOT/tools/prepare_splash_assembler.sh")"
+    export SPLASH_ASSEMBLER
+  fi
+  info 'Building C shutdown display helper'
+  sh "$ROOT/tools/build_shutdown_renderer.sh"
+  info 'Installing C shutdown renderer and final shutdown hook'
+  install -d -m 0755 /usr/local/libexec /usr/lib/systemd/system-shutdown
+  install -m 0755 "$ROOT/build/shutdown/sonoscdplayer-shutdown-display" /usr/local/libexec/sonoscdplayer-shutdown-display
+  install -m 0755 "$ROOT/systemd/sonoscdplayer-final-shutdown-hook" /usr/lib/systemd/system-shutdown/sonoscdplayer-final-screen
+  info 'Updating configured boot and existing shutdown screens'
+  sh "$ROOT/tools/install_screens.sh"
+fi
 if [[ "$SERVICES" == yes ]]; then
   [[ -f /etc/sonoscdplayer/player.toml ]] || fail 'Missing player.toml; create configuration before service installation'
   [[ -f /etc/sonoscdplayer/interface.toml ]] || fail 'Missing interface.toml; create configuration before service installation'
@@ -174,6 +204,7 @@ if [[ "$SERVICES" == yes ]]; then
   info 'Rendering service files and rules'; "${render[@]}"
   install_cmd=(python3 "$ROOT/tools/install_runtime_services.py" --rendered-dir "$out" --target-unit "$ROOT/systemd/sonoscdplayer.target" --apply)
   [[ "$SENSOR" == yes ]] && install_cmd+=(--sensor-unit "$SENSOR_DIR/apds9306d.service")
+  [[ "$SHUTDOWN" == yes ]] && install_cmd+=(--shutdown-units-dir "$ROOT/systemd")
   [[ "$ENABLE" == yes ]] && install_cmd+=(--enable)
   [[ "$START" == yes ]] && install_cmd+=(--start)
   if [[ "$EARLY" == yes ]]; then
@@ -183,17 +214,5 @@ if [[ "$SERVICES" == yes ]]; then
     install_cmd+=(--early-led)
   fi
   info 'Installing reviewed service files'; "${install_cmd[@]}"
-fi
-if [[ "$SCREENS" == yes ]]; then
-  [[ -f /etc/sonoscdplayer/player.toml ]] || fail 'Screens require the installed player.toml'
-  info 'Building C shutdown display helper'
-  sh "$ROOT/tools/build_shutdown_renderer.sh"
-  info 'Installing C shutdown renderer and final shutdown hook'
-  install -d -m 0755 /usr/local/libexec /usr/lib/systemd/system-shutdown
-  install -m 0755 "$ROOT/build/shutdown/sonoscdplayer-shutdown-display" /usr/local/libexec/sonoscdplayer-shutdown-display
-  install -m 0755 "$ROOT/systemd/sonoscdplayer-final-shutdown-hook" /usr/lib/systemd/system-shutdown/sonoscdplayer-final-screen
-  warn 'The optional sentinel and early shutdown systemd units still require a separate explicit installation. Firmware splash assembler may also be missing.'
-  info 'Updating configured boot and existing shutdown screens'
-  sh "$ROOT/tools/install_screens.sh"
 fi
 ok 'Setup steps completed. No reboot initiated.'

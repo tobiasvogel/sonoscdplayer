@@ -17,11 +17,14 @@ UNITS = (
     'sonoscdplayer-early-power-led.service',
 )
 RULES = ('50-sonoscdplayer-power.rules', '50-sonoscdplayer-network.rules')
+SHUTDOWN_UNITS = ('sonoscdplayer-oled-shutdown-sentinel.service',
+                  'sonoscdplayer-shutdown-screen.service')
 SENSOR = 'apds9306d.service'
 TARGET = 'sonoscdplayer.target'
 
 
-def plan(rendered, unit_dir, polkit_dir, sensor_unit=None, target_unit=None, early_led=False):
+def plan(rendered, unit_dir, polkit_dir, sensor_unit=None, target_unit=None,
+         early_led=False, shutdown_units_dir=None):
     """Validate all files before any installation; return (source, target) pairs."""
     files = []
     for name in UNITS[:4] + ((UNITS[4],) if early_led else ()) + RULES:
@@ -30,6 +33,12 @@ def plan(rendered, unit_dir, polkit_dir, sensor_unit=None, target_unit=None, ear
             files.append((source, (unit_dir if name.endswith('.service') else polkit_dir) / name))
         elif name in UNITS[:4] or (early_led and name == UNITS[4]):
             raise ValueError(f'Missing required rendered unit: {source}')
+    if shutdown_units_dir is not None:
+        for name in SHUTDOWN_UNITS:
+            source = shutdown_units_dir / name
+            if not source.is_file() or source.is_symlink():
+                raise ValueError(f'Missing requested shutdown unit: {source}')
+            files.append((source, unit_dir / name))
     if target_unit:
         if not target_unit.is_file() or target_unit.is_symlink():
             raise ValueError(f'Missing runtime target: {target_unit}')
@@ -77,6 +86,8 @@ def main(argv=None):
     parser.add_argument('--sensor-unit', type=Path)
     parser.add_argument('--target-unit', type=Path, required=True)
     parser.add_argument('--early-led', action='store_true', help='Install rendered early LED unit')
+    parser.add_argument('--shutdown-units-dir', type=Path,
+                        help='Explicitly install both optional SSD1327 shutdown services')
     parser.add_argument('--unit-dir', type=Path, default=Path('/etc/systemd/system'))
     parser.add_argument('--polkit-dir', type=Path, default=Path('/etc/polkit-1/rules.d'))
     parser.add_argument('--apply', action='store_true')
@@ -86,7 +97,7 @@ def main(argv=None):
     if (args.enable or args.start) and not args.apply:
         parser.error('--enable and --start require --apply')
     try:
-        files = plan(args.rendered_dir, args.unit_dir, args.polkit_dir, args.sensor_unit, args.target_unit, args.early_led)
+        files = plan(args.rendered_dir, args.unit_dir, args.polkit_dir, args.sensor_unit, args.target_unit, args.early_led, args.shutdown_units_dir)
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
     for _, target in files:
@@ -103,6 +114,8 @@ def main(argv=None):
         services.append(SENSOR)
     if args.early_led:
         services.append(UNITS[4])
+    if args.shutdown_units_dir:
+        services.extend(SHUTDOWN_UNITS)
     if args.enable:
         subprocess.run(['systemctl', 'enable', *services], check=True)
     if args.start:

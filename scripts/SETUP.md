@@ -41,11 +41,21 @@ Existing different service files or `.service.d/*.conf` drop-ins require manual
 review and migration; they are not automatically overwritten or removed.
 The optional early-power-LED helper is copied only when explicitly selected.
 The experimental exitrd is **not** installed automatically; use the documented
-`tools/manage_experimental_exitrd.sh` procedure separately. The firmware
-splash assembler from Raspberry Pi utils is likewise not cloned or built
-implicitly. `install_screens.sh` reports when it is unavailable. The final shutdown hook is now installed when screens are selected. The optional
-OLED sentinel and early shutdown systemd units are **not** installed automatically;
-they still require an explicit, separately reviewed installation.
+`tools/manage_experimental_exitrd.sh` procedure separately. When `--screens yes` is selected, setup separately asks whether to prepare the
+firmware splash assembler. With `--splash-assembler yes`,
+`tools/prepare_splash_assembler.sh` fetches a **pinned** official Raspberry Pi
+utils commit into `build/` (and verifies the existing checkout on later runs).
+No upstream `master` checkout is silently used for this step. The installer
+passes the exact `splash_assembler.py` path to `tools/install_screens.sh`.
+This needs Git and network access on first use; `--splash-assembler no` keeps
+the existing lookup behaviour and may skip the firmware splash.
+
+With `--screens yes --services yes`, the additional `--shutdown-services yes`
+choice installs the optional OLED sentinel and early shutdown systemd units
+through `tools/install_runtime_services.py`. This is an explicit opt-in,
+separate from building the C renderer and installing the final shutdown hook.
+Existing differing units or drop-ins are still refused. The renderer and hook
+are built and installed before any selected services are started.
 Selecting the APDS9306 sensor also requires selecting systemd service installation.
 
 Before running `--start-services`, verify your actual GPIO wiring and display,
