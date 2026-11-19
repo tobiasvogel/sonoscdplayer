@@ -1,4 +1,7 @@
-"""Single-resolution, file-based Cover Art Archive cache.
+"""Store album covers from the Cover Art Archive as JPEG files.
+
+One size per cover (max_dimension_px), never enlarged. When the budget is
+full, no new covers are stored.
 
 Pillow is optional: absent Pillow affects covers only, never CD playback.
 No upscale; dimensions are bounded by max_dimension_px on both axes.
@@ -28,6 +31,7 @@ class CoverBudgetFull(Exception):
 
 @dataclass(frozen=True)
 class CoverPolicy:
+    """Whether covers are fetched, and their size, quality and disk budget."""
     enabled: bool = False
     max_dimension_px: int = 512
     jpeg_quality: int = 85
@@ -44,7 +48,9 @@ class CoverPolicy:
             raise ValueError('cover budget_mb must be 1..10000')
 
 
-class CoverCache:
+class CoverStore:
+    """The cover directory; one file per MusicBrainz release."""
+
     def __init__(self, directory=DEFAULT_COVER_DIR):
         self.directory = Path(directory)
 
@@ -62,6 +68,7 @@ class CoverCache:
             return 0
 
     def find(self, release_id: str) -> Path | None:
+        """Path of the stored cover for this release, or None."""
         path = self._path(release_id)
         return path if path.is_file() and path.stat().st_size > 0 else None
 

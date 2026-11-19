@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import Mock
 
 from sonoscdplayer.metadata.cache import DiscCache
-from sonoscdplayer.metadata.cover_store import CoverBudgetFull, CoverCache, CoverPolicy
+from sonoscdplayer.metadata.cover_store import CoverBudgetFull, CoverStore, CoverPolicy
 from sonoscdplayer.metadata.local_metadata import LocalDiscMetadata, LocalTrackMetadata
 from sonoscdplayer.metadata.musicbrainz import DiscIdentity, LookupResult, ReleaseCandidate
 from sonoscdplayer.metadata.worker import MetadataWorker
@@ -51,7 +51,7 @@ class CoverTests(unittest.TestCase):
             self.skipTest('Pillow not available')
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.cache = CoverCache(Path(self.tmp.name) / 'covers')
+        self.cache = CoverStore(Path(self.tmp.name) / 'covers')
 
     def test_full_budget_keeps_old_and_stores_no_new_cover(self):
         policy = CoverPolicy(enabled=True, budget_mb=1)

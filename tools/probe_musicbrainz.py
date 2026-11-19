@@ -21,7 +21,7 @@ from sonoscdplayer.metadata.local_metadata import read_cdtext, build_local_metad
 from sonoscdplayer.metadata.release_matching import MatchingPolicy, decide_release, merged_metadata
 from sonoscdplayer.metadata.language_rules import load_language_rules
 from sonoscdplayer.metadata.cache import DiscCache
-from sonoscdplayer.metadata.cover_store import CoverCache
+from sonoscdplayer.metadata.cover_store import CoverStore
 from sonoscdplayer.metadata.cover_preferences import read_cover_preferences
 from sonoscdplayer.drive.disc_startup import optical_devices
 from sonoscdplayer.drive.drive_lock import drive_lock
@@ -184,7 +184,7 @@ def main(argv=None):
                 report['cache_error'] = type(exc).__name__
     if args.fetch_cover and args.cover_dir is not None and report.get('selected_release_id'):
         try:
-            image_path = CoverCache(args.cover_dir).get_or_download(
+            image_path = CoverStore(args.cover_dir).get_or_download(
                 report['selected_release_id'], policy=cover_policy)
             report['cover_file'] = str(image_path) if image_path else None
         except (OSError, ValueError, RuntimeError) as exc:

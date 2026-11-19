@@ -1,4 +1,4 @@
-"""Conservative, deterministic release matching for local CD-TEXT + MusicBrainz.
+"""Choose among several MusicBrainz releases by comparing them with CD-TEXT.
 
 Scores indicate text agreement, never a calibrated probability. No I/O.
 """
@@ -40,6 +40,7 @@ def _validate_descriptors(name: str, values: tuple[str, ...]) -> tuple[str, ...]
 
 @dataclass(frozen=True)
 class MatchingPolicy:
+    """When a release may be chosen automatically (score, margin, titles)."""
     auto_match: bool = True
     confidence_threshold: int = 90
     minimum_margin: int = 15
@@ -70,6 +71,7 @@ class MatchingPolicy:
 
 @dataclass(frozen=True)
 class ScoredRelease:
+    """A release with its total score and the partial scores."""
     release: ReleaseCandidate
     score: int
     album_score: int
@@ -81,6 +83,7 @@ class ScoredRelease:
 
 @dataclass(frozen=True)
 class MatchDecision:
+    """The chosen release (if any), the reason and all scored candidates."""
     status: str  # unique | confidence | manual | disabled | not_found
     selected_release_id: str | None
     score: int | None

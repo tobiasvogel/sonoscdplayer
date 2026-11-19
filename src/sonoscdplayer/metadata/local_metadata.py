@@ -1,4 +1,4 @@
-"""Read-only CD-TEXT probe and normalized local disc metadata.
+"""Metadata stored on the CD itself: CD-TEXT, ISRC and catalog number (MCN).
 
 This module never contacts Sonos or the internet. Call the optical probe only
 while the player is idle and holding the existing drive lock (drive/drive_lock.py).
@@ -23,6 +23,7 @@ _TECH_MCN = re.compile(r'^Media Catalog Number \(MCN\):\s*(\d{13})\s*$', re.I)
 
 @dataclass(frozen=True)
 class LocalTrackMetadata:
+    """Title, artist and ISRC of one track, from the CD."""
     number: int
     duration_seconds: float
     title: str | None = None
@@ -32,6 +33,7 @@ class LocalTrackMetadata:
 
 @dataclass(frozen=True)
 class LocalDiscMetadata:
+    """Album title, artist, catalog number and tracks, from the CD."""
     album: str | None
     artist: str | None
     tracks: tuple[LocalTrackMetadata, ...]
@@ -40,6 +42,7 @@ class LocalDiscMetadata:
     mcn: str | None = None
 
     def to_dict(self) -> dict:
+        """Plain data for the cache and the status reply."""
         return asdict(self)
 
 

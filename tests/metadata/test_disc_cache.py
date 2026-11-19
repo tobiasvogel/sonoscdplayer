@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from sonoscdplayer.metadata.cache import DiscCache
-from sonoscdplayer.metadata.cover_store import CoverCache, CoverPolicy
+from sonoscdplayer.metadata.cover_store import CoverStore, CoverPolicy
 from sonoscdplayer.metadata.local_metadata import LocalDiscMetadata, LocalTrackMetadata
 from sonoscdplayer.metadata.musicbrainz import DiscIdentity
 
@@ -59,7 +59,7 @@ class CoverTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.cache = CoverCache(Path(self.tmp.name) / 'covers')
+        self.cache = CoverStore(Path(self.tmp.name) / 'covers')
 
     def test_disabled_no_files_created(self):
         self.assertIsNone(self.cache.get_or_download(RELEASE))

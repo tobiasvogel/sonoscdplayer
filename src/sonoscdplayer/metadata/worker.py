@@ -1,4 +1,7 @@
-"""Non-blocking metadata lifecycle for a verified audio TOC.
+"""Fetch metadata for the inserted CD in the background.
+
+Order: CD-TEXT (already read with the TOC), the SQLite cache, MusicBrainz,
+then the cover.
 
 No optical-drive reads or Sonos operations. A single background worker handles
 SQLite, MusicBrainz and optional cover files. The player worker alone applies
@@ -11,7 +14,7 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from sonoscdplayer.metadata.cache import DiscCache, DEFAULT_DB_PATH
-from sonoscdplayer.metadata.cover_store import CoverBudgetFull, CoverCache, DEFAULT_COVER_DIR
+from sonoscdplayer.metadata.cover_store import CoverBudgetFull, CoverStore, DEFAULT_COVER_DIR
 import time
 
 from sonoscdplayer.metadata.local_metadata import local_metadata_from_cdtext
@@ -169,7 +172,7 @@ class MetadataWorker:
                  identify=identity_from_toc, lookup=lookup_disc,
                  executor=None, clock=time.monotonic, retry_seconds=RETRY_SECONDS):
         self._cache = DiscCache(cache_path)
-        self._cover = CoverCache(cover_dir)
+        self._cover = CoverStore(cover_dir)
         self._policy = matching_policy or MatchingPolicy()
         self._cover_policy = read_cover_preferences(ui_path).download_policy(
             display_supports_cover=display_supports_cover,
@@ -261,9 +264,11 @@ class MetadataWorker:
 
     @property
     def snapshot(self):
+        """Current metadata state for the status reply."""
         return self._result.copy() if self._result is not None else None
 
     def close(self):
+        """Stop the background worker."""
         if self._owns_executor:
             # Ongoing network work must not delay the service's shutdown.
             self._executor.shutdown(wait=False, cancel_futures=True)

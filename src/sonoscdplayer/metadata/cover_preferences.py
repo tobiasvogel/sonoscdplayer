@@ -1,4 +1,4 @@
-"""Shared cover display preference and storage dimension (ui.toml).
+"""The ``[ui.cover]`` settings in ui.toml: show covers, size, quality, budget.
 
 Cover downloads are optional, never part of playback or CD-TEXT probing.
 In auto mode an explicit caller-supplied display capability is required.
@@ -15,6 +15,7 @@ from sonoscdplayer.metadata.cover_store import DEFAULT_BUDGET_MB, CoverPolicy
 
 @dataclass(frozen=True)
 class CoverPreferences:
+    """``mode`` auto/on/off, stored size, JPEG quality and disk budget (MB)."""
     mode: str = 'auto'
     max_dimension_px: int = 512
     jpeg_quality: int = 85

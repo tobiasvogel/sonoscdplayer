@@ -1,4 +1,7 @@
-"""Safe, data-only language packs for CD metadata comparison.
+"""Language packs that make titles comparable (e.g. "Teil 1" = "Part 1").
+
+Packs are TOML files in language_rules_data/; they only list equivalent
+words and bracketed qualifiers, never code or regular expressions.
 
 Language codes are opt-in and independent from the OLED/UI locale. Packs may
 declare equivalent whole words and bracketed qualifiers, never scripts/regexes.
@@ -40,12 +43,14 @@ def normalize_key(text: str | None) -> str:
 
 @dataclass(frozen=True)
 class LanguageRules:
+    """Equivalent words and soft/protected qualifiers of the enabled packs."""
     languages: tuple[str, ...] = ()
     token_aliases: tuple[tuple[str, ...], ...] = ()
     soft_suffixes: tuple[str, ...] = ()
     protected_suffixes: tuple[str, ...] = ()
 
     def normalize(self, text: str | None) -> str:
+        """Comparison key for a title: case, accents, punctuation and aliases folded."""
         words = normalize_key(text).split()
         replacements = {token: group[0]
                         for group in self.token_aliases for token in group}

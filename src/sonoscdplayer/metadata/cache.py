@@ -1,4 +1,8 @@
-"""SQLite metadata cache; no audio or optical-drive access."""
+"""Remember disc metadata in SQLite, so a known CD needs no MusicBrainz lookup.
+
+Keyed by MusicBrainz disc ID and full TOC. ``reset-disc`` (menu "Reset CD
+entry") deletes an entry. No audio or drive access.
+"""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -16,6 +20,7 @@ DEFAULT_DB_PATH = Path('/var/lib/sonoscdplayer/metadata.sqlite3')
 
 @dataclass(frozen=True)
 class CachedDisc:
+    """A cache entry: local metadata plus the chosen MusicBrainz release."""
     local: LocalDiscMetadata
     release_id: str | None
     match_method: str | None
@@ -55,6 +60,7 @@ class DiscCache:
         return db
 
     def get(self, identity: DiscIdentity) -> CachedDisc | None:
+        """The entry for this disc, or None."""
         db = self._connect()
         if db is None:
             return None

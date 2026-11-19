@@ -1,4 +1,4 @@
-"""Read-only MusicBrainz identification and one-shot lookup.
+"""Identify a CD by its MusicBrainz disc ID and look up its releases.
 
 No drive, Sonos or playback access. Online errors never replace local CD-TEXT.
 """
@@ -26,6 +26,7 @@ class DiscIdentificationError(RuntimeError):
 
 @dataclass(frozen=True)
 class DiscIdentity:
+    """MusicBrainz disc ID and the TOC string it was computed from."""
     disc_id: str
     toc: str
 
@@ -55,6 +56,7 @@ def identity_from_toc(toc: DiscTOC, *, libdiscid_module=None) -> DiscIdentity:
 
 @dataclass(frozen=True)
 class ReleaseCandidate:
+    """One MusicBrainz release that matches the disc ID."""
     release_id: str
     title: str
     artist: str | None
@@ -66,6 +68,7 @@ class ReleaseCandidate:
 
 
 def artist_credit(value):
+    """Artist name from a MusicBrainz artist-credit list (with join phrases)."""
     if not isinstance(value, list):
         return None
     parts = []
@@ -124,12 +127,14 @@ def parse_release_candidates(data, *, track_count):
 
 @dataclass(frozen=True)
 class LookupResult:
+    """Outcome of a lookup: status, found releases and an error text."""
     status: str  # unique | ambiguous | not_found | offline | unavailable | error
     releases: tuple[ReleaseCandidate, ...] = ()
     error: str | None = None
 
     @property
     def selected_release_id(self):
+        """The release id if exactly one release matched, else None."""
         return self.releases[0].release_id if self.status == 'unique' else None
 
 
