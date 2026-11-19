@@ -8,8 +8,8 @@ import time
 import unittest
 from unittest.mock import patch
 
-from sonoscdplayer.audio import track_http_server as track_ring_http
-from sonoscdplayer.audio.track_http_server import CHUNK, ProbeCache, Server, Stream
+from sonoscdplayer.audio import track_http_server
+from sonoscdplayer.audio.track_http_server import CHUNK, ProbeCache, TrackServer, TrackStream
 
 SIZE = 8 * CHUNK
 SCRIPT = (
@@ -37,12 +37,12 @@ class ContinueAfterPauseTests(unittest.TestCase):
             pause_at = 3 * CHUNK if not self.commands else 0
             self.commands.append(start_offset)
             return [sys.executable, '-c', SCRIPT, str(SIZE), str(start_offset), str(pause_at)]
-        patcher = patch.object(track_ring_http, 'sector_replay_command', replay)
+        patcher = patch.object(track_http_server, 'sector_replay_command', replay)
         patcher.start()
         self.addCleanup(patcher.stop)
-        stream = Stream(SIZE, 12 * CHUNK, ['cdparanoia', '-r', '1', '-'], write_timeout=4,
+        stream = TrackStream(SIZE, 12 * CHUNK, ['cdparanoia', '-r', '1', '-'], write_timeout=4,
                         probe_cache=ProbeCache(CHUNK))
-        self.server = Server(('127.0.0.1', 0), stream, 1)
+        self.server = TrackServer(('127.0.0.1', 0), stream, 1)
         self.server.ORPHAN_GRACE_SECONDS = 0.2
         thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         thread.start()

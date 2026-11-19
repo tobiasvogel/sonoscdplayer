@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Strict, read-only CD-DA TOC parsing using cdparanoia -Q.
+"""The table of contents of an audio CD, read with ``cdparanoia -Q``.
 
-No streaming, Sonos control or disk audio caching. Track ends are exclusive.
+Positions are in sectors (1/75 s, 2352 bytes of PCM). A track's end sector
+is exclusive. Run as a program it prints the tracks of /dev/sr0.
 """
 from __future__ import annotations
 
@@ -30,6 +31,7 @@ class TOCError(ValueError):
 
 @dataclass(frozen=True)
 class Track:
+    """One audio track: number, sector range, channels and pre-emphasis."""
     number: int
     start_lsn: int
     end_lsn_exclusive: int
@@ -38,23 +40,28 @@ class Track:
 
     @property
     def sectors(self) -> int:
+        """Length in sectors."""
         return self.end_lsn_exclusive - self.start_lsn
 
     @property
     def pcm_bytes(self) -> int:
+        """Length in bytes of PCM (without WAV header)."""
         return self.sectors * SECTOR_BYTES
 
     @property
     def duration_seconds(self) -> float:
+        """Length in seconds."""
         return self.sectors / SECTORS_PER_SECOND
 
 
 @dataclass(frozen=True)
 class DiscTOC:
+    """All audio tracks and the start of the lead-out (end of the disc)."""
     tracks: tuple[Track, ...]
     leadout_lsn: int
 
     def get_track(self, number: int) -> Track:
+        """The track with this number; raises TOCError if there is none."""
         for track in self.tracks:
             if track.number == number:
                 return track

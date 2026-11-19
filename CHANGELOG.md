@@ -6,6 +6,9 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- Unused USB-reconnect modules (`reconnect_observer`, `reconnect_policy`,
+  `reconnect_coordinator`) removed; reconnects are handled by
+  `drive/usb_identity.py` and `drive/disc_monitor.py` as before.
 - The former one-shot test programs `playback_start`, `play_track` and
   `switch_track` are gone; what the player used from them now lives in
   `sonos/speaker_checks.py`, `audio/track_server_process.py`,

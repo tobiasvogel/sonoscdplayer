@@ -41,6 +41,7 @@ def drive_media_status(device: str) -> int:
 
 def classify_unavailable(device: str | None, media_status=None,
                          *, error: str | None = None) -> DiscStatus:
+    """DiscStatus for a drive without a readable audio CD (no disc, tray open, …)."""
     if device is None:
         return DiscStatus(DiscMode.NO_DRIVE, error=error)
     try:

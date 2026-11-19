@@ -1,8 +1,11 @@
-"""Conservative idle-only disc-state polling.
+"""Notice disc changes while the player is idle.
 
-No Sonos commands. Never query a drive while a reader, stream, session or
-unresolved group is attached. The bound /dev/srN must not be replaced by an
-unverified USB device; only a unique matching USB identity may rebind.
+The player service calls DiscMonitor.poll() regularly. It looks at the drive
+only while nothing plays (no reader, stream or unresolved Sonos group), and
+reads the table of contents and CD-TEXT when a new disc appears. If the USB
+drive reappears under another /dev/srN, it is used again only if exactly one
+drive with the same USB identity (vendor, product, serial) is found.
+No Sonos commands are sent from here.
 """
 from __future__ import annotations
 
@@ -17,6 +20,7 @@ from sonoscdplayer.player.state import Mode
 
 
 def idle_for_disc_io(controller) -> bool:
+    """True if the player is idle enough to look at the drive."""
     return (controller.state.mode in (Mode.NO_DISC, Mode.STOPPED, Mode.ERROR)
             and not controller.owned_url
             and controller.player is None
@@ -27,7 +31,7 @@ def idle_for_disc_io(controller) -> bool:
 
 
 class DiscMonitor:
-    """Only the serialized service worker calls poll()."""
+    """Watches one drive for disc changes; only the service worker calls poll()."""
 
     def __init__(self, device, identity, *, media=drive_media_status,
                  toc=None, path_exists=None, identity_reader=usb_identity,

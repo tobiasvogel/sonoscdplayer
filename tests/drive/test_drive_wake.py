@@ -31,9 +31,6 @@ from sonoscdplayer.player.service import (
 )
 from sonoscdplayer.player.state import Mode
 from sonoscdplayer.drive.power import DrivePowerManager
-from sonoscdplayer.drive.usb_identity import UsbDriveId
-from sonoscdplayer.drive.reconnect_policy import assess_reconnect, RecoveryState
-ORIGINAL = UsbDriveId("152d", "0583", "test-serial")
 
 
 
@@ -1803,30 +1800,6 @@ class WakeTransportFailureTests(unittest.TestCase):
             commands,
             [("sg_start", "--start", "/dev/sr0")],
         )
-
-    @patch("sonoscdplayer.drive.power.drive_lock", fake_drive_lock)
-    def test_reconnect_candidate_does_not_override_fault(self):
-        power, commands = self.make_power()
-        verify = Mock(return_value=True)
-
-        self.assertFalse(power.wake(verify=verify))
-
-        assessment = assess_reconnect(
-            original_identity=ORIGINAL,
-            observed_identities=[ORIGINAL],
-            usb_disconnect_observed=True,
-            same_disc_verified=True,
-        )
-
-        self.assertEqual(
-            assessment.state, RecoveryState.CANDIDATE
-        )
-        self.assertFalse(assessment.playback_authorized)
-
-        self.assertTrue(power.idle_policy.wake_fault_latched)
-        self.assertFalse(power.wake(verify=verify))
-        verify.assert_not_called()
-        self.assertEqual(len(commands), 1)
 
     @patch("sonoscdplayer.drive.power.drive_lock", fake_drive_lock)
     def test_failure_keeps_idle_stop_state(self):

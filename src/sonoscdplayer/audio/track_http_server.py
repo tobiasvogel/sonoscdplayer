@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-"""RAM-only HTTP server that streams the CD tracks to Sonos as WAV.
+"""HTTP server that streams the CD's tracks to Sonos as WAV, from RAM.
 
-No disk spool, no Sonos controls. Missing replay history can require sequential CD reread; active-reader conflicts -> 409.
-This server is NOT a seamless concurrent retry implementation.
+The player starts it as a child process (see audio/track_server_process.py).
+A cdparanoia process reads the track into a PCMRing; Sonos fetches
+``/track/<n>.wav`` and gets a WAV header followed by the PCM. If Sonos asks
+for a position that is no longer in RAM, the track is read again from the
+CD at that position. A request that conflicts with an active reader gets
+409. Nothing is written to disk and no Sonos command is sent from here.
+
+TrackServer serves one track, DiscServer all tracks of the CD.
 """
 from __future__ import annotations
 import argparse
@@ -24,6 +30,7 @@ PREBUFFER = 176400  # one second
 RATE = 44100 * 4
 
 def wav_header(n: int) -> bytes:
+    """44-byte WAV header for ``n`` bytes of 44.1 kHz 16-bit stereo PCM."""
     import struct
     return (b'RIFF' + struct.pack('<I', n + 36) + b'WAVEfmt ' +
             struct.pack('<IHHIIHH', 16, 1, 2, 44100, RATE, 4, 16) +
@@ -39,6 +46,7 @@ class ProbeCache:
         self.lock = threading.Lock()
 
     def capture(self, offset: int, block: bytes):
+        """Keep the first block of the track (Sonos often re-reads the start)."""
         if offset != 0 or len(block) < len(self.data):
             return
         with self.lock:
@@ -47,6 +55,7 @@ class ProbeCache:
                 self.ready = True
 
     def read(self):
+        """The kept start of the track, or None."""
         with self.lock:
             return bytes(self.data) if self.ready else None
 
@@ -56,7 +65,13 @@ class ProbeCache:
             self.ready = False
 
 
-class Stream:
+class TrackStream:
+    """One reading of a track: the cdparanoia process, its ring and its clients.
+
+    A new TrackStream ("generation") replaces the old one when a track is
+    read again or another track is requested.
+    """
+
     def __init__(self, expected: int, capacity: int, command: list[str], write_timeout: float = 30, initial_prebuffer_ms: int = 0, ring: PCMRing | None = None, start_offset: int = 0, probe_cache: ProbeCache | None = None):
         if expected < 1 or expected % 4 or expected > (2**32 - 37):
             raise ValueError('Invalid WAV PCM size')
@@ -307,7 +322,8 @@ class Superseded(Exception):
     """The request was overtaken by the one for the track actually wanted."""
 
 
-class Handler(BaseHTTPRequestHandler):
+class TrackRequestHandler(BaseHTTPRequestHandler):
+    """Answers HEAD and GET for the track and cover URLs."""
     protocol_version = 'HTTP/1.1'
 
     def _headers(self, status, length=None, ctype=None, *, content_range=None):
@@ -479,7 +495,8 @@ def load_cover(path):
     return route, data
 
 
-class Server(ThreadingHTTPServer):
+class TrackServer(ThreadingHTTPServer):
+    """Serves one track under /track/<n>.wav (plus the optional cover)."""
     daemon_threads = True
     allow_reuse_address = True
     ORPHAN_GRACE_SECONDS = 0.75
@@ -495,13 +512,14 @@ class Server(ThreadingHTTPServer):
         self._streams = [stream]
         self._probe_used = False
         self._orphan_timer = None
-        super().__init__(addr, Handler)
+        super().__init__(addr, TrackRequestHandler)
 
     def track_for(self, path):
         """Track number a request path addresses, or None (404)."""
         return self.track if urlsplit(path).path == self.route else None
 
     def size_for(self, track):
+        """WAV size (header + PCM) of the track."""
         return self.stream.expected + 44
 
     def server_close(self):
@@ -545,7 +563,7 @@ class Server(ThreadingHTTPServer):
             self._orphan_timer.cancel()
             self._orphan_timer = None
 
-    def _expire_orphan(self, stream: Stream):
+    def _expire_orphan(self, stream: TrackStream):
         # A reconnect and the delayed cancellation are serialized by the same
         # generation lock. Never cancel a replacement or an attached reader.
         with self._generation_lock:
@@ -555,7 +573,7 @@ class Server(ThreadingHTTPServer):
             if stream.thread.is_alive():
                 stream.cancel_orphan()
 
-    def release_get(self, stream: Stream, disconnected: bool, complete: bool = False):
+    def release_get(self, stream: TrackStream, disconnected: bool, complete: bool = False):
         """Allow a brief HTTP reconnect before cancelling the orphaned CD read.
 
         Sonos may reset a probe GET and immediately reconnect. Keep the
@@ -622,7 +640,7 @@ class Server(ThreadingHTTPServer):
         # A full GET always restarts at sector zero.
         seek_offset = (offset // SECTOR) * SECTOR if current.command and current.command[0] == 'cdparanoia' else 0
         current.ring.reset_for_replay(seek_offset)
-        replacement = Stream(current.expected, current.total_ram_budget,
+        replacement = TrackStream(current.expected, current.total_ram_budget,
                              list(current.command), current.write_timeout,
                              current.initial_prebuffer_bytes * 1000 // RATE,
                              ring=current.ring, start_offset=seek_offset, probe_cache=current.probe_cache)
@@ -650,7 +668,7 @@ class Server(ThreadingHTTPServer):
         if resume_at % SECTOR or not current.command or current.command[0] != 'cdparanoia':
             return None
         current.ring.reopen()
-        replacement = Stream(current.expected, current.total_ram_budget,
+        replacement = TrackStream(current.expected, current.total_ram_budget,
                              list(current.command), current.write_timeout,
                              current.initial_prebuffer_bytes * 1000 // RATE,
                              ring=current.ring, start_offset=resume_at,
@@ -666,7 +684,7 @@ class Server(ThreadingHTTPServer):
         return replacement, reader
 
 
-class DiscServer(Server):
+class DiscServer(TrackServer):
     """All tracks of one CD under /track/<n>.wav.
 
     Still one CD reader at a time and one PCM ring (the configured budget):
@@ -784,7 +802,7 @@ class DiscServer(Server):
         current.ring.reset_for_replay(seek)
         if current.probe_cache is not None:
             current.probe_cache.reset()
-        stream = Stream(self.tracks[track], current.total_ram_budget, self.command_for(track),
+        stream = TrackStream(self.tracks[track], current.total_ram_budget, self.command_for(track),
                         current.write_timeout, current.initial_prebuffer_bytes * 1000 // RATE,
                         ring=current.ring, start_offset=seek, probe_cache=current.probe_cache)
         self.stream = stream
@@ -798,10 +816,12 @@ class DiscServer(Server):
 
 
 def cdparanoia_command(device, track):
+    """The cdparanoia command that reads one track as raw PCM to stdout."""
     return ['cdparanoia', '-q', '-d', device, '-r', str(track), '-']
 
 
 def main():
+    """Command line used by the player to start the server."""
     from sonoscdplayer.system import stack_dump
     stack_dump.enable('server')
     p = argparse.ArgumentParser(description=__doc__)
@@ -821,7 +841,7 @@ def main():
     track = toc.get_track(a.track)
     command = cdparanoia_command(a.device, a.track)
     # Reserve 58,800 PCM bytes WITHIN the configured budget, not on top of it.
-    stream = Stream(track.pcm_bytes, cfg.capacity_bytes, command, a.write_timeout,
+    stream = TrackStream(track.pcm_bytes, cfg.capacity_bytes, command, a.write_timeout,
                     a.initial_prebuffer_ms, probe_cache=ProbeCache(CHUNK))
     if a.disc:
         server_cm = DiscServer((a.bind, a.port), stream, a.track,
@@ -829,7 +849,7 @@ def main():
                                command_for=lambda n: cdparanoia_command(a.device, n),
                                cover=a.cover)
     else:
-        server_cm = Server((a.bind, a.port), stream, a.track, cover=a.cover)
+        server_cm = TrackServer((a.bind, a.port), stream, a.track, cover=a.cover)
     with server_cm as server:
         print(f'Serving http://{a.bind}:{a.port}{server.route} '
               f'PCM={track.pcm_bytes} RAM={cfg.capacity_bytes} initial_prebuffer_ms={a.initial_prebuffer_ms}', flush=True)

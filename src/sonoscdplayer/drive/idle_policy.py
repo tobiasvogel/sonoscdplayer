@@ -1,6 +1,7 @@
-"""Pure idle optical-drive policy (spin-down and wake decisions); no hardware, GPIO or Sonos I/O.
+"""When to spin the drive down while idle, and when a wake-up counts as done.
 
-An acknowledgement is required before treating a motor as stopped/awake.
+Pure decisions without hardware access; drive/power.py carries them out.
+A motor counts as stopped or awake only after the drive acknowledged it.
 The caller must serialize drive operations with CD reading and never infer
 that a successful START command proves the disc is readable.
 
@@ -15,6 +16,7 @@ import math
 
 @dataclass
 class IdleDrivePolicy:
+    """Spin-down timer and wake-up fault state of one drive."""
     idle_seconds: float = 300.0
     last_activity: float = 0.0
     spun_down: bool = False
@@ -145,4 +147,5 @@ class IdleDrivePolicy:
 
     @property
     def play_must_wait(self):
+        """True while PLAY has to wait for a (verified) wake-up."""
         return self.spun_down or self.wake_in_progress or self.wake_fault_latched

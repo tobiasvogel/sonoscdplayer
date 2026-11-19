@@ -7,7 +7,7 @@ import time
 import unittest
 
 from sonoscdplayer.audio.pcm_ring_buffer import MIN_BUFFER_MIB, StreamingConfig
-from sonoscdplayer.audio.track_http_server import DiscServer, ProbeCache, CHUNK, Stream
+from sonoscdplayer.audio.track_http_server import DiscServer, ProbeCache, CHUNK, TrackStream
 
 SIZES = {1: 240000, 2: 180000, 3: 120000}
 FILL = {1: b'A', 2: b'B', 3: b'C'}
@@ -30,7 +30,7 @@ def request(port, path, method='GET', headers=None):
 
 class DiscServerTests(unittest.TestCase):
     def start(self, track=1, budget=3 * CHUNK, delay=0.0):
-        stream = Stream(SIZES[track], budget, command_for(track, delay=delay), write_timeout=4,
+        stream = TrackStream(SIZES[track], budget, command_for(track, delay=delay), write_timeout=4,
                         probe_cache=ProbeCache(CHUNK))
         server = DiscServer(('127.0.0.1', 0), stream, track, tracks=SIZES,
                             command_for=lambda n: command_for(n, delay=delay))

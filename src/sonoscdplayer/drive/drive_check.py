@@ -87,6 +87,7 @@ class DriveCheckReport:
 
     @property
     def verdict(self) -> str:
+        """SUITABLE, SUITABLE WITH LIMITATIONS (a WARN) or NOT SUITABLE (a FAIL)."""
         statuses = {result.status for result in self.results}
         if FAIL in statuses:
             return 'NOT SUITABLE'
@@ -96,9 +97,11 @@ class DriveCheckReport:
 
     @property
     def exit_code(self) -> int:
+        """0, 1 or 2 for the three verdicts."""
         return {'SUITABLE': 0, 'SUITABLE WITH LIMITATIONS': 1}.get(self.verdict, 2)
 
     def as_dict(self) -> dict:
+        """The report as plain data for ``--json``."""
         return {'software_version': self.software_version,
                 'drive': asdict(self.drive), 'disc': self.disc,
                 'verdict': self.verdict,
@@ -164,6 +167,7 @@ def audio_span(track: int, first_sector: int, sector_count: int) -> str:
 
 
 def format_duration(seconds: float) -> str:
+    """Seconds as minutes:seconds."""
     minutes, seconds = divmod(int(round(seconds)), 60)
     return f'{minutes}:{seconds:02d}'
 
@@ -235,6 +239,7 @@ class DriveChecker:
         return result.stdout, elapsed
 
     def read_table_of_contents(self, *, timeout: float = 60) -> DiscTOC:
+        """The table of contents via ``cdparanoia -Q``; raises TOCError."""
         result = self.run_command(['cdparanoia', '-d', self.device, '-Q'],
                                   capture_output=True, text=True,
                                   timeout=timeout, check=False)

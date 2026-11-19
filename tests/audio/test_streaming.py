@@ -11,8 +11,8 @@ from unittest.mock import patch
 from sonoscdplayer.audio import track_http_server as t
 from sonoscdplayer.audio.pcm_ring_buffer import PCMRing, BufferTimeout, DataExpired, BufferClosed
 from sonoscdplayer.audio.track_http_server import (
-    Stream,
-    Server,
+    TrackStream,
+    TrackServer,
     RATE,
     CHUNK,
     wav_header,
@@ -56,8 +56,8 @@ class TestHTTP(unittest.TestCase):
         # Synthetic producer, no CD hardware; 2.4 MB > 1 MiB bounded ring.
         count = 2400000
         command = [sys.executable, '-c', f'import sys;sys.stdout.buffer.write(b"\\x42"*{count})']
-        stream = Stream(count, 1024*1024, command, write_timeout=5)
-        srv = Server(('127.0.0.1', 0), stream, 1)
+        stream = TrackStream(count, 1024*1024, command, write_timeout=5)
+        srv = TrackServer(('127.0.0.1', 0), stream, 1)
         srv.timeout = .1
         t = threading.Thread(target=srv.serve_forever, daemon=True); t.start(); stream.start()
         try:
@@ -81,8 +81,8 @@ class TestHTTP(unittest.TestCase):
             srv.shutdown(); srv.server_close(); t.join(2)
 
     def test_head_without_consuming_anchor(self):
-        stream = Stream(400, 1024, [sys.executable, '-c', 'pass'])
-        srv = Server(('127.0.0.1', 0), stream, 1)
+        stream = TrackStream(400, 1024, [sys.executable, '-c', 'pass'])
+        srv = TrackServer(('127.0.0.1', 0), stream, 1)
         t=threading.Thread(target=srv.serve_forever, daemon=True);t.start()
         try:
             c=http.client.HTTPConnection('127.0.0.1',srv.server_port)
@@ -135,8 +135,8 @@ class TestReplayHTTP(unittest.TestCase):
             with self.subTest(capacity=capacity):
                 count = 240000
                 command = [sys.executable, '-c', f'import sys;sys.stdout.buffer.write(b"\\x42"*{count})']
-                stream = Stream(count, capacity, command, write_timeout=4)
-                srv = Server(('127.0.0.1', 0), stream, 1)
+                stream = TrackStream(count, capacity, command, write_timeout=4)
+                srv = TrackServer(('127.0.0.1', 0), stream, 1)
                 t = threading.Thread(target=srv.serve_forever, daemon=True)
                 t.start()
                 stream.start()
@@ -170,7 +170,7 @@ class TestDiagnostics(unittest.TestCase):
         ring.unregister(rid)
 
     def test_http_progress_is_separate_from_reader_cursor(self):
-        stream = Stream(16, 32, ['unused'])
+        stream = TrackStream(16, 32, ['unused'])
         stream.http_begin(7, '127.0.0.1')
         stream.http_sent(7, 8)
         self.assertEqual(stream._http_clients[7]['sent'], 8)
@@ -180,10 +180,10 @@ class TestDiagnostics(unittest.TestCase):
 
 class PrebufferWaitTests(unittest.TestCase):
     def test_prebuffer_clamped_to_budget(self):
-        s = Stream(3000000, 1048576, ['unused'], initial_prebuffer_ms=30000)
+        s = TrackStream(3000000, 1048576, ['unused'], initial_prebuffer_ms=30000)
         self.assertEqual(s.initial_prebuffer_bytes, 1048576)
-        self.assertEqual(Stream(3000000, 1048576, ['unused']).initial_prebuffer_bytes, CHUNK)
-        self.assertEqual(Stream(3000000, 1048576, ['unused'], initial_prebuffer_ms=4000).initial_prebuffer_bytes, RATE * 4)
+        self.assertEqual(TrackStream(3000000, 1048576, ['unused']).initial_prebuffer_bytes, CHUNK)
+        self.assertEqual(TrackStream(3000000, 1048576, ['unused'], initial_prebuffer_ms=4000).initial_prebuffer_bytes, RATE * 4)
 
     def test_wait_ahead_preserves_cursor_and_wait_duration(self):
         ring = PCMRing(2048)
@@ -215,7 +215,7 @@ class PrebufferWaitTests(unittest.TestCase):
     def test_invalid_prebuffer(self):
         for ms in [-1, 30001, 1.5]:
             with self.assertRaises(ValueError):
-                Stream(3000000, 1048576, ['unused'], initial_prebuffer_ms=ms)
+                TrackStream(3000000, 1048576, ['unused'], initial_prebuffer_ms=ms)
 
 
 def get(port, *, wait_out_409=True):
@@ -238,8 +238,8 @@ class ReplayTests(unittest.TestCase):
     def test_expired_get_sequentially_rereads_source(self):
         count = 240000
         cmd = [sys.executable, '-c', f'import sys;sys.stdout.buffer.write(b"Z"*{count})']
-        stream = Stream(count, 65536, cmd, write_timeout=4)
-        server = Server(('127.0.0.1', 0), stream, 1)
+        stream = TrackStream(count, 65536, cmd, write_timeout=4)
+        server = TrackServer(('127.0.0.1', 0), stream, 1)
         th = threading.Thread(target=server.serve_forever, daemon=True)
         th.start(); stream.start()
         try:
@@ -256,8 +256,8 @@ class ReplayTests(unittest.TestCase):
     def test_refuses_reread_while_another_get_active(self):
         count = 240000
         cmd = [sys.executable, '-c', f'import sys;sys.stdout.buffer.write(b"X"*{count})']
-        stream = Stream(count, 65536, cmd, write_timeout=4)
-        server = Server(('127.0.0.1', 0), stream, 1)
+        stream = TrackStream(count, 65536, cmd, write_timeout=4)
+        server = TrackServer(('127.0.0.1', 0), stream, 1)
         th = threading.Thread(target=server.serve_forever, daemon=True)
         th.start(); stream.start()
         try:
@@ -274,8 +274,8 @@ class ReplayTests(unittest.TestCase):
     def test_replay_uses_no_extra_track_storage_when_idle(self):
         count = 240000
         cmd = [sys.executable, '-c', f'import sys;sys.stdout.buffer.write(b"A"*{count})']
-        stream = Stream(count, 65536, cmd, write_timeout=4)
-        server = Server(('127.0.0.1', 0), stream, 1)
+        stream = TrackStream(count, 65536, cmd, write_timeout=4)
+        server = TrackServer(('127.0.0.1', 0), stream, 1)
         th = threading.Thread(target=server.serve_forever, daemon=True)
         th.start(); stream.start()
         try:
@@ -298,8 +298,8 @@ class OrphanTests(unittest.TestCase):
                   ' sys.stdout.buffer.write(bytes([65+n])*58800)\n'
                   ' sys.stdout.buffer.flush()\n'
                   ' time.sleep(.18)\n')
-        self.stream = Stream(self.count, 65536, [sys.executable, '-u', '-c', script], write_timeout=3)
-        self.server = Server(('127.0.0.1', 0), self.stream, 1)
+        self.stream = TrackStream(self.count, 65536, [sys.executable, '-u', '-c', script], write_timeout=3)
+        self.server = TrackServer(('127.0.0.1', 0), self.stream, 1)
         self.worker = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.worker.start()
         self.stream.start()
@@ -374,8 +374,8 @@ class TestResourceShutdown(unittest.TestCase):
         # A synthetic infinite-ish reader, bounded by the shutdown timeout.
         cmd = [sys.executable, '-u', '-c',
                'import sys,time\nwhile True:\n sys.stdout.buffer.write(b"A"*4096); sys.stdout.buffer.flush(); time.sleep(.05)']
-        stream = Stream(4_000_000, 65536, cmd, write_timeout=1)
-        server = Server(('127.0.0.1', 0), stream, 1)
+        stream = TrackStream(4_000_000, 65536, cmd, write_timeout=1)
+        server = TrackServer(('127.0.0.1', 0), stream, 1)
         stream.start()
         server.server_close()
         self.assertFalse(stream.thread.is_alive())
@@ -386,8 +386,8 @@ class TestResourceShutdown(unittest.TestCase):
     def test_close_releases_replay_generation_workers(self):
         cmd = [sys.executable, '-u', '-c',
                'import sys;sys.stdout.buffer.write(b"B"*240000)']
-        stream = Stream(240000, 65536, cmd, write_timeout=2)
-        server = Server(('127.0.0.1', 0), stream, 1)
+        stream = TrackStream(240000, 65536, cmd, write_timeout=2)
+        server = TrackServer(('127.0.0.1', 0), stream, 1)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         try:
             thread.start()
@@ -414,8 +414,8 @@ class RangeTests(unittest.TestCase):
         self.expected = 58800 * 4
         self.pcm = bytes(range(256)) * (self.expected // 256) + bytes(range(self.expected % 256))
         script = 'import sys; n='+str(self.expected)+'; sys.stdout.buffer.write(bytes(range(256))*(n//256)+bytes(range(n%256)))'
-        self.stream = Stream(self.expected, 65536, [sys.executable, '-u', '-c', script], write_timeout=3)
-        self.server = Server(('127.0.0.1', 0), self.stream, 1)
+        self.stream = TrackStream(self.expected, 65536, [sys.executable, '-u', '-c', script], write_timeout=3)
+        self.server = TrackServer(('127.0.0.1', 0), self.stream, 1)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.stream.start()
@@ -487,7 +487,7 @@ class SectorSeekTests(unittest.TestCase):
         ring = PCMRing(SECTOR * 4)
         ring.finish()
         ring.reset_for_replay(SECTOR * 100)
-        stream = Stream(SECTOR * 120, SECTOR * 4,
+        stream = TrackStream(SECTOR * 120, SECTOR * 4,
                         ['cdparanoia', '-r', '1', '-'], ring=ring, start_offset=SECTOR * 100)
         self.assertEqual(stream.written, SECTOR * 100)
         self.assertEqual(ring.stats['next_offset'], SECTOR * 100)
@@ -498,7 +498,7 @@ class SectorSeekTests(unittest.TestCase):
         ring = PCMRing(SECTOR * 4)
         ring.finish()
         ring.reset_for_replay(SECTOR * 100)
-        stream = Stream(expected, SECTOR * 4, ['cdparanoia', '-r', '1', '-'],
+        stream = TrackStream(expected, SECTOR * 4, ['cdparanoia', '-r', '1', '-'],
                         ring=ring, start_offset=SECTOR * 100)
         class Proc:
             def __init__(self):
@@ -523,7 +523,7 @@ class CachedProbeTests(unittest.TestCase):
     def test_cache_does_not_add_to_pcm_budget(self):
         cache = ProbeCache(CHUNK)
         budget = CHUNK * 5
-        stream = Stream(CHUNK * 6, budget, ['synthetic'], probe_cache=cache)
+        stream = TrackStream(CHUNK * 6, budget, ['synthetic'], probe_cache=cache)
         self.assertEqual(stream.ring.capacity + len(cache.data), budget)
         stream.shutdown()
 
@@ -539,14 +539,14 @@ class CachedProbeTests(unittest.TestCase):
     def test_one_cached_probe_without_new_reader(self):
         cache = ProbeCache(CHUNK)
         cache.capture(0, bytes([0x41]) * CHUNK)
-        stream = Stream(CHUNK * 6, CHUNK * 4, ['synthetic'], probe_cache=cache)
+        stream = TrackStream(CHUNK * 6, CHUNK * 4, ['synthetic'], probe_cache=cache)
         # Original front of track has expired, as after Sonos pause.
         stream.ring.unregister(stream.anchor)
         stream.anchor = None
         stream.ring.write(bytes([0x42]) * (CHUNK * 4))
         stream.ring.finish()
         self.assertGreater(stream.ring.stats['oldest_offset'], 0)
-        server = Server(('127.0.0.1', 0), stream, 1)
+        server = TrackServer(('127.0.0.1', 0), stream, 1)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
@@ -609,11 +609,11 @@ class FakeStream:
 class OrphanGraceTests(unittest.TestCase):
     def setUp(self):
         self.stream = FakeStream()
-        self.server = Server(('127.0.0.1', 0), self.stream, 2)
+        self.server = TrackServer(('127.0.0.1', 0), self.stream, 2)
         self.server.ORPHAN_GRACE_SECONDS = 0.12
 
     def tearDown(self):
-        # Do not invoke Server.server_close(): FakeStream is not a real producer.
+        # Do not invoke TrackServer.server_close(): FakeStream is not a real producer.
         with self.server._generation_lock:
             self.server._clear_orphan_timer()
         self.server.socket.close()
@@ -658,7 +658,7 @@ class OrphanGraceTests(unittest.TestCase):
 class PrebufferClampTests(unittest.TestCase):
     def make(self, capacity, prebuffer_ms, with_probe=True):
         probe = t.ProbeCache(t.CHUNK) if with_probe else None
-        return t.Stream(40_000_000, capacity, ['x'], initial_prebuffer_ms=prebuffer_ms,
+        return t.TrackStream(40_000_000, capacity, ['x'], initial_prebuffer_ms=prebuffer_ms,
                         probe_cache=probe)
 
     def test_prebuffer_fits_ring_when_probe_cache_reserves_budget(self):
@@ -747,7 +747,7 @@ class ProducerTests(unittest.TestCase):
                   f'for _ in range({pieces}):\n'
                   f'    sys.stdout.buffer.write(b"\\x07"*{piece}); sys.stdout.buffer.flush()\n'
                   '    time.sleep(0.05)\n')
-        stream = t.Stream(count, 1024 * 1024, [sys.executable, '-c', script], write_timeout=5)
+        stream = t.TrackStream(count, 1024 * 1024, [sys.executable, '-c', script], write_timeout=5)
         stream.start()
         stream.thread.join(15)
         self.assertFalse(stream.thread.is_alive())

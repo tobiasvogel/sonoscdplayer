@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Read-only optical-drive discovery for SonosCDPlayer.
+"""Find the drive that holds an audio CD.
 
-Disc type is verified with cd-info; this probe never starts audio playback.
+Each optical drive is checked with cd-info. Run as a program it prints the
+result per drive and ``SELECTED_DEVICE=/dev/srN`` for the one audio-CD drive.
 """
 import glob
 import os
@@ -10,7 +11,8 @@ import subprocess
 import sys
 
 
-def probe(path):
+def probe_drive(path):
+    """(True, description) if the drive at ``path`` holds an audio CD."""
     try:
         result = subprocess.run(
             ["cd-info", "--no-analyze", "--no-device-info", path],
@@ -34,7 +36,7 @@ def probe(path):
     return True, f"CD-DA, {len(tracks)} audio tracks"
 
 
-def find_audio_cd_drive(*, report=print, probe_drive=probe,
+def find_audio_cd_drive(*, report=print, probe_drive=probe_drive,
                         block_root="/sys/class/block") -> str:
     """Return the one drive (``/dev/srN``) that holds a readable audio CD.
 
@@ -66,6 +68,7 @@ def find_audio_cd_drive(*, report=print, probe_drive=probe,
 
 
 def main():
+    """Command line: print the selected drive; exit code 1 if there is none."""
     try:
         device = find_audio_cd_drive()
     except RuntimeError as exc:

@@ -103,15 +103,15 @@ class ControllerTests(unittest.TestCase):
 
 class CoverEndpointTests(unittest.TestCase):
     def test_server_serves_only_the_cover_route(self):
-        from sonoscdplayer.audio import track_http_server as track_ring_http
+        from sonoscdplayer.audio import track_http_server
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, 'b' * 64 + '.jpg')
             with open(path, 'wb') as handle:
                 handle.write(b'\xff\xd8jpeg')
-            route, data = track_ring_http.load_cover(path)
+            route, data = track_http_server.load_cover(path)
             self.assertEqual((route, data), ('/cover/' + 'b' * 64 + '.jpg', b'\xff\xd8jpeg'))
-            self.assertEqual(track_ring_http.load_cover(os.path.join(tmp, 'x.jpg')), (None, None))
-            self.assertEqual(track_ring_http.load_cover(None), (None, None))
+            self.assertEqual(track_http_server.load_cover(os.path.join(tmp, 'x.jpg')), (None, None))
+            self.assertEqual(track_http_server.load_cover(None), (None, None))
 
 
 if __name__ == '__main__':

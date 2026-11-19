@@ -1,8 +1,8 @@
-"""Cross-process advisory coordination of SonosCDPlayer drive commands.
+"""One lock per drive, so that our processes never use the drive at once.
 
-One lock per device, in the invoking user's private runtime directory.
-Not a global lock against third-party processes; all our reader generations and
-motor commands participate. Lock files never contain PCM data.
+The CD reader, the disc monitor and the motor commands (spin-down, wake-up,
+eject) all take this lock first. It is an advisory file lock in the user's
+private runtime directory; other programs are not stopped by it.
 """
 from contextlib import contextmanager
 import fcntl
@@ -13,6 +13,12 @@ import tempfile
 
 
 def lock_path(device):
+    """Lock file for ``/dev/srN`` in the private runtime directory.
+
+    Raises:
+        ValueError: not a /dev/srN device.
+        PermissionError: the directory is not private to this user.
+    """
     if not re.fullmatch(r'/dev/sr[0-9]+', device):
         raise ValueError('invalid optical drive device')
     root = Path(os.environ.get('XDG_RUNTIME_DIR') or (Path(tempfile.gettempdir()) / f'sonoscdplayer-{os.getuid()}'))
@@ -26,6 +32,10 @@ def lock_path(device):
 
 @contextmanager
 def drive_lock(device, *, blocking=True):
+    """Hold the drive's lock for the ``with`` block; yields True if acquired.
+
+    With ``blocking=False`` it yields False at once if the lock is taken.
+    """
     path = lock_path(device)
     fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
     try:

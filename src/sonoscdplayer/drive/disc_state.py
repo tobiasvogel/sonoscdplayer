@@ -1,7 +1,7 @@
-"""Immutable optical-disc state, separate from playback Mode.
+"""What is in the drive: no drive, no disc, an audio CD, an unreadable disc.
 
-The status is an observation, not permission to start playback or a reason to
-issue drive / Sonos commands. No device access occurs in this module.
+This is separate from the player's playback state (player/state.py). A disc
+status is only an observation; it never starts playback or a drive command.
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import re
 
 
 class DiscMode(str, Enum):
+    """The kind of situation in the drive."""
     NO_DRIVE = 'NO_DRIVE'
     NO_DISC = 'NO_DISC'
     LOADING = 'LOADING'
@@ -21,6 +22,11 @@ class DiscMode(str, Enum):
 
 @dataclass(frozen=True)
 class DiscStatus:
+    """Disc situation, the drive's device path and the number of audio tracks.
+
+    Only READY carries a device and a track count; the constructor rejects
+    inconsistent combinations.
+    """
     mode: DiscMode
     device: str | None = None
     track_count: int = 0
@@ -41,8 +47,10 @@ class DiscStatus:
 
     @classmethod
     def ready(cls, device: str, track_count: int) -> 'DiscStatus':
+        """An audio CD with ``track_count`` tracks in ``device``."""
         return cls(DiscMode.READY, device=device, track_count=track_count)
 
     def snapshot(self) -> dict:
+        """The status as a plain dict for the status reply."""
         return {'mode': self.mode.value, 'device': self.device,
                 'track_count': self.track_count, 'error': self.error}

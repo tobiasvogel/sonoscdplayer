@@ -1,4 +1,8 @@
-"""Fixed-capacity, RAM-only PCM ring buffer; independent of Sonos and cdparanoia.
+"""The RAM buffer between the CD reader and the HTTP clients.
+
+A ring of fixed size ([streaming] max_buffer_mib in player.toml). The CD
+reader writes PCM into it, each HTTP client reads from its own position.
+Nothing is written to disk.
 
 Offsets are absolute byte positions in one PCM stream. Old PCM survives reader
 consumption until the next write actually needs its space. Full-buffer writes
@@ -22,7 +26,7 @@ class ReaderRemoved(ValueError):
 
 
 class BufferErrorBase(Exception):
-    pass
+    """Base class of the buffer's errors."""
 
 
 class DataExpired(BufferErrorBase):
@@ -30,11 +34,11 @@ class DataExpired(BufferErrorBase):
 
 
 class BufferClosed(BufferErrorBase):
-    pass
+    """The buffer was closed; no more data will come."""
 
 
 class BufferTimeout(BufferErrorBase):
-    pass
+    """No data (or no space) became available within the timeout."""
 
 
 # The player is designed and tested for at least this PCM budget.
@@ -43,10 +47,12 @@ MIN_BUFFER_MIB = 16
 
 @dataclass(frozen=True)
 class StreamingConfig:
+    """The ``[streaming]`` section of player.toml."""
     max_buffer_mib: int
 
     @classmethod
     def load(cls, path: str | Path) -> "StreamingConfig":
+        """Read and validate ``[streaming]``; raises ValueError."""
         with open(path, "rb") as fh:
             config = tomllib.load(fh)
         section = config.get("streaming")
@@ -59,10 +65,17 @@ class StreamingConfig:
 
     @property
     def capacity_bytes(self) -> int:
+        """Buffer size in bytes."""
         return self.max_buffer_mib * MIB
 
 
 class PCMRing:
+    """Ring buffer with one writer (the CD reader) and several readers.
+
+    Readers register with ``register()`` and read with ``read()``. A full
+    buffer makes the writer wait until the slowest reader has moved on.
+    """
+
     def __init__(self, capacity_bytes: int):
         if type(capacity_bytes) is not int or capacity_bytes < PCM_FRAME_BYTES or capacity_bytes % PCM_FRAME_BYTES:
             raise ValueError("capacity_bytes must be a positive multiple of four")
@@ -106,6 +119,7 @@ class PCMRing:
 
     @property
     def stats(self) -> dict:
+        """Positions and fill level, for the log."""
         with self._cv:
             return {"capacity_bytes": self.capacity, "oldest_offset": self._start,
                     "next_offset": self._end, "retained_bytes": self._end-self._start,
@@ -114,6 +128,7 @@ class PCMRing:
 
     @property
     def diagnostics(self) -> dict:
+        """Detailed state including every reader, for the log."""
         with self._cv:
             return {
                 "capacity_bytes": self.capacity,
@@ -130,6 +145,7 @@ class PCMRing:
             }
 
     def register(self, offset: int = 0) -> int:
+        """Add a reader starting at ``offset``; return its id."""
         if type(offset) is not int or offset < 0 or offset % PCM_FRAME_BYTES:
             raise ValueError("reader offset must be a nonnegative PCM-frame-aligned byte offset")
         with self._cv:
@@ -158,10 +174,12 @@ class PCMRing:
             self._cv.notify_all()
 
     def reader_ids(self) -> tuple[int, ...]:
+        """Ids of the registered readers."""
         with self._cv:
             return tuple(self._readers)
 
     def unregister(self, reader_id: int) -> None:
+        """Remove a reader; its space can be reused."""
         with self._cv:
             self._readers.pop(reader_id, None)
             self._cv.notify_all()
@@ -253,6 +271,11 @@ class PCMRing:
                     self._consumer_wait_max_seconds = max(self._consumer_wait_max_seconds, elapsed)
 
     def read(self, reader_id: int, max_bytes: int, timeout: float | None = None) -> bytes:
+        """Up to ``max_bytes`` for this reader; b'' at the end of the stream.
+
+        Raises:
+            BufferTimeout, DataExpired, ReaderRemoved.
+        """
         if type(max_bytes) is not int or max_bytes < PCM_FRAME_BYTES or max_bytes % PCM_FRAME_BYTES:
             raise ValueError("max_bytes must be a positive multiple of four")
         deadline = None if timeout is None else time.monotonic() + timeout
@@ -291,6 +314,7 @@ class PCMRing:
                     self._consumer_wait_max_seconds = max(self._consumer_wait_max_seconds, elapsed)
 
     def finish(self, error: str | None = None) -> None:
+        """The writer is done (or failed with ``error``); readers drain the rest."""
         with self._cv:
             self._finished = True
             self._error = error

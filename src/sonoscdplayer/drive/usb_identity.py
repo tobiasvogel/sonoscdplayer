@@ -1,7 +1,7 @@
-"""Strict USB optical-drive identity across /dev/srN renumbering.
+"""Recognize the same USB drive again after it reconnected as another /dev/srN.
 
-Never adopt another USB drive when the serial cannot be verified.
-No optical IO or motor commands are performed here.
+A drive is identified by USB vendor id, product id and serial number. Without
+a serial number a reconnected drive is never adopted. Only sysfs is read.
 """
 from __future__ import annotations
 
@@ -12,12 +12,14 @@ import re
 
 @dataclass(frozen=True)
 class UsbDriveId:
+    """USB vendor id, product id (four hex digits each) and serial number."""
     vendor: str
     product: str
     serial: str
 
 
 def usb_identity(device: str, *, sys_root='/sys/class/block') -> UsbDriveId | None:
+    """USB identity of ``/dev/srN``, or None if it is not USB or has no serial."""
     match = re.fullmatch(r'/dev/(sr[0-9]+)', device)
     if not match:
         return None

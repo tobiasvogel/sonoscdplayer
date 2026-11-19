@@ -1,8 +1,11 @@
-"""Optional, capability-driven optical drive power management.
+"""Keep the drive ready while in use, spin it down when idle, wake it for PLAY.
 
-All device commands run in the *service event-loop*, not from a background
-thread. The service never ticks this manager while a CD reader is attached.
-No audio reads and no privileged helper are started.
+Configured in ``[drive_power]`` of player.toml. Strategies: ``keepalive``
+(periodic START UNIT so the drive does not fall asleep on its own, plus the
+optional idle spin-down), ``power_condition`` (write the drive's own power
+timers), ``start`` (one START UNIT at startup), ``off`` and ``auto`` (use
+what the drive supports). All commands run in the service's worker, never
+while a CD reader is active; no audio is read here.
 """
 from __future__ import annotations
 
@@ -22,6 +25,11 @@ STRATEGIES = frozenset(('off', 'start', 'keepalive', 'power_condition', 'auto'))
 
 
 def load_config(path):
+    """Read and validate ``[drive_power]`` from player.toml.
+
+    Raises:
+        ValueError: an invalid value or combination of values.
+    """
     raw = tomllib.loads(Path(path).read_text(encoding='utf-8')).get('drive_power', {})
     if not isinstance(raw, dict):
         raise ValueError('drive_power must be a table')
@@ -50,6 +58,7 @@ def load_config(path):
 
 
 def parse_power_page(output):
+    """Fields of the drive's power-condition mode page from ``sdparm`` output."""
     return {name: {'value': int(value), 'changeable': changeable == 'y'}
             for name, value, changeable in FIELD_RE.findall(output)
             if name in ALLOWED_FIELDS}
@@ -57,6 +66,10 @@ def parse_power_page(output):
 
 @dataclass
 class DrivePowerManager:
+    """Power management of one drive, driven by the service's worker.
+
+    ``runner`` and ``clock`` replace subprocess.run and time.monotonic in tests.
+    """
     device: str
     config: dict
     runner: object = subprocess.run
@@ -196,6 +209,7 @@ class DrivePowerManager:
 
     def tick(self, *, reader_active=False, playback_active=False,
              group_cleanup_pending=False):
+        """Regular call from the worker: keepalive or idle spin-down when due."""
         if reader_active or self.active_strategy != 'keepalive' or self.last_start is None:
             return
         policy = self.idle_policy
@@ -281,6 +295,7 @@ class DrivePowerManager:
         self.active_strategy = 'off'
 
     def snapshot(self, *, reader_active):
+        """Configuration and current power state for the status reply."""
         return {'enabled': self.config['enabled'],
                 'requested_strategy': self.config['strategy'],
                 'active_strategy': self.active_strategy, 'device': self.device,
