@@ -1,73 +1,187 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-2.0-only
+# Interactive, explicit first-install orchestration; does not upgrade the OS.
 set -euo pipefail
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+PACKAGES="$ROOT/scripts/packages.lst"
 
-PACKAGES="packages.lst"
-NETDIR="${NETDIR:-/sys/class/net}"
+usage() {
+  cat <<'EOF'
+Usage: bash scripts/setup.sh [--apply|--dry-run] [--service-user NAME] [--venv PATH]
+  [--packages yes|no] [--spi yes|no] [--i2c yes|no]
+  [--config yes|no] [--sensor yes|no] [--services yes|no] [--early-led yes|no]
+  [--power-actions yes|no] [--drive-activity-events yes|no]
+  [--connect-gestures yes|no] [--network-setup yes|no]
+  [--screens yes|no] [--enable-services yes|no] [--start-services yes|no]
+  [--color auto|always|never]
 
-# Hostname suffix: last three MAC octets of the first usable interface.
-# Prefer wlan0, then eth0, then any other non-loopback interface, so wired-only
-# setups (no wlan0) work as well. Prints nothing and fails if none is found.
-mac_suffix() {
-  local dev addr
-  for dev in wlan0 eth0 $(ls "${NETDIR}" 2>/dev/null); do
-    [ "${dev}" = "lo" ] && continue
-    [ -r "${NETDIR}/${dev}/address" ] || continue
-    addr="$(cat "${NETDIR}/${dev}/address")"
-    if [ -n "${addr}" ] && [ "${addr}" != "00:00:00:00:00:00" ]; then
-      echo "${addr}" | cut -d ':' -f4-6 | tr -d ':'
-      return 0
-    fi
+--dry-run prints a plan and makes no system changes.
+Missing choices are asked interactively; without a terminal they are errors.
+Existing configuration and different service files are never overwritten.
+The setup does not change hostname, run full-upgrade, or reboot.
+EOF
+}
+
+APPLY='' COLOR=auto
+SERVICE_USER='' VENV=''
+PACKAGES_OPT='' SPI='' I2C='' CONFIG='' SENSOR='' SERVICES='' EARLY='' POWER='' WAKE='' CONNECT='' NETWORK='' SCREENS='' ENABLE='' START=''
+while (($#)); do
+  case "$1" in
+    --help|-h) usage; exit 0 ;;
+    --apply) [[ -z "$APPLY" ]] || { echo "Choose exactly one mode" >&2; exit 2; }; APPLY=yes; shift ;;
+    --dry-run) [[ -z "$APPLY" ]] || { echo "Choose exactly one mode" >&2; exit 2; }; APPLY=no; shift ;;
+    --service-user) SERVICE_USER="${2:?Missing service user}"; shift 2 ;;
+    --venv) VENV="${2:?Missing venv path}"; shift 2 ;;
+    --packages) PACKAGES_OPT="${2:?}"; shift 2 ;;
+    --spi) SPI="${2:?}"; shift 2 ;;
+    --i2c) I2C="${2:?}"; shift 2 ;;
+    --config) CONFIG="${2:?}"; shift 2 ;;
+    --sensor) SENSOR="${2:?}"; shift 2 ;;
+    --services) SERVICES="${2:?}"; shift 2 ;;
+    --early-led) EARLY="${2:?}"; shift 2 ;;
+    --power-actions) POWER="${2:?}"; shift 2 ;;
+    --drive-activity-events) WAKE="${2:?}"; shift 2 ;;
+    --connect-gestures) CONNECT="${2:?}"; shift 2 ;;
+    --network-setup) NETWORK="${2:?}"; shift 2 ;;
+    --screens) SCREENS="${2:?}"; shift 2 ;;
+    --enable-services) ENABLE="${2:?}"; shift 2 ;;
+    --start-services) START="${2:?}"; shift 2 ;;
+    --color) COLOR="${2:?}"; shift 2 ;;
+    *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+case "$COLOR" in auto|always|never) ;; *) echo 'Invalid --color' >&2; exit 2 ;; esac
+if [[ "$COLOR" == always || ( "$COLOR" == auto && -t 1 && -z "${NO_COLOR+x}" && "${TERM:-dumb}" != dumb ) ]]; then
+  BLUE=$'\033[1;34m' GREEN=$'\033[1;32m' YELLOW=$'\033[1;33m' RED=$'\033[1;31m' RESET=$'\033[0m'
+else BLUE='' GREEN='' YELLOW='' RED='' RESET=''; fi
+info() { printf '%s[INFO]%s %s\n' "$BLUE" "$RESET" "$*"; }
+ok() { printf '%s[ OK ]%s %s\n' "$GREEN" "$RESET" "$*"; }
+warn() { printf '%s[WARN]%s %s\n' "$YELLOW" "$RESET" "$*" >&2; }
+fail() { printf '%s[FAIL]%s %s\n' "$RED" "$RESET" "$*" >&2; exit 1; }
+
+ask_yes_no() {
+  local name="$1" question="$2" value="${!1}" answer
+  if [[ -z "$value" ]]; then
+    [[ -t 0 ]] || fail "Missing --${name,,} selection for non-interactive setup: $question"
+    while true; do
+      read -r -p "$question [y/n]: " answer || fail 'Input closed'
+      case "$answer" in y|Y|yes|YES) value=yes; break;; n|N|no|NO) value=no; break;; *) warn 'Please answer y or n (no default).';; esac
+    done
+  fi
+  case "$value" in yes|no) ;; *) fail "Invalid value for $question: $value (expected yes or no)" ;; esac
+  printf -v "$name" '%s' "$value"
+}
+ask_text() {
+  local name="$1" question="$2" value="${!1}"
+  if [[ -z "$value" ]]; then
+    [[ -t 0 ]] || fail "Missing required value: $question"
+    read -r -p "$question: " value || fail 'Input closed'
+  fi
+  [[ -n "$value" ]] || fail "Empty value: $question"
+  printf -v "$name" '%s' "$value"
+}
+
+info 'SonosCDPlayer setup — decisions require explicit answers.'
+if [[ -z "$APPLY" ]]; then
+  [[ -t 0 ]] || fail 'Specify --apply or --dry-run in non-interactive mode'
+  while true; do
+    read -r -p 'Choose mode: [p]review or [i]nstall: ' mode || fail 'Input closed'
+    case "$mode" in p|P) APPLY=no; break;; i|I) APPLY=yes; break;; *) warn 'Choose p or i (no default).';; esac
   done
-  return 1
-}
-
-if [ "$(id -u)" -ne "0" ]; then
-  echo "This script must be run as root!"
-  exit 127
 fi
+ask_text SERVICE_USER 'Existing non-root service account'
+[[ "$SERVICE_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ && "$SERVICE_USER" != root ]] || fail 'Invalid service account name'
+getent passwd "$SERVICE_USER" >/dev/null || fail 'Service account does not exist; create it explicitly before setup'
+ask_text VENV 'Absolute path for the Python virtual environment'
+[[ "$VENV" == /* && "$VENV" != *[[:space:]]* ]] || fail 'Virtual environment path must be absolute and contain no whitespace'
+ask_yes_no PACKAGES_OPT 'Install operating-system packages?'
+ask_yes_no SPI 'Enable SPI interface?'
+ask_yes_no I2C 'Enable I2C interface?'
+ask_yes_no CONFIG 'Create missing configuration files?'
+ask_yes_no SENSOR 'Build/install the APDS9306 C sensor service?'
+ask_yes_no SERVICES 'Render and install systemd services and Polkit rules?'
+if [[ "$SERVICES" == yes ]]; then
+  ask_yes_no EARLY 'Install early-boot Power LED service? (SSD1327 reference wiring)'
+  ask_yes_no POWER 'Enable POWER actions in rendered services?'
+  ask_yes_no WAKE 'Enable optical-drive wake from buttons?'
+  ask_yes_no CONNECT 'Enable CONNECT gestures?'
+  ask_yes_no NETWORK 'Enable WLAN setup?'
+  ask_yes_no ENABLE 'Enable installed services at boot?'
+  ask_yes_no START 'Start services now?'
+else
+  for unwanted in EARLY POWER WAKE CONNECT NETWORK ENABLE START; do
+    [[ -z "${!unwanted}" ]] || fail "--services no conflicts with option $unwanted"
+  done
+  EARLY=no POWER=no WAKE=no CONNECT=no NETWORK=no ENABLE=no START=no
+fi
+ask_yes_no SCREENS 'Configure existing SSD1327 firmware/boot and shutdown screens?'
 
-MACSUFFIX="$(mac_suffix)" || {
-  echo "No network interface with a MAC address found; cannot derive hostname." >&2
-  exit 1
-}
+info "Repository: $ROOT"
+info "Service account: $SERVICE_USER; Python venv: $VENV"
+info "Packages=$PACKAGES_OPT SPI=$SPI I2C=$I2C Config=$CONFIG Sensor=$SENSOR Services=$SERVICES Screens=$SCREENS"
+info "EarlyLED=$EARLY Power=$POWER Wake=$WAKE Connect=$CONNECT Network=$NETWORK Enable=$ENABLE Start=$START"
+if [[ "$APPLY" == no ]]; then
+  ok 'Preview only; no system modifications performed. Rerun with --apply to install.'
+  exit 0
+fi
+[[ $EUID -eq 0 ]] || fail 'Use sudo for --apply (only after reviewing the plan).'
+command -v python3 >/dev/null || fail 'python3 is required'
+command -v raspi-config >/dev/null || fail 'raspi-config is required on Raspberry Pi OS'
 
-while read line
-do
-    if ! [[ "$line" =~ ^# ]]
-    then
-        if [ -n "$line" ]
-        then
-            a=( "${a[@]}" "$line" )
-        fi
-    fi
-done < ${PACKAGES}
+if [[ "$PACKAGES_OPT" == yes ]]; then
+  mapfile -t pkgs < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$PACKAGES")
+  info 'Installing OS packages'; apt-get update; apt-get install -y "${pkgs[@]}"
+fi
+if [[ "$SPI" == yes ]]; then info 'Enabling SPI'; raspi-config nonint do_spi 0; fi
+if [[ "$I2C" == yes ]]; then info 'Enabling I2C'; raspi-config nonint do_i2c 0; fi
 
-apt-get update
-apt -y install "${a[@]}"
+if [[ ! -x "$VENV/bin/python" ]]; then
+  info 'Creating Python environment'; python3 -m venv --system-site-packages "$VENV"
+fi
+info 'Installing Python runtime dependencies'
+"$VENV/bin/python" -m pip install soco Pillow
 
-# set hostname
-raspi-config nonint do_hostname "sonoscdplayer-${MACSUFFIX}"
-# enable i2c
-raspi-config nonint do_i2c 0
-# enable spi
-raspi-config nonint do_spi 0
-# enable beta-access for boot-splash firmware
-raspi-config nonint do_beta_mode B1
-
-apt -y full-upgrade
-
-# setup python venv
-mkdir -p ~/sonoscdplayer
-python3 -m venv --system-site-packages ~/sonoscdplayer/.venv
-~/sonoscdplayer/.venv/bin/python -m pip install soco
-~/sonoscdplayer/.venv/bin/python -m pip install Pillow
-
-# build raspberrypi-tools
-mkdir -p ~/src
-cd ~/src
-git clone https://github.com/raspberrypi/utils.git
-cd utils
-sh ./prerequisites.sh
-cmake .
-make
-make install
+if [[ "$CONFIG" == yes ]]; then
+  info 'Creating only missing configuration files'
+  python3 "$ROOT/tools/install_config.py" --service-user "$SERVICE_USER" --apply
+fi
+if [[ "$SENSOR" == yes ]]; then
+  SENSOR_DIR="$ROOT/src/integrations/sensors/apds-9306-065/service"
+  info 'Compiling APDS9306 sensor helpers'
+  make -C "$SENSOR_DIR" service
+  install -m 0755 "$SENSOR_DIR/apds9306d" /usr/local/bin/apds9306d
+  install -m 0755 "$SENSOR_DIR/apds9306" /usr/local/bin/apds9306
+fi
+if [[ "$SERVICES" == yes ]]; then
+  [[ -f /etc/sonoscdplayer/player.toml ]] || fail 'Missing player.toml; create configuration before service installation'
+  [[ -f /etc/sonoscdplayer/interface.toml ]] || fail 'Missing interface.toml; create configuration before service installation'
+  [[ -x "$VENV/bin/python" ]] || fail 'Missing Python venv'
+  out="$(mktemp -d)"
+  trap 'rm -rf -- "${out:-}"' EXIT
+  render=(python3 "$ROOT/tools/render_runtime_units.py" --output-dir "$out" --checkout "$ROOT/src" --python-venv "$VENV/bin/python" --service-user "$SERVICE_USER")
+  for pair in "$POWER:power-actions" "$WAKE:drive-activity-events" "$CONNECT:connect-gestures" "$NETWORK:network-setup"; do
+    value="${pair%%:*}"; name="${pair#*:}"
+    [[ "$value" == yes ]] && render+=("--$name") || render+=("--no-$name")
+  done
+  info 'Rendering service files and rules'; "${render[@]}"
+  install_cmd=(python3 "$ROOT/tools/install_runtime_services.py" --rendered-dir "$out" --target-unit "$ROOT/systemd/sonoscdplayer.target" --apply)
+  [[ "$SENSOR" == yes ]] && install_cmd+=(--sensor-unit "$SENSOR_DIR/apds9306d.service")
+  [[ "$ENABLE" == yes ]] && install_cmd+=(--enable)
+  [[ "$START" == yes ]] && install_cmd+=(--start)
+  if [[ "$EARLY" == yes ]]; then
+    info 'Installing early Power LED helper'
+    install -d -m 0755 /opt/sonoscdplayer-boot
+    install -m 0755 "$ROOT/tools/early_power_led.py" /opt/sonoscdplayer-boot/early_power_led.py
+    install_cmd+=(--early-led)
+  fi
+  info 'Installing reviewed service files'; "${install_cmd[@]}"
+fi
+if [[ "$SCREENS" == yes ]]; then
+  [[ -f /etc/sonoscdplayer/player.toml ]] || fail 'Screens require the installed player.toml'
+  info 'Building C shutdown display helper'
+  sh "$ROOT/tools/build_shutdown_renderer.sh"
+  warn 'Boot and shutdown screen installer updates installed components; new firmware assembler may need separate installation.'
+  info 'Updating configured boot and existing shutdown screens'
+  sh "$ROOT/tools/install_screens.sh"
+fi
+ok 'Setup steps completed. No reboot initiated.'
