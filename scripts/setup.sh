@@ -94,7 +94,10 @@ ask_text() {
   local name="$1" question="$2" value="${!1}" suggested="${3:-}" answer
   if [[ -z "$value" ]]; then
     [[ -t 0 ]] || fail "Missing required value: $question"
-    if [[ -n "$suggested" ]]; then
+    if [[ "$name" == VENV ]]; then
+      # Readline enables Tab completion; -i inserts the editable path proposal.
+      read -r -e -i "$suggested" -p "$question: " answer || fail 'Input closed'
+    elif [[ -n "$suggested" ]]; then
       read -r -p "$question [$suggested]: " answer || fail 'Input closed'
     else
       read -r -p "$question: " answer || fail 'Input closed'
@@ -112,6 +115,11 @@ if [[ -z "$APPLY" ]]; then
     read -r -p 'Choose mode: [p]review or [i]nstall: ' mode || fail 'Input closed'
     case "$mode" in p|P) APPLY=no; break;; i|I) APPLY=yes; break;; *) warn 'Choose p or i (no default).';; esac
   done
+fi
+# A real install also needs root privileges to inspect protected Polkit files.
+# Fail before questions or preflight instead of reporting a false unit conflict.
+if [[ "$APPLY" == yes && $EUID -ne 0 ]]; then
+  fail 'Installation requires root privileges: sudo bash scripts/setup.sh --apply'
 fi
 # Raspberry Pi OS does not guarantee that an account named 'pi' exists.
 # Prefer the account invoking sudo; fall back to 'pi' only if it exists.

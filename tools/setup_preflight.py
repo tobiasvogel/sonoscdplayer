@@ -47,7 +47,7 @@ def inspect_configs(repo: Path, config_dir: Path, create_config: bool,
 
 def inspect_runtime_units(repo: Path, service_user: str, venv: Path, flags: dict[str, bool],
                           sensor: bool, early_led: bool, shutdown: bool,
-                          errors: list[str]) -> None:
+                          errors: list[str], warnings: list[str], preview: bool) -> None:
     renderer = repo / 'tools/render_runtime_units.py'
     installer = repo / 'tools/install_runtime_services.py'
     if not renderer.is_file() or not installer.is_file():
@@ -75,6 +75,13 @@ def inspect_runtime_units(repo: Path, service_user: str, venv: Path, flags: dict
                         target_unit=repo / 'systemd/sonoscdplayer.target',
                         early_led=early_led,
                         shutdown_units_dir=(repo / 'systemd' if shutdown else None))
+        except PermissionError as exc:
+            message = (f'Cannot inspect protected service/Polkit file: {exc}; '
+                       'rerun with sudo for a complete conflict check')
+            if os.geteuid() != 0 and preview:
+                warnings.append(message)
+            else:
+                errors.append(message)
         except (OSError, ValueError) as exc:
             errors.append(f'Installed service conflict: {exc}')
 
@@ -142,7 +149,8 @@ def check(args: argparse.Namespace, *, pi_model: Path = Path('/proc/device-tree/
                                'drive-activity-events': args.drive_activity_events,
                                'connect-gestures': args.connect_gestures,
                                'network-setup': args.network_setup},
-                              args.sensor, args.early_led, args.shutdown_services, errors)
+                              args.sensor, args.early_led, args.shutdown_services,
+                              errors, warnings, args.mode == 'preview')
     if args.screens:
         for file in ('tools/build_shutdown_renderer.sh', 'tools/install_screens.sh',
                      'systemd/sonoscdplayer-final-shutdown-hook'):
