@@ -77,6 +77,54 @@ class ConfigureTests(unittest.TestCase):
         self.assertIn('[other]\nmax_buffer_mib = 5', config.replace_values(
             raw, {('streaming', 'max_buffer_mib'): 100}))
 
+    def test_keep_current_or_accept_recommendation(self):
+        responses = iter(['?', 'k'])
+        output = []
+        self.assertEqual(config.ask('Buffer', 16, 205, 'int', help_text='PCM help',
+                                    read=lambda _: next(responses), out=output.append), 16)
+        self.assertIn('PCM help', output)
+        self.assertEqual(config.ask('Buffer', 16, 205, 'int', read=lambda _: ''), 205)
+
+    def test_section_navigation_and_review(self):
+        current = {('streaming', 'max_buffer_mib'): 16,
+                   ('metadata', 'online_lookup'): True,
+                   ('sonos', 'use_queue'): True,
+                   ('playback', 'continue'): True}
+        replies = iter(['1', '', 'k', '2', 'n', '4', 'y'])
+        result = config.interactive_choices(current, 205,
+                    read=lambda _: next(replies), out=lambda _: None)
+        self.assertEqual(result, {('streaming', 'max_buffer_mib'): 205,
+                                  ('metadata', 'online_lookup'): False})
+
+    def test_returning_to_section_reverts_change(self):
+        current = {('streaming', 'max_buffer_mib'): 16,
+                   ('metadata', 'online_lookup'): True,
+                   ('sonos', 'use_queue'): True,
+                   ('playback', 'continue'): True}
+        replies = iter(['1', '', 'k', '1', 'k', 'k', '4', 'y'])
+        result = config.interactive_choices(current, 205,
+                    read=lambda _: next(replies), out=lambda _: None)
+        self.assertEqual(result, {})
+
+    def test_exit_discard_changes(self):
+        current = {('streaming', 'max_buffer_mib'): 16,
+                   ('metadata', 'online_lookup'): True,
+                   ('sonos', 'use_queue'): True,
+                   ('playback', 'continue'): True}
+        replies = iter(['1', '', 'k', '0'])
+        self.assertIsNone(config.interactive_choices(current, 205,
+                    read=lambda _: next(replies), out=lambda _: None))
+
+    def test_review_must_be_confirmed(self):
+        current = {('streaming', 'max_buffer_mib'): 16,
+                   ('metadata', 'online_lookup'): True,
+                   ('sonos', 'use_queue'): True,
+                   ('playback', 'continue'): True}
+        replies = iter(['4', '', '0'])
+        self.assertIsNone(config.interactive_choices(current, 205,
+                    read=lambda _: next(replies), out=lambda _: None))
+
+
 
 if __name__ == '__main__':
     unittest.main()

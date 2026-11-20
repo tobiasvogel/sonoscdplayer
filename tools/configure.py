@@ -121,22 +121,99 @@ def replace_values(raw: str, changes: dict[tuple[str, str], object]) -> str:
     return result
 
 
-def ask(label: str, current: object, suggestion: object, kind: str) -> object:
-    """Enter explicitly accepts suggestion; CLI automation does not use suggestions."""
+FIELD_HELP = {
+    ('streaming', 'max_buffer_mib'): (
+        'RAM used for PCM and the next track read-ahead. Valid range: 16..512 MiB. '
+        'The recommendation is 10% of total physical RAM, capped at 512 MiB.'),
+    ('metadata', 'online_lookup'): 'Look up CD metadata on MusicBrainz when enabled.',
+    ('sonos', 'use_queue'): 'Add CD tracks to the Sonos queue so album and artist are visible.',
+    ('playback', 'continue'): 'Automatically play the next CD track after one ends.',
+}
+MENU_GROUPS = (
+    ('Streaming and playback', (('streaming', 'max_buffer_mib'), ('playback', 'continue'))),
+    ('CD metadata', (('metadata', 'online_lookup'),)),
+    ('Sonos', (('sonos', 'use_queue'),)),
+)
+
+
+def ask(label: str, current: object, suggestion: object, kind: str,
+        *, help_text: str = '', read=input, out=print) -> object:
+    """Enter explicitly accepts the suggestion; k leaves current untouched."""
     while True:
-        value = input(f'{label} (current: {current}; suggested: {suggestion}) [{suggestion}]: ').strip()
+        value = read(f'{label} (current: {render_value(current)}; '
+                     f'recommended: {render_value(suggestion)}) '
+                     f'[{render_value(suggestion)}] (k=keep, ?=help): ').strip()
+        if value == '?':
+            out(help_text or 'Enter a value or k to keep the existing setting.')
+            continue
         if not value:
             return suggestion
+        if value.lower() == 'k':
+            return current
         if kind == 'int':
             if re.fullmatch(r'\d+', value) and LIMITS[0] <= int(value) <= LIMITS[1]:
                 return int(value)
-            print(f'Enter a whole number from {LIMITS[0]} to {LIMITS[1]}.', file=sys.stderr)
+            out(f'Enter a whole number from {LIMITS[0]} to {LIMITS[1]}.')
         elif value.lower() in ('y', 'yes', 'true', '1'):
             return True
         elif value.lower() in ('n', 'no', 'false', '0'):
             return False
         else:
-            print('Enter yes or no.', file=sys.stderr)
+            out('Enter yes or no.')
+
+
+def pending_changes(current, staged):
+    """Only differences from the installed config, including reverted choices."""
+    return {field: value for field, value in staged.items() if value != current[field]}
+
+
+def review(current, staged, *, out=print):
+    changes = pending_changes(current, staged)
+    out('\nPending changes:')
+    if not changes:
+        out('  None (the installed configuration will remain unchanged).')
+    for section, key, _, _ in FIELDS:
+        field = section, key
+        if field in changes:
+            out(f'  {section}.{key}: {render_value(current[field])} '
+                f'-> {render_value(changes[field])}')
+    return changes
+
+
+def interactive_choices(current, recommendation, *, read=input, out=print):
+    """Stage independent sections; review is the only way to finish with changes.
+
+    Returning None means the user exited without accepting the review.
+    Nothing is written by this function.
+    """
+    staged = dict(current)
+    fields = {(section, key): (label, kind) for section, key, label, kind in FIELDS}
+    while True:
+        out('\nSonosCDPlayer Configuration')
+        for n, (heading, _) in enumerate(MENU_GROUPS, 1):
+            out(f'  {n}. {heading}')
+        out('  4. Review pending changes and finish')
+        out('  0. Exit without applying changes')
+        choice = read('Select a section [4]: ').strip() or '4'
+        if choice == '0':
+            return None
+        if choice == '4':
+            changes = review(current, staged, out=out)
+            answer = read('Finish with these selections? [y/N]: ').strip().lower()
+            if answer in ('y', 'yes'):
+                return changes
+            continue
+        if choice not in ('1', '2', '3'):
+            out('Select 0, 1, 2, 3 or 4.')
+            continue
+        heading, group_fields = MENU_GROUPS[int(choice) - 1]
+        out(f'\n{heading} (press k to keep the original value)')
+        for field in group_fields:
+            label, kind = fields[field]
+            suggestion = (recommendation if field == ('streaming', 'max_buffer_mib')
+                          else staged[field])
+            staged[field] = ask(label, current[field], suggestion, kind,
+                                help_text=FIELD_HELP[field], read=read, out=out)
 
 
 def load_swap():
@@ -171,30 +248,26 @@ def main(argv=None) -> int:
         ram = total_ram_mib()
         recommendation = suggested_buffer(ram)
         print(f'Detected physical RAM: {ram} MiB; buffer recommendation: {recommendation} MiB (10%, capped at 512 MiB)')
-        changes = {}
-        for section, key, label, kind in FIELDS:
-            field = (section, key)
-            suggestion = recommendation if field == ('streaming', 'max_buffer_mib') else current[field]
-            if field == ('streaming', 'max_buffer_mib') and args.buffer_mib is not None:
-                if not LIMITS[0] <= args.buffer_mib <= LIMITS[1]:
-                    raise ValueError('--buffer-mib must be between 16 and 512')
-                value = args.buffer_mib
-            elif sys.stdin.isatty():
-                value = ask(label, current[field], suggestion, kind)
-            elif field == ('streaming', 'max_buffer_mib') and args.buffer_mib is None:
+        if sys.stdin.isatty():
+            if args.buffer_mib is not None:
+                raise ValueError('--buffer-mib is intended for non-interactive use')
+            changes = interactive_choices(current, recommendation)
+            if changes is None:
+                print('Cancelled; nothing changed.')
+                return 0
+        else:
+            if args.buffer_mib is None:
                 raise ValueError('non-interactive use requires --buffer-mib; no implicit recommendation')
-            else:
-                value = current[field]
-            if value != current[field]:
-                changes[field] = value
+            if not LIMITS[0] <= args.buffer_mib <= LIMITS[1]:
+                raise ValueError('--buffer-mib must be between 16 and 512')
+            changes = pending_changes(current, {
+                **current, ('streaming', 'max_buffer_mib'): args.buffer_mib})
+            review(current, {**current, **changes})
         if not changes:
             print('No configuration changes selected.')
             return 0
         updated = replace_values(raw, changes)
         tomllib.loads(updated)  # validate the complete output before touching anything
-        print('Proposed changes:')
-        for section, key in changes:
-            print(f'  {section}.{key}: {current[(section, key)]} -> {changes[(section, key)]}')
         if not args.apply:
             print('Preview only; no files changed. Rerun with --apply to install.')
             return 0
