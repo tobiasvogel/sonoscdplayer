@@ -220,7 +220,7 @@ Some features are optional or hardware-specific. Consult each guide for its requ
 
 Contributions are welcome, including software improvements, hardware compatibility reports, testing feedback, translations, wiring diagrams, documentation, and enclosure designs.
 
-The Python code is one package, `src/sonoscdplayer/`, organized by area: `audio` (reading and streaming the CD), `drive` (the optical drive), `metadata`, `sonos`, `player` (the player service), `ui` (the display service and menu), `hardware` (displays, buttons, LEDs, sensors), `network_setup` and `system`. Native C code is in `src/native/`. Tests mirror the package under `tests/` and run with `python3 -m pytest`. Every public module, class and function has a docstring (Google style); `tools/build_api_docs.sh` turns them into an HTML code reference with [pdoc](https://pdoc.dev).
+The Python code is one package, `src/sonoscdplayer/`, organized by area: `audio` (reading and streaming the CD), `drive` (the optical drive), `metadata`, `sonos`, `player` (the player service), `ui` (the display service and menu), `hardware` (displays, buttons, LEDs, sensors), `network_setup` and `system`. Native C code is in `src/native/`. Tests mirror the package under `tests/` and run with `python3 -m pytest`. Every public module, class and function has a docstring (Google style); run `tools/build_api_docs.sh` to turn them into an HTML code reference in `docs/api/` with [pdoc](https://pdoc.dev) (Debian package `python3-pdoc`, installed by `scripts/setup.sh`).
 
 For substantial code changes, please open an issue describing the proposed improvement or problem before beginning work. The project favours maintainable implementations and incremental, hardware-backed testing.
 
