@@ -105,22 +105,46 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.a.transport, 'PLAYING')
         self.assertEqual(self.topo.leaders['B'], 'A')
 
-    def test_pause_blocks_unexpected_member_without_sonos_write(self):
+    def test_pause_goes_along_with_a_speaker_added_in_app(self):
         self.start()
         self.topo.leaders['C'] = 'A'
-        with self.assertRaisesRegex(RuntimeError, 'unexpected topology'):
-            self.player.pause()
-        self.assertEqual(self.a.transport, 'PLAYING')
-        self.assertEqual(self.player.state.mode, Mode.PLAYING)
+        self.player.pause()
+        self.assertEqual(self.a.transport, 'PAUSED_PLAYBACK')
+        self.assertEqual(self.player.state.mode, Mode.PAUSED)
+        self.assertEqual(set(self.player._joined), {'B', 'C'})
 
-    def test_resume_blocks_unexpected_member_without_sonos_write(self):
+    def test_resume_goes_along_with_a_speaker_added_in_app(self):
         self.start()
         self.player.pause()
         self.topo.leaders['C'] = 'A'
-        with self.assertRaisesRegex(RuntimeError, 'unexpected topology'):
-            self.player.resume()
-        self.assertEqual(self.a.transport, 'PAUSED_PLAYBACK')
-        self.assertEqual(self.player.state.mode, Mode.PAUSED)
+        self.player.resume()
+        self.assertEqual(self.a.transport, 'PLAYING')
+        self.assertEqual(set(self.player._joined), {'B', 'C'})
+
+    def test_speaker_removed_in_app_is_no_longer_released(self):
+        self.start()
+        self.topo.leaders['B'] = 'B'                # taken out in the Sonos app
+        self.player.refresh()
+        self.assertEqual(self.player.state.mode, Mode.PLAYING)
+        self.player.stop()
+        self.assertEqual(self.b.unjoin_calls, 0)
+
+    def test_playback_moved_to_a_member_is_followed(self):
+        """The app takes the coordinator out; Sonos plays on on B."""
+        self.start()
+        self.topo.leaders.update({'A': 'A', 'B': 'B'})
+        self.b.uri, self.b.transport = self.a.uri, 'PLAYING'
+        self.a.transport = 'STOPPED'
+        self.player.refresh()
+        self.assertEqual(self.player.state.mode, Mode.PLAYING)
+        self.assertEqual(self.player.uid, 'B')
+        self.assertTrue(self.server.alive())
+
+    def test_unrelated_group_change_still_fails_closed(self):
+        self.start()
+        self.topo.leaders.update({'A': 'C', 'B': 'C'})   # A joined someone else's group
+        self.player.refresh()
+        self.assertEqual(self.player.state.mode, Mode.ERROR)
 
     def test_pause_blocks_foreign_uri_without_sonos_write(self):
         self.start()
@@ -134,12 +158,12 @@ class LifecycleTests(unittest.TestCase):
         self.player.stop()
         self.assertEqual(self.topo.leaders['B'],'B')
         self.assertEqual((self.a.stop_calls,self.b.unjoin_calls),(1,1))
-    def test_external_group_change_blocks_stop(self):
+    def test_speaker_added_in_app_is_released_at_stop(self):
         self.start()
-        self.topo.leaders['C']='A'
-        with self.assertRaises(RuntimeError):
-            self.player.stop()
-        self.assertEqual((self.a.stop_calls,self.b.unjoin_calls),(0,0))
+        self.topo.leaders['C']='A'                  # added in the Sonos app
+        self.player.stop()
+        self.assertEqual(self.a.stop_calls,1)
+        self.assertEqual(self.topo.leaders,{'A':'A','B':'B','C':'C'})
     def test_track_switch_keeps_group(self):
         self.start()
         self.player.change('next')
@@ -258,13 +282,13 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.a.transport, 'PAUSED_PLAYBACK')
         self.assertEqual(self.player.state.mode, Mode.PAUSED)
 
-    def test_paused_stop_rejects_external_group_member(self):
+    def test_paused_stop_releases_a_speaker_added_in_app(self):
         self.start()
         self.player.pause()
         self.topo.leaders['C'] = 'A'
-        with self.assertRaisesRegex(RuntimeError, 'unexpected topology'):
-            self.player.stop()
-        self.assertEqual((self.a.stop_calls, self.b.unjoin_calls), (0, 0))
+        self.player.stop()
+        self.assertEqual(self.a.stop_calls, 1)
+        self.assertEqual(self.topo.leaders, {'A': 'A', 'B': 'B', 'C': 'C'})
 
     def test_stop_does_not_unjoin_after_member_release_failure(self):
         self.start()

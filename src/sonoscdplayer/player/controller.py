@@ -340,7 +340,7 @@ class Controller:
             self._fail('stream server exited while playing')
             return
         try:
-            player = self.verify_existing()
+            player = self._follow_group(self.verify_existing())
             transport = player.get_current_transport_info()['current_transport_state']
             self.last_transport = transport
             if (self.state.mode == Mode.STARTING and not self.seen_playing
@@ -444,6 +444,71 @@ class Controller:
         if self._pending_advance is not None:
             track, self._pending_advance = self._pending_advance, None
             self._advance_to(track)
+
+    def _is_our_uri(self, uri):
+        """True for the stream URL we started or one of our disc block."""
+        if not uri:
+            return False
+        block = self._queue_block
+        return uri == self.owned_url or bool(block and uri in block['urls'])
+
+    def _follow_group(self, player):
+        """Go along with group changes made in the Sonos app.
+
+        Speakers added to or removed from our group become part of the
+        playback (and are released at its end like the ones we joined).
+        If the playback was moved to another coordinator, which happens
+        when the app takes our coordinator out of the group, we follow the
+        speaker that now plays our stream. Anything else is left to the
+        ownership checks. Returns the coordinator to use.
+        """
+        if player.uid != self.uid:
+            return player                      # another device: the checks refuse it
+        group = player.group
+        members = {p.uid: p for p in group.members if p.uid != self.uid}
+        if group.coordinator.uid == self.uid and set(members) == set(self._joined):
+            return player                      # nothing changed (no extra Sonos calls)
+        # Only our coordinator or a speaker of our group may take over.
+        candidates = {}
+        if group.coordinator.uid == self.uid:
+            candidates[self.uid] = player
+        for member in self._joined.values():
+            try:
+                coordinator = member.group.coordinator
+            except Exception:
+                continue
+            if coordinator.uid in self._joined:
+                candidates.setdefault(coordinator.uid, coordinator)
+        # Prefer our own coordinator, then anyone else playing our stream.
+        ordered = sorted(candidates.values(), key=lambda c: c.uid != self.uid)
+        for coordinator in ordered:
+            try:
+                transport = coordinator.get_current_transport_info()['current_transport_state']
+                uri = coordinator.get_current_track_info().get('uri')
+            except Exception:
+                continue
+            if transport in ('PLAYING', 'PAUSED_PLAYBACK', 'TRANSITIONING') and self._is_our_uri(uri):
+                self._adopt_group(coordinator)
+                return coordinator
+        if group.coordinator.uid == self.uid:
+            # Our coordinator, but not playing (yet): only take over membership.
+            self._adopt_group(player)
+        return player
+
+    def _adopt_group(self, coordinator):
+        group = coordinator.group
+        members = {p.uid: p for p in group.members if p.uid != coordinator.uid}
+        if coordinator.uid != self.uid:
+            print(f'[player] playback moved to another speaker in the Sonos app; '
+                  f'following ({len(members)} member(s))', flush=True)
+            self.uid = coordinator.uid
+            self.player = coordinator
+        elif set(members) != set(self._joined):
+            print(f'[player] group changed in the Sonos app; now {len(members)} member(s)',
+                  flush=True)
+        self._joined = members
+        self._group_coord = coordinator if members else None
+        self._group_members = frozenset(members)
 
     def _toc_duration(self, track):
         try:
@@ -678,7 +743,7 @@ class Controller:
         """Pause our own stream."""
         if self.state.mode != Mode.PLAYING or not self.seen_playing or not self.owned_url or not self.server.alive():
             raise ValueError('PAUSE requires confirmed owned PLAYING')
-        player = self.verify_existing()
+        player = self._follow_group(self.verify_existing())
         self._ownership(player, 'PLAYING')
         self._ownership(player, 'PLAYING')
         player.pause()
@@ -689,7 +754,7 @@ class Controller:
         """Continue our paused stream."""
         if self.state.mode != Mode.PAUSED or not self.seen_playing or not self.owned_url or not self.server.alive():
             raise ValueError('RESUME requires confirmed owned PAUSED')
-        player = self.verify_existing()
+        player = self._follow_group(self.verify_existing())
         self._ownership(player, 'PAUSED_PLAYBACK')
         self._ownership(player, 'PAUSED_PLAYBACK')
         player.play()
@@ -711,7 +776,7 @@ class Controller:
     def _stop_owned(self, *, keep_group=False):
         if self.state.mode not in (Mode.PLAYING, Mode.PAUSED) or not self.seen_playing or not self.owned_url:
             raise ValueError('STOP/track switch requires confirmed owned playback')
-        player = self.verify_existing()
+        player = self._follow_group(self.verify_existing())
         expected = 'PLAYING' if self.state.mode == Mode.PLAYING else 'PAUSED_PLAYBACK'
         self._ownership(player, expected)
         self._ownership(player, expected)

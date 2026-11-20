@@ -6,6 +6,11 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- Changing the group in the Sonos app during CD playback no longer ends it
+  with a player error: added or removed speakers become part of the
+  playback, and if the app moves the playback to one of the group's
+  speakers, the player follows. At the end every speaker of the group is
+  released again.
 - Playback no longer breaks off at a track change when Sonos asks for the
   next track late: a read-ahead that gave up is read again instead of being
   answered with 409 (Sonos skipped the track).
