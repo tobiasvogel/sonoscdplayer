@@ -422,12 +422,18 @@ class RangeTests(unittest.TestCase):
     def tearDown(self):
         self.server.shutdown();self.server.server_close();self.thread.join(3)
     def request(self, method='GET', headers=None):
-        c=http.client.HTTPConnection('127.0.0.1',self.server.server_port,timeout=8)
-        try:
-            c.request(method,'/track/1.wav',headers=headers or {})
-            r=c.getresponse(); code=r.status; hdr=dict(r.getheaders()); body=r.read()
-            return code,hdr,body
-        finally: c.close()
+        # Right after a complete read the old reader may still be finishing;
+        # the server then answers the documented 409. Wait that out.
+        deadline=time.monotonic()+5
+        while True:
+            c=http.client.HTTPConnection('127.0.0.1',self.server.server_port,timeout=8)
+            try:
+                c.request(method,'/track/1.wav',headers=headers or {})
+                r=c.getresponse(); code=r.status; hdr=dict(r.getheaders()); body=r.read()
+            finally: c.close()
+            if code!=409 or time.monotonic()>deadline:
+                return code,hdr,body
+            time.sleep(0.02)
     def test_middle_open_ended_range_replays_if_history_expired(self):
         # A complete first fetch forces most of the first 16-bit PCM segment out
         # of our small test ring. A resume must replay sequentially.
