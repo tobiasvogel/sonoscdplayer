@@ -6,6 +6,9 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- STOP on a group (and the stop at shutdown) releases the group before the
+  disc is removed from the Sonos queue. Before, the release could fail,
+  and the remaining "group cleanup pending" blocked EJECT and PLAY.
 - A speaker chosen on the CD player that sits in an idle Sonos group
   (stopped or paused) is taken out of it on its own; the rest of the group
   stays together. Groups that are playing are never touched. Idle speakers

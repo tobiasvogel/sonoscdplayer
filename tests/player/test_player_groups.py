@@ -170,6 +170,20 @@ class LifecycleTests(unittest.TestCase):
         self.player.play('A', ['B'])
         self.assertEqual(self.topo.leaders['B'], 'A')
 
+    def test_stop_releases_the_group_before_emptying_the_queue(self):
+        """Removing our disc from the queue changes the coordinator's URI;
+        the group must already be released by then (else EJECT stays blocked)."""
+        self.start()
+        self.player._queue_block = {'first': 1, 'tracks': [1], 'urls': [self.a.uri]}
+        def empty_queue(player, block):
+            player.uri = ''
+            return 1
+        with mock.patch('sonoscdplayer.player.controller.remove_queue_block', empty_queue):
+            self.player.stop()
+        self.assertEqual(self.topo.leaders['B'], 'B')
+        self.assertEqual(self.player._joined, {})
+        self.assertFalse(self.player._group_uncertain)
+
     def test_speaker_removed_in_app_is_no_longer_released(self):
         self.start()
         self.topo.leaders['B'] = 'B'                # taken out in the Sonos app

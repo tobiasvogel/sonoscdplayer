@@ -830,7 +830,6 @@ class Controller:
         self._ownership(player, expected)
         self._ownership(player, expected)
         player.stop()  # only destructive action
-        self._drop_queue_entry(player)
         old_url = self.owned_url
         self.state = self.state.natural_end()
         self.owned_url, self.player = None, None
@@ -838,7 +837,10 @@ class Controller:
         self.seen_playing = False
         self.server.close()
         if not keep_group:
+            # Release while the coordinator still shows our stream as proof;
+            # emptying the queue first would change its URI and keep the group.
             self._release_group(owned_url=old_url)
+        self._drop_queue_entry(player)
 
     def stop(self):
         """Stop our own stream (after checking it twice) and release the group."""
@@ -856,12 +858,12 @@ class Controller:
                 raise ValueError('startup recovery only when Sonos is already STOPPED')
             old_url = self.owned_url
             self.state = self.state.natural_end()
-            self._drop_queue_entry(player)
             self.owned_url, self.player = None, None
             self.seen_playing = False
             self.start_monotonic, self.stopped_since = None, None
             self.server.close()
-            self._release_group(owned_url=old_url)
+            self._release_group(owned_url=old_url)   # before the queue changes
+            self._drop_queue_entry(player)
             return
         self._stop_owned()
 
@@ -1061,13 +1063,14 @@ class Controller:
         except Exception as exc:
             return {'action': 'not_stopped',
                     'reason': f'{type(exc).__name__}: {exc}'}
-        self._drop_queue_entry(player)
         old_url = self.owned_url
         self.last_transport = 'STOPPED'
         self.state = self.state.natural_end()
         self.owned_url, self.player = None, None
         self.seen_playing = False
-        if not self._release_group(owned_url=old_url):
+        released = self._release_group(owned_url=old_url)   # before the queue changes
+        self._drop_queue_entry(player)
+        if not released:
             return {'action': 'stopped_owned_group_cleanup_pending'}
         return {'action': 'stopped_owned'}
 
