@@ -54,10 +54,7 @@ PROFILES = {
 # Evaluated and excluded from player-display candidates: full refresh only,
 # too slow for track/status changes and interactive menu navigation.
 # Retain geometry for explicit experiments and future e-paper driver work.
-REFERENCE_# Keys preserve the originally registered native geometry for compatibility.
-# Reported dimensions reflect the confirmed rotation-270 landscape canvases.
-# Neither profile is connected to the player runtime yet.
-PROFILES = {
+REFERENCE_PROFILES = {
     'epaper_200x200_4color': HardwareDisplayProfile(
         'epaper_200x200_4color', 'UNKNOWN', 200, 200, 'four_color',
         True, 'event_driven'),
