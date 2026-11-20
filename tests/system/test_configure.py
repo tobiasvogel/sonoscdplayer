@@ -273,6 +273,159 @@ class ConfigureTests(unittest.TestCase):
         self.assertIn('confidence_threshold = 95  # inline', updated)
 
 
+class CoverWizardTests(unittest.TestCase):
+    def test_cover_defaults_and_missing_file_are_virtual(self):
+        import tomllib
+        reference = tomllib.loads(config.UI_REFERENCE.read_text())
+        values = config.existing_ui_values({}, reference)
+        self.assertEqual(values[('ui.cover', 'mode')], 'auto')
+        self.assertEqual(values[('ui.cover', 'max_dimension_px')], 512)
+        self.assertEqual(values[('ui.cover', 'jpeg_quality')], 85)
+        self.assertEqual(values[('ui.cover', 'budget_mb')], 100)
+        self.assertEqual(config.replace_values('[ui]\nlanguage = "de"\n', {}),
+                         '[ui]\nlanguage = "de"\n')
+
+    def test_cover_bounds_and_boolean_rejected(self):
+        import tomllib
+        ref = tomllib.loads(config.UI_REFERENCE.read_text())
+        for key, value in (('max_dimension_px', 63), ('max_dimension_px', 2049),
+                           ('jpeg_quality', 39), ('jpeg_quality', 96),
+                           ('budget_mb', 0), ('budget_mb', 10001),
+                           ('budget_mb', True), ('mode', 'automatic')):
+            with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, 'invalid'):
+                config.existing_ui_values({'ui': {'cover': {key: value}}}, ref)
+
+    def test_cover_input_validates_choices(self):
+        output = []
+        answers = iter(['manual', '?', 'off'])
+        self.assertEqual(config.ask('Cover', 'auto', 'auto', 'cover_mode',
+                                    read=lambda _: next(answers), out=output.append,
+                                    help_text='help about covers'), 'off')
+        self.assertIn('help about covers', output)
+        self.assertEqual(config.ask('Cover', 'auto', 'auto', 'cover_mode',
+                                    read=lambda _: 'k'), 'auto')
+
+    def test_cover_update_preserves_ui_language_and_comments(self):
+        import tomllib
+        raw = ('# original\n[ui]\nlanguage = "de"\n'
+               '[ui.cover]\nmode = "auto" # keep this comment\n'
+               'jpeg_quality = 85\n[ui.text_input]\nextra_characters = "äöü"\n')
+        updated = config.replace_values(raw, {
+            ('ui.cover', 'mode'): 'off', ('ui.cover', 'budget_mb'): 250})
+        decoded = tomllib.loads(updated)
+        self.assertEqual(decoded['ui']['language'], 'de')
+        self.assertEqual(decoded['ui']['cover']['mode'], 'off')
+        self.assertEqual(decoded['ui']['cover']['budget_mb'], 250)
+        self.assertIn('# keep this comment', updated)
+        self.assertIn('extra_characters = "äöü"', updated)
+
+    def test_cover_missing_nested_section_is_valid_toml(self):
+        import tomllib
+        raw = '[ui]\nlanguage = "en"\n[ui.text_input]\nextra_characters = "ä"\n'
+        updated = config.replace_values(raw, {('ui.cover', 'mode'): 'on'})
+        decoded = tomllib.loads(updated)
+        self.assertEqual(decoded['ui']['cover']['mode'], 'on')
+        self.assertEqual(decoded['ui']['language'], 'en')
+
+    def test_cover_menu_and_review(self):
+        import tomllib
+        current = config.existing_values({'streaming': {'max_buffer_mib': 16}},
+                                         tomllib.loads(config.REFERENCE.read_text()))
+        ui_current = config.existing_ui_values({},
+                                               tomllib.loads(config.UI_REFERENCE.read_text()))
+        replies = iter(['7', 'off', 'k', '75', '200', '8', 'y'])
+        changes = config.interactive_choices(current, 205, ui_current=ui_current,
+                    read=lambda _: next(replies), out=lambda _: None)
+        self.assertEqual(changes, {('ui.cover', 'mode'): 'off',
+                                   ('ui.cover', 'jpeg_quality'): 75,
+                                   ('ui.cover', 'budget_mb'): 200})
+
+    def test_ui_plan_uses_both_services_and_ui_reference(self):
+        player = Path('/etc/sonoscdplayer/player.toml')
+        ui = Path('/etc/sonoscdplayer/ui.toml')
+        path, updated, ref, units = config.plan_update(
+            {('ui.cover', 'mode'): 'off'},
+            {('streaming', 'max_buffer_mib'): 16}, {('ui.cover', 'mode'): 'auto'},
+            player_path=player, ui_path=ui,
+            raw='[streaming]\nmax_buffer_mib = 16\n',
+            ui_raw='[ui]\nlanguage = "de"\n')
+        self.assertEqual(path, ui)
+        self.assertEqual(ref, config.UI_REFERENCE)
+        self.assertEqual(units, list(config.UI_SERVICES))
+        self.assertIn('mode = "off"', updated)
+
+    def test_refuse_mixed_file_update_and_missing_ui(self):
+        kwargs = {'player_path': Path('/config/player.toml'),
+                  'ui_path': Path('/config/ui.toml'),
+                  'raw': '[streaming]\nmax_buffer_mib = 16\n',
+                  'ui_raw': '[ui]\nlanguage = "de"\n'}
+        with self.assertRaisesRegex(ValueError, 'one file per run'):
+            config.plan_update({('streaming', 'max_buffer_mib'): 100,
+                                ('ui.cover', 'mode'): 'off'},
+                               {('streaming', 'max_buffer_mib'): 16},
+                               {('ui.cover', 'mode'): 'auto'}, **kwargs)
+        with self.assertRaisesRegex(ValueError, 'install ui.toml'):
+            config.plan_update({('ui.cover', 'mode'): 'off'},
+                               {('streaming', 'max_buffer_mib'): 16},
+                               {('ui.cover', 'mode'): 'auto'}, **{**kwargs, 'ui_raw': None})
+
+    def test_mixed_changes_warn_in_review_and_allow_revert(self):
+        import tomllib
+        current = config.existing_values({'streaming': {'max_buffer_mib': 16}},
+                                         tomllib.loads(config.REFERENCE.read_text()))
+        ui_current = config.existing_ui_values({},
+                                               tomllib.loads(config.UI_REFERENCE.read_text()))
+        # First change the buffer, then the cover mode. Review refuses mixing;
+        # return to streaming, use k to revert, then confirm the UI-only change.
+        answers = iter(['1', '', 'k', '7', 'off', 'k', 'k', 'k', '8',
+                        '1', 'k', 'k', '8', 'y'])
+        output = []
+        changes = config.interactive_choices(current, 205, ui_current=ui_current,
+                   read=lambda _: next(answers), out=output.append)
+        self.assertEqual(changes, {('ui.cover', 'mode'): 'off'})
+        self.assertIn('Apply one file', '\n'.join(output))
+
+    def test_cover_apply_delegates_to_config_swap_and_checks_both_services(self):
+        from unittest.mock import patch
+        import tomllib
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            player, ui = root / 'player.toml', root / 'ui.toml'
+            player.write_text('[streaming]\nmax_buffer_mib = 16\n')
+            ui.write_text('[ui]\nlanguage = "de"\n')
+            calls = []
+            class StubSwap:
+                def swap(self, current, new, **kwargs):
+                    calls.append((current, tomllib.loads(new.read_text()), kwargs))
+                    return 0
+            with (patch.object(config.os, 'geteuid', return_value=0),
+                  patch.object(config.sys.stdin, 'isatty', return_value=True),
+                  patch.object(config, 'interactive_choices', return_value={('ui.cover', 'mode'): 'off'}),
+                  patch.object(config, 'load_swap', return_value=StubSwap()),
+                  patch('builtins.input', return_value='APPLY')):
+                self.assertEqual(config.main(['--config', str(player), '--apply']), 0)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0][0], ui)
+            self.assertEqual(calls[0][1]['ui']['cover']['mode'], 'off')
+            self.assertEqual(calls[0][2]['services'], list(config.UI_SERVICES))
+            self.assertEqual(calls[0][2]['reference'], config.UI_REFERENCE)
+            self.assertTrue(calls[0][2]['apply'])
+            # Stub does not apply; wizard must not write either config directly.
+            self.assertNotIn('[ui.cover]', ui.read_text())
+
+    def test_cover_preview_never_calls_swap_or_writes(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            player, ui = root / 'player.toml', root / 'ui.toml'
+            player.write_text('[streaming]\nmax_buffer_mib = 16\n')
+            ui.write_text('[ui]\nlanguage = "en"\n')
+            with (patch.object(config.sys.stdin, 'isatty', return_value=True),
+                  patch.object(config, 'interactive_choices', return_value={('ui.cover', 'mode'): 'on'}),
+                  patch.object(config, 'load_swap', side_effect=AssertionError('called'))):
+                self.assertEqual(config.main(['--config', str(player)]), 0)
+            self.assertEqual(ui.read_text(), '[ui]\nlanguage = "en"\n')
+
 
 if __name__ == '__main__':
     unittest.main()

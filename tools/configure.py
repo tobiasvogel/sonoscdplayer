@@ -29,10 +29,22 @@ FIELD_RANGES = {
     ('metadata.matching', 'confidence_threshold'): (0, 100),
     ('metadata.matching', 'minimum_margin'): (0, 100),
     ('metadata.matching', 'minimum_track_titles'): (1, 99),
+    ('ui.cover', 'max_dimension_px'): (64, 2048),
+    ('ui.cover', 'jpeg_quality'): (40, 95),
+    ('ui.cover', 'budget_mb'): (1, 10000),
 }
 DRIVE_STRATEGIES = ('off', 'start', 'keepalive', 'power_condition', 'auto')
 # Optional values are taken from the shipped reference configuration.
 REFERENCE = ROOT / "config" / "player.example.toml"
+UI_REFERENCE = ROOT / 'config' / 'ui.example.toml'
+UI_SERVICES = ('sonoscdplayer-player.service', 'sonoscdplayer-oled.service')
+UI_FIELDS = (
+    ('ui.cover', 'mode', 'Cover art mode (auto/on/off)', 'cover_mode'),
+    ('ui.cover', 'max_dimension_px', 'Maximum cover dimension (pixels)', 'int'),
+    ('ui.cover', 'jpeg_quality', 'JPEG quality', 'int'),
+    ('ui.cover', 'budget_mb', 'Cover cache budget (MB)', 'int'),
+)
+
 FIELDS = (
     ('streaming', 'max_buffer_mib', 'PCM ring buffer (MiB)', 'int'),
     ('metadata', 'enabled', 'Enable CD metadata', 'bool'),
@@ -103,6 +115,26 @@ def existing_values(parsed: dict, reference: dict) -> dict[tuple[str, str], obje
                     and (type(value) is not int or not bounds[0] <= value <= bounds[1]))
                 or (kind == 'strategy' and (type(value) is not str or value not in DRIVE_STRATEGIES))
                 or (kind == 'bool' and type(value) is not bool)):
+            raise ValueError(f'invalid {section}.{key}')
+        current[(section, key)] = value
+    return current
+
+
+def existing_ui_values(parsed: dict, reference: dict) -> dict[tuple[str, str], object]:
+    """Read optional ui.toml values without altering unrelated UI preferences."""
+    current = {}
+    for section, key, _, kind in UI_FIELDS:
+        group, defaults = parsed, reference
+        for part in section.split('.'):
+            group = group.get(part, {}) if isinstance(group, dict) else None
+            defaults = defaults.get(part, {}) if isinstance(defaults, dict) else None
+        if not isinstance(group, dict) or not isinstance(defaults, dict):
+            raise ValueError(f'invalid [{section}] section')
+        value = group.get(key, defaults.get(key))
+        bounds = FIELD_RANGES.get((section, key))
+        if ((kind == 'int' and (type(value) is not int or not bounds[0] <= value <= bounds[1]))
+                or (kind == 'cover_mode' and (type(value) is not str
+                                              or value not in ('auto', 'on', 'off')))):
             raise ValueError(f'invalid {section}.{key}')
         current[(section, key)] = value
     return current
@@ -190,6 +222,11 @@ FIELD_HELP = {
     ('metadata.matching', 'confidence_threshold'): 'Required matching score for ambiguous releases: 0..100.',
     ('metadata.matching', 'minimum_margin'): 'Minimum lead over competing release candidates: 0..100.',
     ('metadata.matching', 'minimum_track_titles'): 'Minimum CD-TEXT titles for ambiguous matches: 1..99.',
+    ('ui.cover', 'mode'): ('auto downloads only when a display or Sonos uses covers; '
+                           'on always enables cover downloads; off disables them.'),
+    ('ui.cover', 'max_dimension_px'): 'Maximum cached image dimension: 64..2048 pixels.',
+    ('ui.cover', 'jpeg_quality'): 'JPEG compression quality: 40..95.',
+    ('ui.cover', 'budget_mb'): 'Maximum cover cache size: 1..10000 MB.',
     ('sonos', 'use_queue'): 'Add CD tracks to the Sonos queue so album and artist are visible.',
     ('playback', 'continue'): 'Automatically play the next CD track after one ends.',
     ('audio_startup', 'prebuffer_before_sonos'): (
@@ -227,6 +264,8 @@ MENU_GROUPS = (
 )
 
 
+UI_MENU_GROUP = ('Cover art and cache (ui.toml)', tuple((s, k) for s, k, _, _ in UI_FIELDS))
+
 def ask(label: str, current: object, suggestion: object, kind: str,
         *, help_text: str = '', bounds=None, choices=(), read=input, out=print) -> object:
     """Enter explicitly accepts the suggestion; k leaves current untouched."""
@@ -249,6 +288,10 @@ def ask(label: str, current: object, suggestion: object, kind: str,
                 return int(value)
             out(f'Enter a whole number from {low} to {high}'
                 + (' or off.' if kind == 'optional_int' else '.'))
+        elif kind == 'cover_mode':
+            if value.lower() in ('auto', 'on', 'off'):
+                return value.lower()
+            out('Choose auto, on or off.')
         elif kind == 'strategy':
             if value.lower() in choices:
                 return value.lower()
@@ -283,7 +326,7 @@ def review(current, staged, *, out=print):
     out('\nPending changes:')
     if not changes:
         out('  None (the installed configuration will remain unchanged).')
-    for section, key, _, _ in FIELDS:
+    for section, key, _, _ in (*FIELDS, *UI_FIELDS):
         field = section, key
         if field in changes:
             out(f'  {section}.{key}: {render_value(current[field])} '
@@ -291,19 +334,21 @@ def review(current, staged, *, out=print):
     return changes
 
 
-def interactive_choices(current, recommendation, *, parsed=None, read=input, out=print):
+def interactive_choices(current, recommendation, *, parsed=None, ui_current=None, read=input, out=print):
     """Stage independent sections; review is the only way to finish with changes.
 
     Returning None means the user exited without accepting the review.
     Nothing is written by this function.
     """
+    current = {**current, **(ui_current or {})}
     staged = dict(current)
-    fields = {(section, key): (label, kind) for section, key, label, kind in FIELDS}
+    fields = {(section, key): (label, kind) for section, key, label, kind in (*FIELDS, *UI_FIELDS)}
+    groups = (*MENU_GROUPS, UI_MENU_GROUP) if ui_current is not None else MENU_GROUPS
     while True:
         out('\nSonosCDPlayer Configuration')
-        for n, (heading, _) in enumerate(MENU_GROUPS, 1):
+        for n, (heading, _) in enumerate(groups, 1):
             out(f'  {n}. {heading}')
-        finish = len(MENU_GROUPS) + 1
+        finish = len(groups) + 1
         out(f'  {finish}. Review pending changes and finish')
         out('  0. Exit without applying changes')
         choice = read(f'Select a section [{finish}]: ').strip() or str(finish)
@@ -316,14 +361,19 @@ def interactive_choices(current, recommendation, *, parsed=None, read=input, out
                 out(f'Configuration conflict: {exc}')
                 continue
             changes = review(current, staged, out=out)
+            if ui_current is not None and (any(key in ui_current for key in changes)
+                                           and any(key not in ui_current for key in changes)):
+                out('Changes affect both player.toml and ui.toml. Apply one file '
+                    'per run; return to a section and revert the other file changes.')
+                continue
             answer = read('Finish with these selections? [y/N]: ').strip().lower()
             if answer in ('y', 'yes'):
                 return changes
             continue
-        if not choice.isdigit() or not 1 <= int(choice) <= len(MENU_GROUPS):
+        if not choice.isdigit() or not 1 <= int(choice) <= len(groups):
             out(f'Select a number from 0 to {finish}.')
             continue
-        heading, group_fields = MENU_GROUPS[int(choice) - 1]
+        heading, group_fields = groups[int(choice) - 1]
         out(f'\n{heading} (press k to keep the original value)')
         for field in group_fields:
             label, kind = fields[field]
@@ -334,6 +384,26 @@ def interactive_choices(current, recommendation, *, parsed=None, read=input, out
                                 bounds=FIELD_RANGES.get(field),
                                 choices=DRIVE_STRATEGIES if kind == 'strategy' else (),
                                 read=read, out=out)
+
+
+
+def plan_update(changes, current, ui_current, *, player_path, ui_path, raw, ui_raw):
+    """Select exactly one file; never attempt a partial two-file transaction."""
+    player_changes = {key: value for key, value in changes.items() if key in current}
+    ui_changes = {key: value for key, value in changes.items() if key in ui_current}
+    if len(player_changes) + len(ui_changes) != len(changes):
+        raise ValueError('unknown configuration change')
+    if player_changes and ui_changes:
+        raise ValueError('changes span player.toml and ui.toml; apply one file per run '
+                         '(rollback is per file). Finish one group, rerun for the other.')
+    if ui_changes and ui_raw is None:
+        raise ValueError(f'{ui_path} does not exist; install ui.toml with tools/install_config.py first')
+    ui = bool(ui_changes)
+    path, original = (ui_path, ui_raw) if ui else (player_path, raw)
+    updated = replace_values(original, ui_changes if ui else player_changes)
+    tomllib.loads(updated)
+    return path, updated, UI_REFERENCE if ui else REFERENCE, (
+        list(UI_SERVICES) if ui else ['sonoscdplayer-player.service'])
 
 
 def load_swap():
@@ -348,6 +418,7 @@ def load_swap():
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--config', type=Path, help='player.toml (default: installed location)')
+    p.add_argument('--ui-config', type=Path, help='ui.toml (default: same directory as player.toml)')
     p.add_argument('--apply', action='store_true', help='apply after preview and explicit confirmation')
     p.add_argument('--buffer-mib', type=int, help='explicit 16..512 MiB value for automation')
     p.add_argument('--yes', action='store_true', help='confirm apply without a terminal (requires --apply)')
@@ -365,13 +436,19 @@ def main(argv=None) -> int:
         parsed = tomllib.loads(raw)
         reference = tomllib.loads(REFERENCE.read_text(encoding='utf-8'))
         current = existing_values(parsed, reference)
+        ui_path = args.ui_config or args.config.with_name('ui.toml')
+        ui_raw = ui_path.read_text(encoding='utf-8') if ui_path.exists() else None
+        ui_parsed = tomllib.loads(ui_raw) if ui_raw is not None else {}
+        ui_reference = tomllib.loads(UI_REFERENCE.read_text(encoding='utf-8'))
+        ui_current = existing_ui_values(ui_parsed, ui_reference)
         ram = total_ram_mib()
         recommendation = suggested_buffer(ram)
         print(f'Detected physical RAM: {ram} MiB; buffer recommendation: {recommendation} MiB (10%, capped at 512 MiB)')
         if sys.stdin.isatty():
             if args.buffer_mib is not None:
                 raise ValueError('--buffer-mib is intended for non-interactive use')
-            changes = interactive_choices(current, recommendation, parsed=parsed)
+            changes = interactive_choices(current, recommendation, parsed=parsed,
+                                          ui_current=ui_current)
             if changes is None:
                 print('Cancelled; nothing changed.')
                 return 0
@@ -386,22 +463,22 @@ def main(argv=None) -> int:
         if not changes:
             print('No configuration changes selected.')
             return 0
-        updated = replace_values(raw, changes)
-        tomllib.loads(updated)  # validate the complete output before touching anything
+        target_config, updated, target_reference, target_services = plan_update(
+            changes, current, ui_current, player_path=args.config, ui_path=ui_path,
+            raw=raw, ui_raw=ui_raw)
         if not args.apply:
-            print('Preview only; no files changed. Rerun with --apply to install.')
+            print(f'Preview only: would update {target_config.name}; no files changed. '
+                  'Rerun with --apply to install.')
             return 0
         if not args.yes:
             if not sys.stdin.isatty() or input('Type APPLY to confirm: ').strip() != 'APPLY':
                 raise ValueError('changes not confirmed')
         swap = load_swap()
-        # Same-directory temp is intentionally avoided: config_swap.replace_atomic()
-        # handles the final same-filesystem atomic write and rollback itself.
         with tempfile.TemporaryDirectory(prefix='sonoscdplayer-configure-') as directory:
-            target = Path(directory) / 'player.toml'
+            target = Path(directory) / target_config.name
             target.write_text(updated, encoding='utf-8')
-            return swap.swap(args.config, target, services=[swap.DEFAULT_SERVICE],
-                             reference=REFERENCE, apply=True)
+            return swap.swap(target_config, target,
+                             services=target_services, reference=target_reference, apply=True)
     except (OSError, ValueError, KeyError, tomllib.TOMLDecodeError) as exc:
         print(f'Configuration wizard: {exc}', file=sys.stderr)
         return 1
