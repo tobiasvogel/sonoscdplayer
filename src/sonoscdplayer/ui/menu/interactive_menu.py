@@ -12,7 +12,7 @@ from sonoscdplayer.ui.menu.speakers.multi_target import MultiSelection, discover
 from sonoscdplayer.ui.renderers.oled_128_speakers import MultiRenderer
 from sonoscdplayer.ui.i18n import Translator, available_languages
 from sonoscdplayer.ui.menu.speakers.single_target import select_one, TargetSelectionError
-from sonoscdplayer.ui.menu.speakers.target_rpc_client import submit_target
+from sonoscdplayer.ui.menu.speakers.target_rpc_client import submit_target, rejection_notice, loggable
 from sonoscdplayer.ui.menu.speakers.selection_plan import plan_from_applied
 from sonoscdplayer.ui.menu.connect_notice import ConnectNoticeView
 from sonoscdplayer.ui.notices.notice import Notice
@@ -483,8 +483,9 @@ class InteractiveMenu:
                 if acknowledged is not True:
                     raise RuntimeError('target was not acknowledged')
                 result = 'status.target_accepted'
-            except Exception:
-                result = 'status.target_rejected'
+            except Exception as exc:
+                result = rejection_notice(exc)
+                print(f'[ui] speaker selection rejected: {loggable(exc)}', flush=True)
             with self._lock:
                 self._target_result = (generation, result)
         self.state = replace(self.state, notice='status.target_pending')

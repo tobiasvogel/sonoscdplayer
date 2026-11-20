@@ -93,7 +93,60 @@ class GroupRollbackIncomplete(RuntimeError):
         super().__init__('temporary group rollback incomplete; manual recovery required')
         self.remaining = dict(remaining)
 
-def release(coordinator, joined, *, owned_url=None):
+def wait_standalone(player, uid, *, settle=3.0, sleep=time.sleep, clock=time.monotonic):
+    """Wait until Sonos reports ``player`` alone in its group; False on timeout."""
+    deadline = clock() + settle
+    while True:
+        refresh_topology(player)
+        if is_expected_group(player, uid):
+            return True
+        if clock() >= deadline:
+            return False
+        sleep(0.25)
+
+
+def release_leftover(speaker, own_uids, *, sleep=time.sleep, clock=time.monotonic):
+    """Split a stopped group that consists only of the player's own speakers.
+
+    After an interrupted playback a group of the selection can stay behind
+    (for example when the player was restarted before releasing it). The
+    group of ``speaker`` is split only if every speaker in it is in
+    ``own_uids`` (the old or new selection) and its coordinator is stopped;
+    any other group is left alone.
+
+    Returns:
+        True if ``speaker`` is alone in its group afterwards.
+    """
+    refresh_topology(speaker)
+    group = speaker.group
+    coordinator = group.coordinator
+    members = list(group.members)
+    if len(members) < 2 or not {p.uid for p in members} <= set(own_uids):
+        return False
+    if coordinator.get_current_transport_info()['current_transport_state'] != 'STOPPED':
+        return False
+    others = [p for p in members if p.uid != coordinator.uid]
+    for member in others:
+        member.unjoin()
+    for member in others:
+        wait_standalone(member, member.uid, sleep=sleep, clock=clock)
+    alone = wait_standalone(speaker, speaker.uid, sleep=sleep, clock=clock)
+    print(f'[sonos] split a leftover group of {len(members)} own speakers; '
+          f'{"done" if alone else "not confirmed"}', flush=True)
+    return alone
+
+
+def require_member_ready_releasing(player, uid, own_uids):
+    """require_member_ready(); a leftover group of own speakers is split first."""
+    try:
+        require_member_ready(player, uid)
+    except RuntimeError as exc:
+        if str(exc) != 'member not standalone' or not release_leftover(player, own_uids):
+            raise
+        require_member_ready(player, uid)
+
+
+def release(coordinator, joined, *, owned_url=None, sleep=time.sleep, clock=time.monotonic):
     """Release the members the player joined, if the group is still ours.
 
     Args:
@@ -122,13 +175,13 @@ def release(coordinator, joined, *, owned_url=None):
                 outcome[uid] = 'kept: member identity changed'
                 continue
             refresh_topology(player)
-            expected = {coordinator.uid} | {
-                k for k in joined if outcome.get(k) != 'released'
-            }
+            # Sonos reports a member's unjoin to the others with a delay, so
+            # a member released just before may still be listed here.
             group = player.group
             actual = [p.uid for p in group.members]
             if (group.coordinator.uid != coordinator.uid or
-                    len(actual) != len(set(actual)) or set(actual) != expected):
+                    len(actual) != len(set(actual)) or
+                    not {coordinator.uid, uid} <= set(actual) <= {coordinator.uid, *joined}):
                 outcome[uid] = 'kept: topology changed'
                 continue
             if (owned_url is not None and
@@ -136,8 +189,7 @@ def release(coordinator, joined, *, owned_url=None):
                 outcome[uid] = 'kept: foreign playback'
                 continue
             player.unjoin()
-            refresh_topology(player)
-            outcome[uid] = ('released' if is_expected_group(player, uid)
+            outcome[uid] = ('released' if wait_standalone(player, uid, sleep=sleep, clock=clock)
                             else 'kept: unjoin unverified')
         except Exception:
             outcome[uid] = 'kept: unjoin failed'
@@ -173,7 +225,7 @@ def form(coordinator, members, *, settle=3.0, sleep=time.sleep, clock=time.monot
                 raise RuntimeError('temporary group did not form')
             sleep(0.25)
     except BaseException as exc:
-        remaining = unresolved_members(joined, release(coordinator, joined))
+        remaining = unresolved_members(joined, release(coordinator, joined, sleep=sleep, clock=clock))
         if remaining:
             raise GroupRollbackIncomplete(remaining) from exc
         raise

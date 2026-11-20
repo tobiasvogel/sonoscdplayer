@@ -23,7 +23,7 @@ from sonoscdplayer.audio.track_server_process import (forward_server_output, tra
                                                       wait_for_reader_start)
 from sonoscdplayer.player.state import Mode
 from sonoscdplayer.system.version import info as software_info
-from sonoscdplayer.sonos.speaker_checks import (TransportChanged, find_solo_stopped_speaker,
+from sonoscdplayer.sonos.speaker_checks import (SpeakerGrouped, TransportChanged, find_solo_stopped_speaker,
                                                 require_our_stream)
 from sonoscdplayer.ui.menu.playback_progress import verified_progress
 from sonoscdplayer.sonos import groups
@@ -257,6 +257,20 @@ class Controller:
             self._recovery_url = None
         return not remaining
 
+    def _verify_releasing_leftover(self, uid, members):
+        """verify(uid); a leftover group of the selection is released first.
+
+        After an interrupted playback the selected coordinator can still be
+        grouped with speakers of the selection. Those (and only those) are
+        detached from the stopped coordinator, then the check is repeated.
+        """
+        try:
+            return self.verify(uid)
+        except SpeakerGrouped as exc:
+            if not groups.release_leftover(exc.speaker, {uid, *members}):
+                raise
+        return self.verify(uid)
+
     def inspect_group_recovery(self):
         """Read-only status; no Sonos mutations or hidden retry."""
         if not self._joined:
@@ -381,15 +395,17 @@ class Controller:
                 advance = (None if self._queue_block
                            else self._next_after_end(self._display_progress))
                 self.state = self.state.natural_end()
-                self._drop_queue_entry(player)
                 self.owned_url = None
                 self.player = None
                 self.server.close()
                 if advance is None:
+                    # Release the group while our stream still proves it is
+                    # ours; emptying the queue first would change the URI.
                     self._release_group(owned_url=group_proof_url)
                 else:
                     # Like a CD player: the next track follows. The group stays.
                     self._pending_advance = advance
+                self._drop_queue_entry(player)
                 print('[player] STOPPED observed; local server closed', flush=True)
             elif transport == 'TRANSITIONING':
                 self.stopped_since = None
@@ -570,14 +586,15 @@ class Controller:
         retained = bool(self._joined) and candidate == self.uid and wanted == self._group_members
         if self._joined and not retained:
             raise RuntimeError('retained group must be resolved before changing target')
-        target = self._verify_retained_group(candidate) if retained else self.verify(candidate)
+        target = (self._verify_retained_group(candidate) if retained
+                  else self._verify_releasing_leftover(candidate, wanted))
         member_players = {}
         if wanted and not retained:
             member_players = self.find_many(sorted(wanted))
             if set(member_players) != set(wanted):
                 raise RuntimeError('member discovery incomplete')
             for member_uid, member in member_players.items():
-                groups.require_member_ready(member, member_uid)
+                groups.require_member_ready_releasing(member, member_uid, {candidate, *wanted})
         host = self.route(target.ip_address) if self.route is not None else self.host
         url = track_stream_url(host, self.port, self.state.selected_track)
         self.server.close()

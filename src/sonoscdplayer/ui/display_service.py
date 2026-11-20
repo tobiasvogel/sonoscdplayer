@@ -467,6 +467,7 @@ def main(argv=None):
         if driver: driver.open(adopt_existing=args.adopt_boot_splash)
         end=time.monotonic()+args.seconds if args.seconds else None
         previous=None
+        previous_label=None
         next_status_at=0.0
         hold=StatusHold(args.offline_grace_seconds)
         ready_state=None
@@ -575,7 +576,11 @@ def main(argv=None):
                 current=bytes(frame.data)
                 if current!=previous:
                     write_frame(frame)
-                    print(json.dumps(label,ensure_ascii=False),flush=True)
+                    # Scrolling text redraws several times a second; log
+                    # only when the kind of screen or the mode changes.
+                    if label!=previous_label:
+                        print(json.dumps(label,ensure_ascii=False),flush=True)
+                        previous_label=label
                     previous=current
                 delay=MENU_FRAME_SECONDS if menu_quick else frame_delay(args.refresh_ms/1000)
                 time.sleep(delay if end is None else min(delay,max(0,end-time.monotonic())))

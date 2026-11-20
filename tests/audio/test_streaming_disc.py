@@ -29,8 +29,9 @@ def request(port, path, method='GET', headers=None):
 
 
 class DiscServerTests(unittest.TestCase):
-    def start(self, track=1, budget=3 * CHUNK, delay=0.0):
-        stream = TrackStream(SIZES[track], budget, command_for(track, delay=delay), write_timeout=4,
+    def start(self, track=1, budget=3 * CHUNK, delay=0.0, write_timeout=4):
+        stream = TrackStream(SIZES[track], budget, command_for(track, delay=delay),
+                        write_timeout=write_timeout,
                         probe_cache=ProbeCache(CHUNK))
         server = DiscServer(('127.0.0.1', 0), stream, track, tracks=SIZES,
                             command_for=lambda n: command_for(n, delay=delay))
@@ -67,6 +68,19 @@ class DiscServerTests(unittest.TestCase):
         while server.stream.ring.stats['next_offset'] == 0 and time.monotonic() < deadline:
             time.sleep(0.02)
         self.assertGreater(server.stream.ring.stats['next_offset'], 0)
+        status, data = request(server.server_port, '/track/2.wav')
+        self.assertEqual((status, data[44:]), (200, FILL[2] * SIZES[2]))
+
+    def test_late_request_after_failed_read_ahead_still_plays(self):
+        """Sonos buffers a lot and asks for the next track late: the
+        read-ahead fills the ring and gives up. The request must then
+        reread the track instead of getting 409 (the track was skipped)."""
+        server = self.start(write_timeout=0.3)
+        self.assertEqual(request(server.server_port, '/track/1.wav')[0], 200)
+        deadline = time.monotonic() + 5
+        while not (server.track == 2 and server.stream.error) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        self.assertIn('BufferTimeout', server.stream.error or '')
         status, data = request(server.server_port, '/track/2.wav')
         self.assertEqual((status, data[44:]), (200, FILL[2] * SIZES[2]))
 
@@ -172,3 +186,36 @@ class BudgetTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def flaky_command(marker, size):
+    """Exits without PCM (and a message) until ``marker`` exists."""
+    script = (
+        'import os,sys\n'
+        f'm={str(marker)!r}\n'
+        'if not os.path.exists(m):\n'
+        '    open(m,"w").close(); sys.stderr.write("drive not ready\\n"); sys.exit(1)\n'
+        f'sys.stdout.buffer.write(b"D"*{size})\n')
+    return [sys.executable, '-c', script]
+
+
+def test_reader_retries_a_start_without_pcm(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(TrackStream, 'START_RETRY_DELAYS', (0.05,))
+    stream = TrackStream(CHUNK, 4 * CHUNK, flaky_command(tmp_path / 'm', CHUNK), write_timeout=2)
+    reader = stream.attach(0)
+    stream.start()
+    stream.thread.join(5)
+    stream.shutdown()
+    assert stream.error is None
+    assert stream.ring.read(reader, CHUNK, timeout=1) == b'D' * CHUNK
+    assert 'drive not ready' in capsys.readouterr().out
+
+
+def test_reader_gives_up_with_the_readers_message(tmp_path, monkeypatch):
+    monkeypatch.setattr(TrackStream, 'START_RETRY_DELAYS', (0.05, 0.05))
+    never = [sys.executable, '-c', 'import sys; sys.stderr.write("no disc\\n"); sys.exit(3)']
+    stream = TrackStream(CHUNK, 4 * CHUNK, never, write_timeout=2)
+    stream.start()
+    stream.thread.join(5)
+    stream.shutdown()
+    assert stream.error.startswith('EmptyRead: exit 3: no disc')

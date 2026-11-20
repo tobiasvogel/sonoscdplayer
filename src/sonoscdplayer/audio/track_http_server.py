@@ -12,6 +12,7 @@ TrackServer serves one track, DiscServer all tracks of the CD.
 """
 from __future__ import annotations
 import argparse
+from collections import deque
 from sonoscdplayer.system import config_paths
 import re
 from contextlib import nullcontext
@@ -225,11 +226,48 @@ class TrackStream:
         with (drive_lock(device) if device is not None else nullcontext()):
             self._produce_locked()
 
+    # cdparanoia sometimes exits at once without any PCM, e.g. right after
+    # the previous reader was stopped in the middle of a hard-to-read spot.
+    # Such a start is retried after a short pause instead of failing the
+    # track (Sonos would skip it within milliseconds).
+    START_RETRY_DELAYS = (1.0, 2.0, 3.0)
+
     def _produce_locked(self):
-        proc = None
         err = None
         try:
-            proc = subprocess.Popen(sector_replay_command(self.command, self.start_offset), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+            for delay in (*self.START_RETRY_DELAYS, None):
+                try:
+                    self._read_once()
+                    return
+                except EmptyRead as exc:
+                    if delay is None or self._cancel.is_set():
+                        raise
+                    self.log(f'READER delivered no PCM ({exc}); retrying in {delay:.0f} s')
+                    if self._cancel.wait(delay):
+                        raise IOError('reader cancelled after client disconnect') from None
+        except Exception as exc:
+            err = f'{type(exc).__name__}: {exc}'
+        finally:
+            self.log(f'READER end written={self.written}/{self.expected} error={err}')
+            self.error = err
+            self.ring.finish(error=err)
+
+    def _read_once(self):
+        """Run one cdparanoia process until the track is read.
+
+        Raises:
+            EmptyRead: the process ended before delivering any PCM.
+            OSError: cancelled, short or unaligned stream, reader error.
+        """
+        proc = None
+        messages = deque(maxlen=5)
+        drain = None
+        try:
+            proc = subprocess.Popen(sector_replay_command(self.command, self.start_offset), stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
+            if getattr(proc, 'stderr', None) is not None:
+                drain = threading.Thread(target=_keep_last_lines, args=(proc.stderr, messages),
+                                         daemon=True, name='cd-reader-messages')
+                drain.start()
             with self._proc_lock:
                 self._proc = proc
                 if self._cancel.is_set() and proc.poll() is None:
@@ -243,7 +281,10 @@ class TrackStream:
                 if not block:
                     if self._cancel.is_set():
                         raise IOError('reader cancelled after client disconnect')
-                    raise IOError(f'Short PCM stream {self.written}/{self.expected}')
+                    if self.written == self.start_offset:
+                        raise EmptyRead(_exit_summary(proc, drain, messages))
+                    raise IOError(f'Short PCM stream {self.written}/{self.expected}'
+                                  f' ({_exit_summary(proc, drain, messages)})')
                 if self._cancel.is_set():
                     raise IOError('reader cancelled after client disconnect')
                 if len(block) % 4:
@@ -259,8 +300,6 @@ class TrackStream:
             rc = proc.wait(timeout=15)
             if rc != 0:
                 raise IOError(f'cdparanoia returned {rc}')
-        except Exception as exc:
-            err = f'{type(exc).__name__}: {exc}'
         finally:
             if proc:
                 if proc.poll() is None:
@@ -269,11 +308,39 @@ class TrackStream:
                     except subprocess.TimeoutExpired:
                         proc.kill(); proc.wait()
                 if proc.stdout: proc.stdout.close()
+                if drain is not None:
+                    drain.join(timeout=1)
+                if getattr(proc, 'stderr', None): proc.stderr.close()
             with self._proc_lock:
                 self._proc = None
-            self.error = err
-            self.ring.finish(error=err)
-            self.log(f'READER end written={self.written}/{self.expected} error={err}')
+
+
+class EmptyRead(OSError):
+    """The reader process ended before delivering any PCM."""
+
+
+def _keep_last_lines(pipe, lines):
+    """Collect the reader's messages (stderr); only the last few are kept."""
+    try:
+        for raw in iter(pipe.readline, b''):
+            text = raw.decode('utf-8', 'replace').strip()
+            if text:
+                lines.append(text)
+    except (OSError, ValueError):
+        pass
+
+
+def _exit_summary(proc, drain, lines):
+    """Exit code and last messages of a finished reader, for the log."""
+    try:
+        code = proc.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        code = None
+    if drain is not None:
+        drain.join(timeout=1)
+    said = ' | '.join(lines) or 'no message'
+    return f'exit {code}: {said}'
+
 
 def read_exact(stream, size: int, *, cancelled=None) -> bytes:
     """Read exactly ``size`` bytes, or fewer only when the pipe reaches EOF.
@@ -627,6 +694,15 @@ class TrackServer(ThreadingHTTPServer):
             else:
                 self._clear_orphan_timer()
                 return current, reader
+        # A read-ahead that failed before any GET attached (typically a
+        # full ring while Sonos still plays from its own buffer) only holds
+        # its offset-0 anchor. Drop it, so the request rereads or continues
+        # instead of being refused for good with 409.
+        if terminal_error and current.anchor is not None:
+            with current.lock:
+                current.ring.unregister(current.anchor)
+                current.anchor = None
+            current.log('GET after failed read-ahead: anchor released')
         # The old anchor exists only before the first GET; an expired
         # beginning implies it was removed. Count readers under ring lock.
         state = current.ring.stats

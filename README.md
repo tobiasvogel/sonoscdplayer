@@ -131,7 +131,7 @@ Speaker selection and playback remain separate operations:
 - The player checks the target state before taking control.
 - Playback commands are restricted to the player's own active stream where appropriate.
 - Unrelated playback sessions and groups must not be changed without explicit authorisation.
-- Temporary groups created by the player are handled through controlled playback and cleanup operations.
+- Temporary groups created by the player are handled through controlled playback and cleanup operations. If an interrupted playback leaves a stopped group made only of the selected speakers, the player splits it at the next selection or PLAY; groups with other speakers are never changed.
 
 Individual-speaker playback and controlled group operation have been tested on real Sonos hardware. Compatibility with every Sonos model, firmware version, and network environment has not been established.
 

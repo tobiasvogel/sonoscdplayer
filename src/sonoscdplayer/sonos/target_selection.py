@@ -1,12 +1,14 @@
 """The speakers chosen in the menu: one coordinator plus optional members.
 
 Choosing speakers is not playing on them: the selection sends no command to
-Sonos. With a TargetStore the selection survives restarts; a restored
+Sonos, except to split a stopped leftover group made only of the player's own
+selected speakers. With a TargetStore the selection survives restarts; a restored
 selection is checked against Sonos only at the next PLAY.
 All methods are called by the player service's serialized control worker.
 """
 from sonoscdplayer.player.state import Mode
-from sonoscdplayer.sonos.groups import normalize_members, find_speakers, require_member_ready
+from sonoscdplayer.sonos.groups import normalize_members, find_speakers, require_member_ready_releasing, release_leftover
+from sonoscdplayer.sonos.speaker_checks import SpeakerGrouped
 
 
 def _find_solo_stopped_speaker(uid):
@@ -73,13 +75,21 @@ class SelectedTarget:
         # Reuse the same live verification performed before existing PLAY.
         # Validates STOPPED solo coordinator and does not send Sonos writes.
         selected_members = tuple(sorted(normalize_members(uid, members)))
-        self._verify(uid)
+        # A leftover group of the old or new selection is split (and only
+        # such a group); see groups.release_leftover().
+        own = {uid, *selected_members, *self.speakers()}
+        try:
+            self._verify(uid)
+        except SpeakerGrouped as exc:
+            if not release_leftover(exc.speaker, own):
+                raise
+            self._verify(uid)
         if selected_members:
             discovered = self._find_many(selected_members)
             if set(discovered) != set(selected_members):
                 raise RuntimeError('incomplete member discovery')
             for member_uid in selected_members:
-                require_member_ready(discovered[member_uid], member_uid)
+                require_member_ready_releasing(discovered[member_uid], member_uid, own)
         self._uid = uid
         self._members = selected_members
         if self._store is not None:

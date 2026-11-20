@@ -37,20 +37,29 @@ def find_speaker(uid: str, *, discover=None):
     return matches[0]
 
 
+class SpeakerGrouped(RuntimeError):
+    """The speaker is not alone in its group; ``speaker`` is the found speaker."""
+
+    def __init__(self, speaker):
+        super().__init__('speaker is not alone in its group')
+        self.speaker = speaker
+
+
 def require_solo_and_stopped(speaker, uid: str) -> None:
     """Check that the speaker is alone in its group and stopped.
 
     Called before the player starts a new stream on a single speaker.
 
     Raises:
-        RuntimeError: wrong UID, the speaker is grouped, or it is not STOPPED.
+        SpeakerGrouped: the speaker is grouped with others.
+        RuntimeError: wrong UID, or the speaker is not STOPPED.
     """
     if speaker.uid != uid:
         raise RuntimeError('speaker UID does not match')
     group = speaker.group
     members = list(group.members)
     if len(members) != 1 or members[0].uid != uid or group.coordinator.uid != uid:
-        raise RuntimeError('speaker is not alone in its group')
+        raise SpeakerGrouped(speaker)
     transport = speaker.get_current_transport_info()['current_transport_state']
     if transport != 'STOPPED':
         raise RuntimeError(f'speaker is not stopped ({transport})')

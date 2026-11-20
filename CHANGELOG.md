@@ -6,6 +6,20 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- Playback no longer breaks off at a track change when Sonos asks for the
+  next track late: a read-ahead that gave up is read again instead of being
+  answered with 409 (Sonos skipped the track).
+- When cdparanoia ends without delivering any audio, the track server tries
+  again after a short pause and logs cdparanoia's own messages.
+- After playback on a group ends, the group is released before the disc is
+  removed from the Sonos queue, and a member that Sonos reports late is no
+  longer kept in the group.
+- A stopped group left behind that consists only of the player's own selected
+  speakers is split automatically when speakers are selected or PLAY is
+  pressed; other groups are still left alone.
+- When the player refuses a speaker selection, the display says why (grouped,
+  playing, not found) and the reason is logged; the display service logs a
+  status line only when the screen kind or mode changes.
 - Developer documentation: [architecture overview](docs/ARCHITECTURE.md),
   [adding a display](docs/ADDING_A_DISPLAY.md) and
   [adding buttons and input modules](docs/ADDING_INPUTS.md).

@@ -192,7 +192,7 @@ class RememberedTargetTests(unittest.TestCase):
 
     def test_selection_is_restored_after_restart_without_contacting_sonos(self):
         from unittest import mock
-        with mock.patch('sonoscdplayer.sonos.target_selection.require_member_ready'):
+        with mock.patch('sonoscdplayer.sonos.target_selection.require_member_ready_releasing'):
             first = self.selection()
             self.assertTrue(self.request(first, 'set-target', uid='RINCON_A',
                                          members=['RINCON_C', 'RINCON_B'])['ok'])

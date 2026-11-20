@@ -3,6 +3,7 @@
 Worker-only code. No GPIO, playback or Sonos calls. Never log UID.
 """
 import json
+import re
 import socket
 
 DEFAULT_SOCKET = '/run/sonoscdplayer/control.sock'
@@ -36,11 +37,32 @@ def submit_target(uid, *, members=None, socket_path=DEFAULT_SOCKET, timeout=4.0)
         raise RuntimeError('invalid player response')
     reply=json.loads(response.split(b'\n',1)[0])
     if not isinstance(reply,dict) or reply.get('ok') is not True:
-        raise RuntimeError('player rejected target')
+        reason = reply.get('error') if isinstance(reply, dict) else None
+        raise RuntimeError(f'player rejected target: {reason or "no reason given"}')
     selection=reply.get('target_selection')
     if not isinstance(selection,dict) or selection.get('selected') is not True:
         raise RuntimeError('missing target acknowledgement')
     return True
+
+
+_UID = re.compile(r'RINCON_[0-9A-Za-z]+')
+
+
+def rejection_notice(reason):
+    """Notice key for the reason the player gave when it refused a selection."""
+    text = str(reason).lower()
+    if 'not alone in its group' in text or 'member not standalone' in text:
+        return 'status.target_grouped'
+    if 'not stopped' in text or 'active transport' in text:
+        return 'status.target_busy'
+    if 'not found' in text or 'not discovered' in text or 'member discovery' in text:
+        return 'status.target_not_found'
+    return 'status.target_rejected'
+
+
+def loggable(reason):
+    """The reason without speaker UIDs, for the log."""
+    return _UID.sub('<speaker>', str(reason))
 
 
 def read_target(*, socket_path=DEFAULT_SOCKET, timeout=2.0):
