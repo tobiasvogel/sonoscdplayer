@@ -19,7 +19,53 @@ from sonoscdplayer.hardware.displays.pins import DisplayPins  # noqa: E402
 from sonoscdplayer.ui.displays.profiles import PROFILES  # noqa: E402
 
 
-def inventory_lines(config: dict) -> tuple[str, ...]:
+def pin_overlap_lines(config: dict, interface: dict | None = None) -> tuple[str, ...]:
+    """Report configured BCM collisions; never imply an electrical probe.
+
+    None means interface.toml was unavailable, NOT that its pins are free.
+    Only explicitly mapped input pins are examined (no example defaults).
+    """
+    display = config.get('display', {})
+    led = config.get('led_outputs', {})
+    if not isinstance(led, dict):
+        return ('WARNING: [led_outputs] is not a table; pin audit incomplete.',)
+    if interface is not None and not isinstance(interface, dict):
+        return ('WARNING: interface.toml is not a TOML table; pin audit incomplete.',)
+    pins: dict[int, list[str]] = {}
+
+    def add(value, label):
+        if type(value) is int and 0 <= value <= 27:
+            pins.setdefault(value, []).append(label)
+
+    defaults = DisplayPins()
+    for key in ('dc_pin', 'rst_pin'):
+        add(display.get(key, getattr(defaults, key)), 'display.' + key)
+    for key in ('power_pin', 'connection_pin'):
+        if key in led:
+            add(led[key], 'led_outputs.' + key)
+    if interface is not None:
+        for section in ('buttons', 'encoder'):
+            group = interface.get(section, {})
+            if not isinstance(group, dict):
+                return (f'WARNING: interface [{section}] invalid; pin audit incomplete.',)
+            for name, value in group.items():
+                if section == 'buttons' or name in ('encoder_a', 'encoder_b', 'encoder_sw'):
+                    add(value, section + '.' + name)
+    results = ['BCM pin overlap audit (configuration only):']
+    overlaps = [(pin, names) for pin, names in sorted(pins.items()) if len(names) > 1]
+    if overlaps:
+        for pin, names in overlaps:
+            results.append(f'  WARNING: BCM{pin}: ' + ', '.join(names))
+    else:
+        results.append('  No overlaps among the inspected configured pins.')
+    if interface is None:
+        results.append('  NOTE: interface.toml not inspected; button/encoder collisions UNKNOWN.')
+    results.append('  NOTE: SPI0 BCM7/8/9/10/11 are reserved or multifunction pins; '
+                   'GPIO9 backlight needs explicit no_miso verification.')
+    return tuple(results)
+
+
+def inventory_lines(config: dict, interface: dict | None = None) -> tuple[str, ...]:
     """Describe the installed settings without probing or changing hardware."""
     if not isinstance(config, dict):
         raise ValueError('configuration must be a TOML table')
@@ -53,9 +99,10 @@ def inventory_lines(config: dict) -> tuple[str, ...]:
                  'diagnostic/driver only; not connected to player')
         lines.append(f'  {key}: {profile.controller}, '
                      f'{profile.width}x{profile.height}, {profile.color_mode}; {state}')
+    lines.extend(pin_overlap_lines(config, interface))
     lines.extend((
-        'Note: catalogue dimensions are profile orientation, not necessarily the tested',
-        '      landscape orientation; consult docs/DISPLAYS.md for tested modules.',
+        'Note: catalogue dimensions show tested landscape canvases (rotation 270)',
+        '      for ST7735S and SH1107; profile keys retain native identifiers.',
         'No display, pins, rotation, systemd unit or configuration was changed.',
     ))
     return tuple(lines)
@@ -65,6 +112,8 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=None,
                         help='player.toml (default: installed configuration path)')
+    parser.add_argument('--interface-config', type=Path, default=None,
+                        help='interface.toml for read-only button/encoder pin audit (default: same directory)')
     args = parser.parse_args(argv)
     if args.config is None:
         from sonoscdplayer.system.config_paths import player_config
@@ -72,7 +121,13 @@ def main(argv=None) -> int:
     try:
         with args.config.open('rb') as stream:
             config = tomllib.load(stream)
-        for line in inventory_lines(config):
+        interface_path = args.interface_config or args.config.with_name('interface.toml')
+        if interface_path.is_file():
+            with interface_path.open('rb') as stream:
+                interface = tomllib.load(stream)
+        else:
+            interface = None
+        for line in inventory_lines(config, interface):
             print(line)
     except (OSError, ValueError, TypeError, tomllib.TOMLDecodeError) as exc:
         print(f'Display inventory: {exc}', file=sys.stderr)

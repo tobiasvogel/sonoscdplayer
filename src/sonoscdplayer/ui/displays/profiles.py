@@ -35,15 +35,18 @@ class HardwareDisplayProfile:
         ))
 
 
+# Keys preserve the originally registered native geometry for compatibility.
+# Reported dimensions reflect the confirmed rotation-270 landscape canvases.
+# Neither profile is connected to the player runtime yet.
 PROFILES = {
     'ssd1327_128x128': HardwareDisplayProfile(
         'ssd1327_128x128', 'SSD1327', 128, 128, 'gray4', False,
         'interactive', driver_ready=True),
     'st7735s_128x160': HardwareDisplayProfile(
-        'st7735s_128x160', 'ST7735S', 128, 160, 'rgb565', True,
+        'st7735s_128x160', 'ST7735S', 160, 128, 'rgb565', True,
         'interactive'),
     'sh1107_64x128': HardwareDisplayProfile(
-        'sh1107_64x128', 'SH1107', 64, 128, 'mono1', False,
+        'sh1107_64x128', 'SH1107', 128, 64, 'mono1', False,
         'interactive'),
 }
 
@@ -51,7 +54,10 @@ PROFILES = {
 # Evaluated and excluded from player-display candidates: full refresh only,
 # too slow for track/status changes and interactive menu navigation.
 # Retain geometry for explicit experiments and future e-paper driver work.
-REFERENCE_PROFILES = {
+REFERENCE_# Keys preserve the originally registered native geometry for compatibility.
+# Reported dimensions reflect the confirmed rotation-270 landscape canvases.
+# Neither profile is connected to the player runtime yet.
+PROFILES = {
     'epaper_200x200_4color': HardwareDisplayProfile(
         'epaper_200x200_4color', 'UNKNOWN', 200, 200, 'four_color',
         True, 'event_driven'),
