@@ -30,13 +30,18 @@ def plan_playpause(status, target):
         return None
     if state.get('schema_version') != 1:
         return None
-    if sonos.get('group_cleanup_pending') is not False:
+    # A pending group cleanup no longer blocks here: the player releases an
+    # idle group of its own speakers before PLAY, or refuses with a reason.
+    pending = sonos.get('group_cleanup_pending')
+    if type(pending) is not bool:
         return None
 
     mode = player.get('mode')
     owned = sonos.get('owned')
     active = stream.get('active')
     if type(owned) is not bool or type(active) is not bool:
+        return None
+    if pending and not (mode in ('STOPPED', 'ERROR') and not owned and not active):
         return None
 
     if mode == 'STOPPED':
@@ -152,7 +157,7 @@ def plan_eject(status):
         return None
     if (player.get('mode') != 'STOPPED'
             or sonos.get('owned') is not False
-            or sonos.get('group_cleanup_pending') is not False
+            or type(sonos.get('group_cleanup_pending')) is not bool
             or stream.get('active') is not False
             or disc.get('mode') != 'READY'):
         return None

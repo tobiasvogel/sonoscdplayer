@@ -204,6 +204,32 @@ class LifecycleTests(unittest.TestCase):
         self.player.refresh()
         self.assertEqual(self.player.state.mode, Mode.ERROR)
 
+    def test_stop_releases_an_idle_group_even_without_stream_proof(self):
+        """Seen on the device: after STOP the coordinator no longer showed our
+        URI, every member was kept and PLAY, EJECT and spin-down were blocked."""
+        self.start()
+        original_stop = self.a.stop
+        def stop_and_forget_uri():
+            original_stop()
+            self.a.uri = ''
+        self.a.stop = stop_and_forget_uri
+        self.player.stop()
+        self.assertEqual(self.topo.leaders['B'], 'B')
+        self.assertEqual((self.player._joined, self.player._group_uncertain), ({}, False))
+
+    def test_pending_group_that_plays_something_stays_pending(self):
+        self.start()
+        self.player._release_group(owned_url='http://other.invalid/x')   # kept
+        self.assertTrue(self.player._group_uncertain)
+        self.player.state = self.player.state.natural_end()
+        self.player.owned_url = None
+        self.a.transport = 'PLAYING'                     # someone plays on the group now
+        self.assertFalse(self.player.resolve_idle_group())
+        self.assertEqual(self.topo.leaders['B'], 'A')
+        self.a.transport = 'STOPPED'
+        self.assertTrue(self.player.resolve_idle_group())
+        self.assertEqual(self.topo.leaders['B'], 'B')
+
     def test_speaker_removed_in_app_is_no_longer_released(self):
         self.start()
         self.topo.leaders['B'] = 'B'                # taken out in the Sonos app

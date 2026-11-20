@@ -277,6 +277,7 @@ class Controller:
         if not self._joined:
             return True
         result = groups.release(self._group_coord, self._joined, owned_url=owned_url)
+        _log_release(result)
         remaining = groups.unresolved_members(self._joined, result)
         self._joined = remaining
         self._group_uncertain = bool(remaining)
@@ -288,6 +289,44 @@ class Controller:
             self._recovery_url = None
         self._store_group()
         return not remaining
+
+    def resolve_idle_group(self):
+        """Release a pending group of our own members if it plays nothing.
+
+        After STOP the release can fail (for example when the coordinator's
+        URI no longer proves our stream). The members are still the ones the
+        player joined, and if the coordinator is idle nothing is
+        interrupted, so they are released without the stream proof. A group
+        with other speakers, or one that is playing, stays pending.
+
+        Returns:
+            True if no group is pending afterwards.
+        """
+        if not self._joined:
+            return True
+        if self.state.mode not in (Mode.STOPPED, Mode.ERROR) or self.owned_url:
+            return False
+        coordinator = self._group_coord
+        try:
+            groups.refresh_topology(coordinator)
+            if not groups.is_expected_group(coordinator, coordinator.uid, self._joined):
+                observed = groups.inspect_recovery(coordinator, self._joined)
+                for uid in observed['standalone']:
+                    self._joined.pop(uid, None)      # already left on their own
+                if not self._joined:
+                    self._release_group()
+                    return True
+                if not groups.is_expected_group(coordinator, coordinator.uid, self._joined):
+                    print('[sonos] pending group not released: unexpected topology', flush=True)
+                    return False
+            transport = coordinator.get_current_transport_info()['current_transport_state']
+        except Exception as exc:
+            print(f'[sonos] pending group not checked: {type(exc).__name__}', flush=True)
+            return False
+        if transport not in groups.IDLE_TRANSPORTS:
+            print(f'[sonos] pending group not released: coordinator is {transport}', flush=True)
+            return False
+        return self._release_group()
 
     def _verify_releasing_leftover(self, uid, members):
         """verify(uid); a grouped coordinator is made alone first.
@@ -702,6 +741,8 @@ class Controller:
             raise ValueError('PLAY requires target UID')
         wanted = groups.normalize_members(candidate, members)
         if self._group_uncertain:
+            self.resolve_idle_group()
+        if self._group_uncertain:
             raise RuntimeError('group cleanup uncertain; manual recovery required')
         retained = bool(self._joined) and candidate == self.uid and wanted == self._group_members
         if self._joined and not retained:
@@ -850,6 +891,8 @@ class Controller:
             # emptying the queue first would change its URI and keep the group.
             self._release_group(owned_url=old_url)
         self._drop_queue_entry(player)
+        if not keep_group and self._joined:
+            self.resolve_idle_group()     # we just stopped it: it is idle
 
     def stop(self):
         """Stop our own stream (after checking it twice) and release the group."""
@@ -1105,3 +1148,14 @@ class Controller:
     def close(self):
         """Stop the track server; never sends a Sonos STOP."""
         self.server.close()
+
+
+def _log_release(outcome):
+    """One journal line per group release: how many left, why others stayed."""
+    if not outcome:
+        return
+    counts = {}
+    for value in outcome.values():
+        counts[value] = counts.get(value, 0) + 1
+    print('[sonos] group release: ' + ', '.join(f'{n} {what}' for what, n in sorted(counts.items())),
+          flush=True)

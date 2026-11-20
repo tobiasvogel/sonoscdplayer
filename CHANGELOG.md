@@ -6,6 +6,10 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- A group left pending after STOP no longer blocks PLAY, EJECT and the
+  drive's spin-down when it consists only of the player's own speakers and
+  plays nothing: the player releases it right after STOP, and otherwise
+  before PLAY or EJECT. Each group release is logged with its outcome.
 - A track change of the disc that happens between two reads of the
   regular ownership check no longer ends playback with "exact URI
   mismatch"; the player follows the new track on the next check.

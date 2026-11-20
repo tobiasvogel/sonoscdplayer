@@ -65,14 +65,15 @@ class SafeButtonPolicyTests(unittest.TestCase):
                     self.assertIsNone(plan_playpause(
                         snapshot(mode, owned=owned, active=active), target()))
 
-    def test_pending_cleanup_blocks_every_command(self):
-        for mode, owned, active in (
-            ('STOPPED', False, False),
-            ('PLAYING', True, True),
-            ('PAUSED', True, True),
-        ):
+    def test_pending_cleanup_blocks_pause_and_resume(self):
+        for mode, owned, active in (('PLAYING', True, True), ('PAUSED', True, True)):
             self.assertIsNone(plan_playpause(
                 snapshot(mode, owned=owned, active=active, pending=True), target()))
+
+    def test_pending_cleanup_lets_the_player_decide_on_play(self):
+        # The player releases an idle group of its own speakers before PLAY.
+        self.assertEqual(plan_playpause(snapshot('STOPPED', pending=True), target()),
+                         'play-selected')
 
     def test_transitional_error_and_no_disc_modes_fail_closed(self):
         for mode in ('STARTING', 'NO_DISC', 'UNKNOWN'):
@@ -84,8 +85,7 @@ class SafeButtonPolicyTests(unittest.TestCase):
         self.assertEqual(plan_playpause(snapshot('ERROR'), target()), 'play-selected')
         self.assertEqual(plan_stop(snapshot('ERROR'), target()), 'reset')
         self.assertEqual(plan_stop(snapshot('ERROR'), target(False)), 'reset')
-        for owned, active, pending in ((True, False, False), (False, True, False),
-                                       (False, False, True)):
+        for owned, active, pending in ((True, False, False), (False, True, False)):
             with self.subTest(owned=owned, active=active, pending=pending):
                 still = snapshot('ERROR', owned=owned, active=active, pending=pending)
                 self.assertIsNone(plan_playpause(still, target()))
@@ -313,12 +313,11 @@ class ExecuteTests(unittest.TestCase):
         self.assertEqual(sends, [])
         self.assertEqual(log, ['selected-target execute: blocked'])
 
-    def test_ambiguous_group_blocks(self):
+    def test_pending_group_is_left_to_the_player(self):
         sends = []
-        log = run_one(lambda path, cmd: status_reply(pending=True) if cmd == 'status'
-                      else target(), lambda *args: sends.append(args))
-        self.assertEqual(sends, [])
-        self.assertEqual(log, ['selected-target execute: blocked'])
+        run_one(lambda path, cmd: status_reply(pending=True) if cmd == 'status'
+                else target(), lambda *args: sends.append(args))
+        self.assertEqual([args[1] for args in sends], ['play-selected'])
 
     def test_malformed_and_failed_reads_never_send(self):
         for invalid in (None, {}, {'ok': False}, {'ok': True}):
@@ -828,7 +827,6 @@ class EjectPolicyTests(unittest.TestCase):
             eject_snapshot(mode='NO_DISC', disc='NO_DISC'),
             eject_snapshot(owned=True),
             eject_snapshot(active=True),
-            eject_snapshot(pending=True),
             eject_snapshot(disc='EJECTED'),
             {'ok': False},
             None,
@@ -839,6 +837,9 @@ class EjectPolicyTests(unittest.TestCase):
         s = eject_snapshot()
         s['state']['schema_version'] = 2
         self.assertIsNone(plan_eject(s))
+        # A pending group cleanup is decided by the player (it releases an
+        # idle group of its own speakers first).
+        self.assertEqual(plan_eject(eject_snapshot(pending=True)), 'eject')
         s = eject_snapshot()
         s['state']['sonos']['owned'] = 0
         self.assertIsNone(plan_eject(s))

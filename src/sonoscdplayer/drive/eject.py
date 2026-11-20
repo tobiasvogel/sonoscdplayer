@@ -48,6 +48,9 @@ def eject_verified_idle(controller, monitor, *, identity_reader=usb_identity,
     """
     if monitor is None:
         raise RuntimeError('EJECT refused: drive monitor unavailable')
+    resolve = getattr(controller, 'resolve_idle_group', None)
+    if controller._joined and callable(resolve):
+        resolve()        # a pending group of our own idle speakers does not block EJECT
     if (controller.state.mode != Mode.STOPPED
             or controller.owned_url is not None
             or controller.player is not None
