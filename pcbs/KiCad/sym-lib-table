@@ -1,0 +1,4 @@
+(sym_lib_table
+	(version 7)
+	(lib (name "SonosCDPla-easyedapro") (type "KiCad") (uri "${KIPRJMOD}/SonosCDPla-easyedapro.kicad_sym") (options "") (descr ""))
+)
