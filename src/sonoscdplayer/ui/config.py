@@ -16,6 +16,7 @@ DEFAULT_CONFIG = None
 
 @dataclass(frozen=True)
 class UIConfig:
+    """The ``[ui]`` settings: menu language, cover mode and extra characters for text entry."""
     language: str = 'de'
     cover_mode: str = 'auto'
     # Characters offered in addition to ASCII when typing names;
@@ -32,6 +33,11 @@ class UIConfig:
 
 
 def load_ui_config(path=DEFAULT_CONFIG):
+    """Read ui.toml (default: the installed one); missing file or keys give the defaults.
+
+    Raises:
+        ValueError: an invalid value.
+    """
     if path is None:
         from sonoscdplayer.system import config_paths
         path = config_paths.ui_config()

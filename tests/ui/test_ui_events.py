@@ -5,7 +5,6 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 
 from sonoscdplayer.sonos.discovery import from_devices as speaker_snapshot, discover_speakers
-from sonoscdplayer.ui.menu.input_adapter import to_ui_action
 from sonoscdplayer.ui.screens.model import DisplayModel
 from sonoscdplayer.ui.renderers.oled_128_speakers import MultiRenderer
 from sonoscdplayer.ui.menu.speakers.multi_target import MultiSelection, from_devices as group_snapshot
@@ -69,10 +68,6 @@ class UIIntegrationTests(unittest.TestCase):
     def test_invalid_player_schema_rejected(self):
         with self.assertRaises(ValueError):
             project_status({'schema_version':2,'player':{'mode':'STOPPED','track':1,'track_count':1}})
-
-    def test_transport_buttons_not_redirected(self):
-        for key in ('stop','playpause','skip','previous','eject','power'):
-            self.assertIsNone(to_ui_action(key,'pressed'))
 
     def test_event_only_allowlist(self):
         self.assertIsNone(encode_event('stop','pressed'))

@@ -17,6 +17,7 @@ Severity = Literal["info", "success", "warning", "error"]
 
 @dataclass(frozen=True)
 class ScreenItem:
+    """One row of a screen: key, label, optional value and its marks."""
     key: str
     label: str
     value: str | None = None
@@ -127,6 +128,7 @@ def screen_from_display_model(model: DisplayModel) -> SemanticScreen:
 
 
 def screen_from_notice(notice: Notice, *, language: str = "de") -> SemanticScreen:
+    """A notice as SemanticScreen."""
     if not isinstance(notice, Notice):
         raise TypeError("expected Notice")
     return SemanticScreen(kind="notice", message=notice_text(notice, language),

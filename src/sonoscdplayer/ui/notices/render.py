@@ -29,6 +29,7 @@ def icon_file(severity, grayscale=False, icon_root=ICON_ROOT):
 
 
 class NoticeRenderer:
+    """Draws a notice with its icon on the 128x128 OLED."""
     def __init__(self, theme=MODERN_HIFI, icon_root=ICON_ROOT):
         self.theme = theme
         self.icon_root = Path(icon_root)

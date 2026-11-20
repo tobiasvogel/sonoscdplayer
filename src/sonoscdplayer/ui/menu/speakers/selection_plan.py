@@ -4,10 +4,17 @@ from sonoscdplayer.sonos.groups import normalize_members, UID_RE
 
 @dataclass(frozen=True)
 class GroupIntent:
+    """Coordinator and members to send to the player as new selection."""
     coordinator: str
     members: tuple[str, ...]
 
 def plan_from_applied(targets, applied):
+    """Turn the checked speakers into a GroupIntent (first one coordinates).
+
+    Raises:
+        ValueError: nothing checked, an invalid UID, or a speaker that is
+            already in another Sonos group.
+    """
     ordered = [t for t in targets if t.key in applied]
     if not ordered or len(ordered) != len(applied):
         raise ValueError('empty or missing selection')

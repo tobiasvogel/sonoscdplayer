@@ -11,6 +11,7 @@ import subprocess
 
 @dataclass(frozen=True)
 class NetworkStatus:
+    """State of Ethernet and WLAN (connected, connecting, ...), without names or addresses."""
     ethernet: str = "unknown"
     wifi: str = "unknown"
     preferred: str = "none"

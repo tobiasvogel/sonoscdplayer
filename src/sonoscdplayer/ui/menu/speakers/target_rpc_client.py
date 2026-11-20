@@ -9,6 +9,12 @@ DEFAULT_SOCKET = '/run/sonoscdplayer/control.sock'
 
 
 def submit_target(uid, *, members=None, socket_path=DEFAULT_SOCKET, timeout=4.0):
+    """Send the speaker selection to the player service; True if it accepted.
+
+    Raises:
+        ValueError: invalid UID or members.
+        RuntimeError: the player refused or did not answer.
+    """
     if not isinstance(uid, str) or not uid or len(uid)>128:
         raise ValueError('invalid target')
     request_data = {'command':'set-target','uid':uid}

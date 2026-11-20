@@ -1,8 +1,8 @@
-"""Opt-in interactive menu orchestration for the existing OLED service.
+"""The device menu: speaker selection, settings, network, power.
 
-No GPIO ownership and no Sonos writes. Discovery happens off the display loop,
-so ambient contrast and player polling remain responsive. The only output is
-a local selection view; a confirmed checkbox selection never controls playback.
+Used by the display service. Speaker searches run in a background thread,
+so the display stays responsive. The menu itself never talks to Sonos: a
+confirmed speaker selection is sent to the player service, which checks it.
 """
 from __future__ import annotations
 import threading
@@ -42,6 +42,13 @@ VOLUME_OVERLAY_SECONDS = 2.0
 
 
 class InteractiveMenu:
+    """The menu state machine: screens, focus, speaker selection, settings.
+
+    The display service creates one InteractiveMenu, feeds it button and
+    encoder events with ``event()`` and draws ``frame()``. Actions that need
+    the player go through the given callbacks (``target_rpc``,
+    ``power_action``, ``disc_reset``, ...).
+    """
     def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None, network_reader=read_network_status, current_target=None, on_language_change=None, network_setup=None, text_extra_characters=DEFAULT_EXTRA_CHARACTERS, disc_reset=None):
         self.state = MultiSelection()
         self.language = Translator(language).language
@@ -281,6 +288,7 @@ class InteractiveMenu:
         self.active = True
 
     def netsetup_snapshot(self):
+        """State of the WLAN setup, or None if it is not running."""
         if self.network_setup is None:
             return None
         snap = self.network_setup.snapshot()
@@ -624,6 +632,7 @@ class InteractiveMenu:
         return False
 
     def volume_overlay_active(self, now=None):
+        """True while the volume overlay is shown."""
         now = time.monotonic() if now is None else now
         return self._volume_level is not None and now < self._volume_until
 
@@ -634,6 +643,7 @@ class InteractiveMenu:
         self.active = True  # keep it on screen even when the player is gone
 
     def event(self, name, event, now=None):
+        """Handle one input event; True if the screen changed."""
         now = time.monotonic() if now is None else now
         if self.shutdown_screen is not None:
             return False  # shutting down or restarting: nothing else to do
@@ -806,6 +816,7 @@ class InteractiveMenu:
         raise ValueError('unknown active menu section')
 
     def frame(self, image_to_frame):
+        """The current screen as display frame (via ``image_to_frame``), or None."""
         if self.shutdown_screen is not None:
             if self._shutdown_frame is None:
                 from sonoscdplayer.ui.system_screens import screen_image

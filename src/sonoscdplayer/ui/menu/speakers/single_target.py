@@ -16,6 +16,7 @@ class TargetIntent:
 
 
 class TargetSelectionError(ValueError):
+    """The selection does not name exactly one usable speaker."""
     pass
 
 

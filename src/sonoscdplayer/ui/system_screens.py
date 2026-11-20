@@ -36,6 +36,7 @@ SCREENS = {
 
 
 def load_artwork(path):
+    """Load a system screen image and check its size."""
     with Image.open(path) as source:
         source.load()
         if not 0 < source.width <= 4096 or not 0 < source.height <= 4096:
@@ -97,6 +98,7 @@ def compose_image(artwork, text):
 
 
 def screen_text(name, language):
+    """The localized text of a system screen (with ellipsis if it shows progress)."""
     from sonoscdplayer.ui.i18n import Translator
     _, key, progress = SCREENS[name]
     text = Translator(language).tr(key)

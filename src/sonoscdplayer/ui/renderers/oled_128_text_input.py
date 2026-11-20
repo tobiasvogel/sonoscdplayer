@@ -16,6 +16,7 @@ CENTRE_BOX = (48, WHEEL_TOP, 79, WHEEL_TOP + 31)
 
 
 def shown(char):
+    """How a character is drawn in the character wheel (symbols for space and actions)."""
     if char in ACTION_SYMBOL:
         return ACTION_SYMBOL[char]
     return SPACE_SYMBOL if char == ' ' else char

@@ -1,7 +1,11 @@
-"""Read-only SSD1327 OLED service with Modern Hi-Fi runtime rendering.
+"""The display service (sonoscdplayer-oled.service) for the SSD1327 OLED.
 
-No Sonos transport commands or player-service startup. Optional PNG and
-system-start screens are independent of the state-driven runtime notices.
+Started with ``python3 -m sonoscdplayer.ui.display_service``. It polls the
+player service for its status, receives button and encoder events from the
+button service, runs the menu (InteractiveMenu) and draws every frame on the
+OLED. It adapts the contrast to the ambient light and shows the start screen.
+Playback commands go to the player service; the display service itself
+never talks to Sonos.
 """
 from __future__ import annotations
 import argparse
@@ -89,6 +93,7 @@ def image_to_frame(im):
 
 
 def load_splash(path):
+    """The start screen image as display frame, or None if it cannot be read."""
     try:
         with Image.open(path) as im:
             im.load()
@@ -203,6 +208,7 @@ MENU_FRAME_SECONDS = 0.05
 
 
 def frame_delay(refresh_seconds):
+    """Seconds until the next frame: shorter while a text scrolls."""
     from sonoscdplayer.ui.menu.marquee import MARQUEE_CLOCK
     if MARQUEE_CLOCK.animating():
         return min(refresh_seconds, MARQUEE_FRAME_SECONDS)
@@ -210,12 +216,14 @@ def frame_delay(refresh_seconds):
 
 
 def netsetup_shown(menu):
+    """True while the menu shows the WLAN setup."""
     check = getattr(menu, 'netsetup_snapshot', None)
     snap = check() if callable(check) else None
     return isinstance(getattr(snap, 'state', None), str)
 
 
 def menu_overlay_active(menu):
+    """True while the volume overlay is shown."""
     check = getattr(menu, 'volume_overlay_active', None)
     return check() is True if callable(check) else False
 
@@ -248,11 +256,13 @@ class StatusHold:
         self.last_success = None
 
     def success(self, state, now):
+        """Remember a successful player status and return it."""
         self.last_state = state
         self.last_success = now
         return state
 
     def failure(self, now, grace_override=None):
+        """The remembered status during the grace period, else None."""
         grace = self.grace_seconds if grace_override is None else grace_override
         if (self.last_state is not None and self.last_success is not None
                 and now - self.last_success < grace):
@@ -280,6 +290,7 @@ def wait_for_player_ready(status_request, socket_path, *, max_wait_seconds=30.0,
 
 
 def main(argv=None):
+    """Command line of the display service (sonoscdplayer-oled.service)."""
     p=argparse.ArgumentParser(description='SSD1327 OLED status and menu service')
     p.add_argument('--gpio',action='store_true')
     from sonoscdplayer.system.state_files import default_state_dir

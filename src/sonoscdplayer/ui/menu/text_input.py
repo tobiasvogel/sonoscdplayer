@@ -75,13 +75,16 @@ class TextEntry:
     # ---- read side -------------------------------------------------------
     @property
     def current(self):
+        """The character under the cursor."""
         return self.items[self.position]
 
     def neighbour(self, offset):
+        """The character ``offset`` positions away (wraps around)."""
         return self.items[(self.position + offset) % len(self.items)]
 
     @property
     def byte_length(self):
+        """Length of the entered text in UTF-8 bytes."""
         return len(self.text.encode('utf-8'))
 
     # ---- input -----------------------------------------------------------

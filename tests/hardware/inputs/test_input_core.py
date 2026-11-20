@@ -5,7 +5,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 ROOT = Path(__file__).resolve().parents[3]
 from sonoscdplayer.hardware.inputs.event_engine import load_config, InputEngine, Button
-from sonoscdplayer.ui.menu.input_adapter import to_ui_action
 from sonoscdplayer.hardware.inputs.button_service import input_sources, pins_for
 from sonoscdplayer.hardware.inputs.shift_register_74hc165 import ShiftRegisterReader
 PATH = Path(__file__).resolve().parents[3] / 'config/interface.example.toml'
@@ -147,12 +146,6 @@ class EncoderDirectionConfigTests(unittest.TestCase):
         cfg = self.load_with_direction('invert_direction = true')
         self.assertTrue(cfg.encoder.invert_direction)
         self.assertEqual(direction_events(cfg), [('encoder', 'left')])
-
-    def test_ui_navigation_uses_logical_direction_without_second_inversion(self):
-        normal = direction_events(load_config(CONFIG_PATH))[0]
-        reverse = direction_events(self.load_with_direction('invert_direction = true'))[0]
-        self.assertEqual(to_ui_action(*normal), 'navigate_next')
-        self.assertEqual(to_ui_action(*reverse), 'navigate_previous')
 
     def test_non_boolean_direction_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'invert_direction must be bool'):

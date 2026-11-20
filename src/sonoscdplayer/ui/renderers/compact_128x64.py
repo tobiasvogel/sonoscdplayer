@@ -43,6 +43,7 @@ def menu_window(screen):
 
 
 class CompactRenderer:
+    """Draws the common screens on a monochrome 128x64 display (SH1107)."""
     def __init__(self, *, font_loader=font):
         self.font_loader = font_loader
         self.marquee = Marquee()
@@ -72,6 +73,7 @@ class CompactRenderer:
         return f'{minutes}:{seconds:02d}'
 
     def render(self, screen: SemanticScreen, *, elapsed=0):
+        """The screen as 1-bit image; ``elapsed`` drives text scrolling."""
         if not isinstance(screen, SemanticScreen):
             raise TypeError('expected SemanticScreen')
         if not isinstance(elapsed, (int, float)) or not math.isfinite(elapsed) or elapsed < 0:

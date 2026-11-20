@@ -10,6 +10,7 @@ COVER_MODES = ('auto', 'on', 'off')
 
 @dataclass(frozen=True)
 class DisplayProfile:
+    """Size of the display and whether it shows covers in mode ``auto``."""
     width: int = 128
     height: int = 128
     supports_cover_auto: bool = False
@@ -20,6 +21,7 @@ class DisplayProfile:
 
 
 def show_cover(mode='auto', profile=DisplayProfile()):
+    """True if a cover is drawn for this cover mode (auto/on/off) and display."""
     if mode not in COVER_MODES:
         raise ValueError('cover mode must be auto, on or off')
     return mode == 'on' or (mode == 'auto' and profile.supports_cover_auto)

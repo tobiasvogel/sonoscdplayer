@@ -1,3 +1,4 @@
+"""Menu pages (main menu, settings, network status) on the 128x128 OLED."""
 from PIL import Image
 
 from sonoscdplayer.ui.renderers.oled_128 import Renderer
@@ -7,6 +8,7 @@ from sonoscdplayer.ui.menu.menu_catalog import MAIN_ITEMS, NETWORK_ITEMS, SETTIN
 
 
 class NavigationRenderer(Renderer):
+    """Draws the menu pages (main menu, settings, network) on the 128x128 OLED."""
     def menu_pixels(self, heading, items, focus, *, status, footer):
         """Navigation page from translated texts: items are (key, label)."""
         t = self.theme

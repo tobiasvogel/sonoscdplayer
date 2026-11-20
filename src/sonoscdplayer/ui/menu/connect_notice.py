@@ -8,6 +8,7 @@ from sonoscdplayer.ui.notices.engine import NoticeEngine
 
 
 class ConnectNoticeView:
+    """Notices shown for the CONNECT button (status, settings hint, setup)."""
     def __init__(self):
         self.engine = NoticeEngine()
         self._ident = None
@@ -42,15 +43,18 @@ class ConnectNoticeView:
         return True
 
     def current(self, *, now):
+        """The notice to show now, or None."""
         return self.engine.presentation(now=now, base_view=None).notice
 
     def confirm(self, *, now):
+        """Dismiss the current notice (encoder press)."""
         if self.engine.confirm(now=now):
             self._ident = None
             return True
         return False
 
     def clear(self, *, now):
+        """Remove all CONNECT notices."""
         if self._ident is None:
             return False
         result = self.engine.clear(self._ident, now=now)

@@ -14,6 +14,7 @@ MENU_TOP, MENU_STEP, MENU_HEIGHT, MENU_ROWS = 34, 23, 20, 3
 
 
 def menu_window(screen):
+    """Indexes of the visible menu rows; the focused row stays visible."""
     focus = next((i for i, item in enumerate(screen.items) if item.focused), None)
     if screen.items and focus is None:
         raise ValueError('landscape menu needs a focused item')
@@ -22,6 +23,7 @@ def menu_window(screen):
 
 
 class LandscapeRenderer:
+    """Draws the common screens on a 160x128 color display (ST7735S)."""
     def __init__(self, *, theme=MODERN_HIFI, font_loader=font):
         self.theme, self.font_loader = theme, font_loader
         self.marquee = Marquee()
@@ -50,6 +52,7 @@ class LandscapeRenderer:
         return f'{minutes}:{seconds:02d}'
 
     def render(self, screen, *, elapsed=0):
+        """The screen as RGB image; ``elapsed`` drives text scrolling."""
         if not isinstance(screen, SemanticScreen):
             raise TypeError('expected SemanticScreen')
         if not isinstance(elapsed, (int, float)) or not math.isfinite(elapsed) or elapsed < 0:

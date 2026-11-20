@@ -20,6 +20,7 @@ class NoticePresentation:
 
     @property
     def showing_notice(self) -> bool:
+        """True if a notice is shown."""
         return self.notice is not None
 
 
@@ -153,5 +154,6 @@ class NoticeEngine:
         return True
 
     def pending_count(self, *, now: float) -> int:
+        """Number of notices still waiting or shown."""
         self._advance(now)
         return len(self._entries)

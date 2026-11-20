@@ -4,6 +4,7 @@ from sonoscdplayer.ui.renderers.oled_128 import Renderer,font
 from sonoscdplayer.ui.renderers.theme import ssd1327_gray
 
 def text_width(value,size,bold=True):
+    """Width of ``value`` in pixels with the menu font."""
     box=ImageDraw.Draw(Image.new('L',(1,1))).textbbox((0,0),value,font=font(size,bold))
     return box[2]-box[0]
 
@@ -37,6 +38,7 @@ def wrap_lines(value,width,size,*,max_lines=4):
 
 
 class MultiRenderer(Renderer):
+    """Draws the speaker selection list with checkboxes."""
     def multi_pixels(self, heading, subheading, labels, marks, focus, *,
                      placeholder='', status='', footer='', gray=False):
         """Speaker list from translated texts (one mark per row)."""

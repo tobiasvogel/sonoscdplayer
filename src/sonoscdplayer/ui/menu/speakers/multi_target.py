@@ -10,6 +10,7 @@ from sonoscdplayer.ui.i18n import Translator
 
 @dataclass(frozen=True)
 class Target:
+    """One speaker in the menu: UID key, name and its current group."""
     key: str
     label: str
     members: tuple[str, ...]
@@ -17,10 +18,12 @@ class Target:
 
 @dataclass(frozen=True)
 class Topology:
+    """Speakers found by a search, or the error of the search."""
     targets: tuple[Target, ...]
     error: str | None = None
 
     def keys(self):
+        """UIDs of all listed speakers."""
         return frozenset(target.key for target in self.targets)
 
 
@@ -67,6 +70,7 @@ def from_devices(devices, *, language='de'):
 
 
 def discover_targets(*,timeout=3,discover_fn=None,language='de'):
+    """Search the network and return the speakers as Topology."""
     if not 0 < timeout <= 10:
         raise ValueError('timeout must be > 0 and <= 10')
     if discover_fn is None:
@@ -87,6 +91,7 @@ class MultiSelection:
     notice: str = ''
 
     def update(self,topology):
+        """Take a new search result; the selection is kept even if a speaker is missing."""
         keys=topology.keys()
         missing=(self.draft|self.applied)-keys
         # Keep the last acknowledged target even when discovery temporarily loses
@@ -96,6 +101,7 @@ class MultiSelection:
                        notice='status.missing_targets' if missing else self.notice)
 
     def action(self,action):
+        """Apply a menu action (move focus, toggle, confirm, back)."""
         if action not in ('next','previous','confirm','back'):
             raise ValueError('unknown action')
         if action=='back':
@@ -119,4 +125,5 @@ class MultiSelection:
         return self
 
     def selections(self):
+        """Names of the checked speakers, in menu order."""
         return tuple(t.label for t in self.topology.targets if t.key in self.draft)

@@ -8,6 +8,7 @@ MAX_RESPONSE = 65536
 
 
 def read_status(path='/run/sonoscdplayer/control.sock', timeout=0.35):
+    """Ask the player service for its status over the control socket."""
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
         conn.settimeout(timeout)
         conn.connect(path)

@@ -8,6 +8,7 @@ SEVERITIES = frozenset(("info", "success", "warning", "error"))
 
 @dataclass(frozen=True)
 class Notice:
+    """A short message on top of the screen: text key, severity, priority, duration."""
     key: str
     severity: str = "info"
     params: Mapping[str, object] = field(default_factory=dict)

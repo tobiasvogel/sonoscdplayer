@@ -16,6 +16,7 @@ VERSION = 1
 
 
 class UiState:
+    """The menu language chosen on the device, kept in the state directory."""
     def __init__(self, directory=None, *, log=print):
         self.path = Path(directory if directory is not None else default_state_dir()) / FILE_NAME
         self._log = log
@@ -29,4 +30,5 @@ class UiState:
         return language if isinstance(language, str) and language in available else None
 
     def save_language(self, language):
+        """Remember the chosen language; False if it cannot be written."""
         return write_json(self.path, {'version': VERSION, 'language': language}, log=self._log)

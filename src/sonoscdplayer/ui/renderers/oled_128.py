@@ -29,6 +29,7 @@ FOOTER=(115,127)
 
 
 def font(size=9,bold=False):
+    """The DejaVu font (bold or regular) in this size; raises RuntimeError if missing."""
     name='DejaVuSans-Bold.ttf' if bold else 'DejaVuSans.ttf'
     try:
         if not (FONT_DIR/name).is_file():
@@ -41,6 +42,7 @@ def font(size=9,bold=False):
         ) from exc
 
 class Renderer:
+    """Draws the screens of the 128x128 SSD1327 OLED (idle, playback, speaker menu)."""
     def __init__(self,theme=MODERN_HIFI,*,cover_mode='auto',display_profile=DisplayProfile(),language='de'):
         self.theme=theme
         self.marquee=Marquee()
@@ -75,6 +77,7 @@ class Renderer:
         canvas.paste(mask,(x,y),mask)
 
     def cover(self,canvas,path,x=4,y=17,side=36):
+        """Draw the cover image (or a placeholder) at the given position."""
         d=ImageDraw.Draw(canvas)
         if path and Path(path).is_file():
             with Image.open(path) as source:
@@ -106,6 +109,7 @@ class Renderer:
                       width=96,height=15,scroll=selected)
 
     def shell(self,canvas,heading):
+        """Draw the header bar with ``heading``."""
         d=ImageDraw.Draw(canvas)
         d.rectangle((0,HEADER[0],127,HEADER[1]-1),fill=self.theme.surface)
         self.text(canvas,(5,1),heading,fill=self.theme.primary,size=9,bold=True,width=118,height=11)
@@ -121,6 +125,7 @@ class Renderer:
         self.text(canvas,(5,115),footer,fill=t.secondary,size=8,width=118,height=12)
 
     def render(self,model:DisplayModel,*,elapsed=None,grayscale=False):
+        """The DisplayModel as image (grayscale for the OLED if requested)."""
         canvas=Image.new('RGB',SIZE,self.theme.background)
         if model.view=='menu': self.menu(canvas,model,elapsed)
         elif model.view=='playback': self.playback(canvas,model,elapsed)
@@ -129,6 +134,7 @@ class Renderer:
         return ssd1327_gray(canvas) if grayscale else canvas
 
     def idle(self,canvas,m,elapsed):
+        """Draw the idle screen (disc, track count, selected speaker)."""
         t=self.theme;d=ImageDraw.Draw(canvas)
         phase_key = {'STARTING':'header.starting', 'STOPPED':'header.stopped',
                      'ERROR':'header.error'}.get(m.disc_phase)
@@ -167,6 +173,7 @@ class Renderer:
                     status_fill=t.playing if m.speaker else t.warning)
 
     def playback(self,canvas,m,elapsed):
+        """Draw the playback screen (title, artist, progress)."""
         t=self.theme;d=ImageDraw.Draw(canvas)
         self.shell(canvas,self.tr('header.pause') if m.playback=='paused' else self.tr('header.playing'))
         # Compilation: the track's own artist says more than the album name.
@@ -192,6 +199,7 @@ class Renderer:
         self.bottom(canvas,status=m.speaker or self.tr('status.paused' if m.playback=='paused' else 'status.playing'),footer=self.tr('footer.open_menu'))
 
     def menu(self,canvas,m,elapsed):
+        """Draw the speaker list."""
         t=self.theme; d=ImageDraw.Draw(canvas)
         self.shell(canvas,self.tr('header.speakers'))
         self.text(canvas,(6,16),self.tr('menu.choose_target'),fill=t.secondary,size=8,width=116,height=10)

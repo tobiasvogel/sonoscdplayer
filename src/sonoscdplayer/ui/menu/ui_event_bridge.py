@@ -27,12 +27,14 @@ MAX_EVENT_BYTES = 128
 
 
 def encode_event(name, event):
+    """Datagram for an allowed (name, event) pair, else None."""
     if (name, event) not in ALLOWED:
         return None
     return json.dumps({'name': name, 'event': event}, separators=(',', ':')).encode('ascii')
 
 
 def decode_event(data):
+    """(name, event) from a datagram, or None if it is not allowed."""
     if not isinstance(data, bytes) or len(data) > MAX_EVENT_BYTES:
         return None
     try:
@@ -87,6 +89,7 @@ class EventReceiver:
         return self
 
     def receive(self):
+        """The next waiting event, or None."""
         try:
             raw = self.sock.recv(MAX_EVENT_BYTES + 1)
         except BlockingIOError:
@@ -119,6 +122,7 @@ class AsyncEventPublisher:
         self._thread = None
 
     def start(self):
+        """Start the sending thread (once)."""
         if self._thread is not None:
             raise RuntimeError('publisher already started')
         self._thread = threading.Thread(target=self._run, name='ui-event-publisher', daemon=True)

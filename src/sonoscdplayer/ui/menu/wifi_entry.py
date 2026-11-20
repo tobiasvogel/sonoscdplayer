@@ -32,6 +32,7 @@ def _ssid_check(text):
 
 
 class WifiEntryController:
+    """Screens of the on-device WLAN setup: network list, name and password entry."""
     def __init__(self, session, *, extra_characters=DEFAULT_EXTRA_CHARACTERS):
         self.session = session
         self.extra_characters = extra_characters
@@ -73,10 +74,12 @@ class WifiEntryController:
         self._submitted = None
 
     def items(self, snap):
+        """Rows of the network list: found networks plus rescan, hidden, back."""
         return list(snap.networks) + [RESCAN, HIDDEN, BACK]
 
     # ---- input -------------------------------------------------------------
     def event(self, name, event, now, snap):
+        """Handle an input event during the setup."""
         if snap.state == 'hotspot':
             if (name, event) == ('encoder_sw', 'pressed'):
                 return self.session.manual()
@@ -154,6 +157,7 @@ class WifiEntryController:
 
     # ---- drawing -------------------------------------------------------------
     def frame(self, renderer, snap, *, now, gray=True):
+        """Draw the current setup screen."""
         if snap.state == 'hotspot':
             phase = int(now // HINT_SWITCH_SECONDS) % 2
             footer = renderer.tr('netsetup.manual_hint' if phase == 0

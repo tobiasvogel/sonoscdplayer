@@ -9,6 +9,7 @@ from sonoscdplayer.ui.notices.notice import Notice
 
 @dataclass(frozen=True)
 class NoticeTiming:
+    """How long notices stay visible when they set no duration themselves."""
     default_duration_seconds: float = 5.0
 
     def __post_init__(self):

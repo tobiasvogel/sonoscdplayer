@@ -14,6 +14,7 @@ RefreshPolicy = Literal["interactive", "event_driven"]
 
 @dataclass(frozen=True)
 class DisplayCapabilities:
+    """What a display can show: kind (graphic/character), size, pixel format, colors."""
     kind: DisplayKind
     width: int | None = None
     height: int | None = None

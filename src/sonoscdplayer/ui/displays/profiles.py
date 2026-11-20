@@ -9,6 +9,7 @@ from sonoscdplayer.ui.displays.layout import DisplayProfile, show_cover
 
 @dataclass(frozen=True)
 class HardwareDisplayProfile:
+    """A supported display module: controller, size, interface and cover policy."""
     key: str
     controller: str
     width: int
@@ -27,6 +28,7 @@ class HardwareDisplayProfile:
             raise ValueError('invalid refresh policy')
 
     def cover_enabled(self, mode='auto'):
+        """True if this display shows covers in the given cover mode."""
         return show_cover(mode, DisplayProfile(
             width=self.width, height=self.height,
             supports_cover_auto=self.cover_auto
@@ -57,4 +59,5 @@ REFERENCE_PROFILES = {
 
 
 def profile_for(key):
+    """The profile with this key; raises KeyError (reference profiles included)."""
     return PROFILES[key]

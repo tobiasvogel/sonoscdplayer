@@ -6,6 +6,7 @@ View = Literal['idle', 'playback', 'menu']
 
 @dataclass(frozen=True)
 class DisplayModel:
+    """What the OLED shows: view, disc and track data, playback, speaker menu."""
     view: View = 'idle'
     disc_present: bool = True
     album: str | None = None

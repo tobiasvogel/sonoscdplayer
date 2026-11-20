@@ -3,11 +3,13 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Marquee:
+    """Horizontal scrolling of a text that is wider than its field."""
     initial_pause: float = 1.5
     end_pause: float = 0.8
     pixels_per_second: float = 18.0
 
     def offset(self, text_width: int, viewport_width: int, elapsed: float) -> int:
+        """Pixels to shift the text after ``elapsed`` seconds (pause, scroll, pause)."""
         overflow = max(0, text_width - viewport_width)
         if overflow == 0 or elapsed <= self.initial_pause:
             return 0
@@ -39,6 +41,7 @@ class MarqueeClock:
         self._last_overflow = float('-inf')
 
     def elapsed(self, key, *, overflows):
+        """Seconds the text ``key`` has been shown (0 if it fits)."""
         now = self._clock()
         started, last_seen = self._started.get(key, (now, now))
         if now - last_seen > self._forget_after:
@@ -52,6 +55,7 @@ class MarqueeClock:
         return now - started
 
     def animating(self, within=1.0):
+        """True if a text scrolled within the last ``within`` seconds."""
         return self._clock() - self._last_overflow <= within
 
 

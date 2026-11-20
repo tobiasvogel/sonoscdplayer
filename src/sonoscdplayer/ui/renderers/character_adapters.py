@@ -85,6 +85,7 @@ def text_entry_frame(entry: TextEntry, capabilities: DisplayCapabilities,
 def render_navigation(section: str, focus: int,
                       capabilities: DisplayCapabilities, *,
                       language: str = "de", scroll_offset: int = 0) -> CharacterFrame:
+    """A menu page as CharacterFrame for a character display."""
     return render_character_screen(
         navigation_screen(section, focus, language=language),
         capabilities, scroll_offset=scroll_offset)

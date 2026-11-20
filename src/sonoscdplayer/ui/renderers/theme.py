@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Theme:
+    """Colors of the screens; converted to grayscale only for the OLED."""
     background: str = '#0B0D10'
     surface: str = '#171B20'
     primary: str = '#F4F3F0'

@@ -28,6 +28,7 @@ def available_languages():
 
 @lru_cache(maxsize=32)
 def catalog(language):
+    """All texts of a language (JSON catalog in locales/)."""
     if language not in available_languages():
         language = 'en'
     source = resources.files('sonoscdplayer.ui.i18n.locales').joinpath(language + '.json')
@@ -39,10 +40,16 @@ def catalog(language):
 
 
 class Translator:
+    """Looks up menu texts by key in the chosen language (English fallback)."""
     def __init__(self, language='de'):
         self.language = language if language in available_languages() else 'en'
 
     def tr(self, key, **values):
+        """The text for ``key`` with ``{placeholders}`` filled from ``values``.
+
+        Raises:
+            KeyError: the key exists in no catalog.
+        """
         template = catalog(self.language).get(key, catalog('en').get(key))
         if template is None:
             raise KeyError('untranslated UI key: ' + key)

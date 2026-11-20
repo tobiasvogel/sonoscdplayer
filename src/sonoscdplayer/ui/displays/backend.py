@@ -13,6 +13,7 @@ from sonoscdplayer.ui.displays.capabilities import DisplayCapabilities
 
 @dataclass(frozen=True)
 class GraphicFrame:
+    """A pixel frame for a graphic display, in the display's pixel format."""
     width: int
     height: int
     pixel_format: str
@@ -30,6 +31,7 @@ class GraphicFrame:
 
 @dataclass(frozen=True)
 class CharacterFrame:
+    """A text frame for a character display: one string per row."""
     lines: tuple[str, ...]
 
     def __post_init__(self):
@@ -39,11 +41,20 @@ class CharacterFrame:
 
 
 class DisplayBackend(Protocol):
+    """What a display driver offers the display service."""
     capabilities: DisplayCapabilities
 
-    def open(self) -> None: ...
-    def show(self, frame: GraphicFrame | CharacterFrame) -> None: ...
-    def close(self) -> None: ...
+    def open(self) -> None:
+        """Initialize the display."""
+        ...
+
+    def show(self, frame: GraphicFrame | CharacterFrame) -> None:
+        """Show one frame."""
+        ...
+
+    def close(self) -> None:
+        """Release the display."""
+        ...
 
 
 def validate_frame(capabilities: DisplayCapabilities,
@@ -78,10 +89,12 @@ def validate_frame(capabilities: DisplayCapabilities,
 
 
 class BackendRegistry:
+    """Display backends by name, created on demand."""
     def __init__(self):
         self._factories: dict[str, Callable[[], DisplayBackend]] = {}
 
     def register(self, name: str, factory: Callable[[], DisplayBackend]) -> None:
+        """Register a factory for the backend ``name``."""
         if not isinstance(name, str) or not name or not name.replace("_", "").isalnum():
             raise ValueError("invalid backend identifier")
         if name in self._factories:
@@ -91,6 +104,7 @@ class BackendRegistry:
         self._factories[name] = factory
 
     def create(self, name: str) -> DisplayBackend:
+        """Create the backend ``name``; raises KeyError if unknown."""
         try:
             factory = self._factories[name]
         except (KeyError, TypeError) as exc:
