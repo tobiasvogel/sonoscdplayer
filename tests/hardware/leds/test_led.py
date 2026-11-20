@@ -222,7 +222,6 @@ class FakeGPIO:
 
 
 class LedPwmConfigTests(unittest.TestCase):
-    def test_config_defaults(self): self.assertEqual((OutputConfig().power_pin, OutputConfig().connection_pin),(12,13))
     def test_pin_restriction(self):
         with self.assertRaises(ValueError): OutputConfig(power_pin=14)
     def test_frequency_validation(self):

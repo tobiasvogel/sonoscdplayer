@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class AmbientConfig:
+    """Light sensor socket, lux range and brightness curve for the LEDs."""
     enabled: bool = False
     socket_path: str = '/run/apds9306.sock'
     request: str = ''  # optional documented daemon command, terminated by LF
@@ -71,6 +72,7 @@ def parse_lux(raw: bytes) -> float:
 
 
 def read_lux(cfg: AmbientConfig) -> float:
+    """Current lux value from the sensor daemon; raises SensorUnavailable."""
     with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as sock:
         sock.settimeout(cfg.timeout_ms/1000)
         sock.connect(cfg.socket_path)
@@ -84,6 +86,7 @@ def read_lux(cfg: AmbientConfig) -> float:
 
 
 def lux_to_brightness(lux: float,cfg: AmbientConfig) -> float:
+    """LED brightness (0..1) for a lux value, by the configured curve."""
     if not math.isfinite(lux) or lux<0: raise ValueError('invalid lux')
     # Logarithmic response better matches visual perception; clamp to endpoints.
     position=(math.log1p(lux)-math.log1p(cfg.lux_dark))/(math.log1p(cfg.lux_bright)-math.log1p(cfg.lux_dark))
@@ -91,11 +94,13 @@ def lux_to_brightness(lux: float,cfg: AmbientConfig) -> float:
     return cfg.min_brightness+(cfg.max_brightness-cfg.min_brightness)*position
 
 class BrightnessSmoother:
+    """Changes the brightness gradually instead of jumping."""
     def __init__(self,cfg:AmbientConfig):
         self.cfg=cfg
         self.value=float(cfg.fallback_brightness)
         self.last_ms=None
     def tick(self,target:float,now_ms:float)->float:
+        """Brightness for ``now_ms``, moving towards ``target``."""
         if not 0<=target<=1 or not math.isfinite(target) or not math.isfinite(now_ms): raise ValueError('invalid target/time')
         if self.last_ms is not None and now_ms<self.last_ms: raise ValueError('clock moved backwards')
         dt=0 if self.last_ms is None else now_ms-self.last_ms

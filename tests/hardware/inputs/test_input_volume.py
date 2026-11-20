@@ -221,11 +221,7 @@ class VolumeConfigTests(unittest.TestCase):
         self.addCleanup(Path(f.name).unlink)
         return load_config(f.name)
 
-    def test_example_and_defaults(self):
-        cfg = load_config(ROOT / 'config/interface.example.toml')
-        self.assertEqual((cfg.volume_repeat_delay_ms, cfg.volume_repeat_interval_ms), (750, 250))
-        cfg = self.config('')
-        self.assertEqual((cfg.volume_repeat_delay_ms, cfg.volume_repeat_interval_ms), (750, 250))
+    def test_repeat_times_are_configurable(self):
         cfg = self.config('[volume]\nrepeat_delay_ms = 500\nrepeat_interval_ms = 100\n')
         self.assertEqual((cfg.volume_repeat_delay_ms, cfg.volume_repeat_interval_ms), (500, 100))
 

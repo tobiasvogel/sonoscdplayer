@@ -22,10 +22,12 @@ class PowerGesture:
         self._long_sent = False
 
     def press(self, now_ms):
+        """The POWER button went down."""
         self._pressed_at = now_ms
         self._long_sent = False
 
     def tick(self, now_ms):
+        """Called regularly while held; returns 'long' once the hold time is reached."""
         if self._pressed_at is None or self._long_sent:
             return None
         if now_ms - self._pressed_at >= self.hold_ms:
@@ -34,6 +36,7 @@ class PowerGesture:
         return None
 
     def release(self, now_ms):
+        """The button went up; returns the action for the press length."""
         if self._pressed_at is None:
             return None
         long_sent = self._long_sent
@@ -59,6 +62,7 @@ class PowerCoordinator:
         self._shutdown = shutdown
 
     def event(self, name, event, now_ms):
+        """Handle a POWER button event; may request the power menu."""
         if name != 'power':
             return
         if event == 'pressed':
@@ -67,6 +71,7 @@ class PowerCoordinator:
             self._publish('power', 'short')
 
     def tick(self, now_ms):
+        """Regular call while the button is held."""
         if self.gesture.tick(now_ms) == 'long' and self._shutdown() is True:
             # Let the display show "shutting down" right away.
             self._publish('power', 'long')

@@ -1,16 +1,27 @@
-"""Explicit GPIO backlight ownership for the standalone LCD diagnostic."""
+"""Backlight of the ST7735S LCD, switched by a GPIO pin."""
 from dataclasses import dataclass
 from typing import Protocol
 
 
 class Backlight(Protocol):
-    def open(self) -> None: ...
-    def set(self, enabled: bool) -> None: ...
-    def close(self) -> None: ...
+    """What a display driver needs from a backlight."""
+
+    def open(self) -> None:
+        """Take the pin."""
+        ...
+
+    def set(self, enabled: bool) -> None:
+        """Switch the backlight on or off."""
+        ...
+
+    def close(self) -> None:
+        """Switch off and release the pin."""
+        ...
 
 
 @dataclass(frozen=True)
 class BacklightConfig:
+    """GPIO pin of the backlight and whether SPI MISO was released for it."""
     pin: int
     spi_miso_released: bool = False
 
@@ -25,6 +36,7 @@ class BacklightConfig:
             raise ValueError('GPIO9 requires --spi-miso-released and a no_miso boot overlay')
 
     def validate_control_pins(self, spi_config):
+        """Reject a backlight pin that is also used by the SPI bus or DC/RESET."""
         if self.pin in (spi_config.dc_pin, spi_config.rst_pin):
             raise ValueError('backlight must differ from DC and RESET')
 
@@ -39,6 +51,7 @@ class GPIOBacklight:
         self._owned = False
 
     def open(self):
+        """Take the pin as output, backlight off."""
         if self.opened:
             return
         try:
@@ -60,6 +73,7 @@ class GPIOBacklight:
             raise
 
     def set(self, enabled):
+        """Switch the backlight on or off."""
         if type(enabled) is not bool:
             raise ValueError('backlight state must be boolean')
         if not self.opened:
@@ -67,6 +81,7 @@ class GPIOBacklight:
         self.gpio.output(self.config.pin, self.gpio.HIGH if enabled else self.gpio.LOW)
 
     def close(self):
+        """Switch off and release the pin."""
         self.opened = False
         if self._owned:
             self._owned = False

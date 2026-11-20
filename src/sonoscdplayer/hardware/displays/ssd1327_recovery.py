@@ -4,6 +4,7 @@ Only explicit OSError from SPI operations can request reinitialization.
 A write-only SPI controller offers no reliable display-on feedback.
 """
 class RecoveryBudget:
+    """Allows a limited number of re-initializations after an SPI error."""
     def __init__(self, attempts=1):
         if type(attempts) is not int or not 0 <= attempts <= 3:
             raise ValueError('recovery attempts must be 0..3')

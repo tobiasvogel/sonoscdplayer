@@ -17,6 +17,7 @@ COLORS = ('red', 'lime', 'blue', 'white', 'cyan', 'magenta', 'yellow', 'black')
 
 
 def pattern_image(pattern, config=DisplayConfig()):
+    """A test pattern (color bars, grid, text, ...) for the configured size."""
     from PIL import Image, ImageDraw, ImageFont
     if pattern not in PATTERNS:
         raise ValueError('unknown test pattern')
@@ -53,6 +54,7 @@ def pattern_image(pattern, config=DisplayConfig()):
 
 
 def main(argv=None):
+    """Command line of the ST7735S diagnostic (see docs/ST7735S.md)."""
     parser = argparse.ArgumentParser(description='Waveshare ST7735S SPI pattern test')
     parser.add_argument('--gpio', action='store_true')
     parser.add_argument('--execute', action='store_true')

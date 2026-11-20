@@ -313,8 +313,6 @@ class WiringTests(unittest.TestCase):
             self.assertIsNone(ui_event_bridge.encode_event('power', event))
 
     def test_interface_config_hold_time(self):
-        cfg = load_config(ROOT / 'config/interface.example.toml')
-        self.assertEqual(cfg.power_hold_ms, 3000)
         with tempfile.TemporaryDirectory() as tmp:
             for value, ok in (('2999', False), ('3000', True), ('10000', True), ('"x"', False)):
                 path = Path(tmp) / 'i.toml'

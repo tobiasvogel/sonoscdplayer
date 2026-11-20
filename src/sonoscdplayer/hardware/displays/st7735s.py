@@ -1,4 +1,4 @@
-"""Experimental Waveshare SKU 13892, ST7735S 128x160 RGB565 controller.
+"""Driver for the Waveshare SKU 13892 ST7735S color LCD (128x160, RGB565).
 
 Bus and backlight are injected. No hardware imports or player access here.
 Rotation is in software; native MADCTL and panel offsets stay fixed.
@@ -19,6 +19,7 @@ FRAME_BYTES = 40960
 
 @dataclass(frozen=True)
 class DisplayConfig:
+    """Rotation, color order and panel offsets of the ST7735S."""
     rotation: int = 0
     x_offset: int = 2
     y_offset: int = 1
@@ -36,10 +37,12 @@ class DisplayConfig:
 
     @property
     def size(self):
+        """Logical (width, height) after rotation."""
         return (160, 128) if self.rotation in (90, 270) else (128, 160)
 
     @property
     def capabilities(self):
+        """DisplayCapabilities of this configuration."""
         width, height = self.size
         return DisplayCapabilities(kind='graphic', width=width, height=height,
                                    pixel_format='rgb565')
@@ -60,6 +63,7 @@ def image_to_frame(image, config=DisplayConfig()):
 
 
 def native_bytes(frame, config=DisplayConfig()):
+    """RGB565 bytes in the panel's native orientation for a frame."""
     validate_frame(config.capabilities, frame)
     if config.rotation == 0:
         return frame.data
@@ -90,6 +94,7 @@ POWER_SETUP = (
 
 
 class ST7735S:
+    """Driver for the ST7735S color LCD over SPI, with GPIO backlight."""
     def __init__(self, transport: DisplayTransport, backlight: Backlight,
                  config=DisplayConfig(), *, sleep=time.sleep):
         self.transport = transport
@@ -113,6 +118,7 @@ class ST7735S:
         self.transport.data(data)
 
     def open(self):
+        """Reset and initialize the controller, backlight on."""
         if self.opened:
             return
         try:
@@ -146,6 +152,7 @@ class ST7735S:
             raise
 
     def show(self, frame):
+        """Show an RGB frame from ``image_to_frame``."""
         if not self.opened:
             raise RuntimeError('display not opened')
         data = native_bytes(frame, self.config)  # Validate before bus or BL I/O.
@@ -153,6 +160,7 @@ class ST7735S:
         self.backlight.set(True)
 
     def close(self):
+        """Backlight off and release transport and backlight."""
         try:
             self.backlight.close()  # Turn off first, including after SPI failure.
         finally:

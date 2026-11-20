@@ -1,4 +1,4 @@
-"""Experimental Waveshare SKU 18179 SH1107 controller, independent of its bus.
+"""Driver for the Waveshare SKU 18179 SH1107 OLED, over SPI or I2C.
 
 Native geometry: 64 columns x 128 rows, 16 pages of 64 bytes (vertical LSB).
 The default logical canvas is 128x64, rotated clockwise onto the native panel.
@@ -20,6 +20,7 @@ PIXEL_FORMAT = 'mono1-vlsb'
 
 @dataclass(frozen=True)
 class DisplayConfig:
+    """Rotation, display offset and contrast of the SH1107."""
     rotation: int = 90
     contrast: int = 128
     display_offset: int = 0x60
@@ -34,10 +35,12 @@ class DisplayConfig:
 
     @property
     def size(self):
+        """Logical (width, height) after rotation."""
         return (128, 64) if self.rotation in (90, 270) else (64, 128)
 
     @property
     def capabilities(self):
+        """DisplayCapabilities of this configuration."""
         width, height = self.size
         return DisplayCapabilities(kind='graphic', width=width, height=height,
                                    pixel_format=PIXEL_FORMAT)
@@ -78,6 +81,7 @@ def native_bytes(frame, config=DisplayConfig()):
 
 
 class SH1107:
+    """Driver for the SH1107 OLED over a DisplayTransport (SPI or I2C)."""
     def __init__(self, transport: DisplayTransport, config=DisplayConfig(), *,
                  sleep=time.sleep):
         self.transport = transport
@@ -96,6 +100,7 @@ class SH1107:
             self.transport.data(data[page * 64:(page + 1) * 64])
 
     def open(self):
+        """Reset and initialize the controller, display on."""
         if self.opened:
             return
         try:
@@ -127,11 +132,13 @@ class SH1107:
             raise
 
     def show(self, frame):
+        """Show a 1-bit frame from ``image_to_frame``."""
         if not self.opened:
             raise RuntimeError('display not opened')
         self._show_native(native_bytes(frame, self.config))
 
     def set_contrast(self, value):
+        """Set the contrast (0..255)."""
         if type(value) is not int or not 0 <= value <= 255:
             raise ValueError('contrast must be an integer 0..255')
         if not self.opened:
@@ -139,6 +146,7 @@ class SH1107:
         self._cmd(0x81, value)
 
     def close(self):
+        """Display off and release the transport."""
         try:
             if self.opened:
                 self._cmd(0xAE)

@@ -1,4 +1,4 @@
-"""Opt-in Waveshare 1.5inch SSD1327 SPI0/CE0 test driver.
+"""Driver for the Waveshare 1.5" SSD1327 OLED (128x128, 16 gray levels) on SPI0/CE0.
 
 Hardware SPI: BCM10 MOSI, BCM11 SCLK, BCM8 CE0; DC and RESET configurable.
 No player or Sonos commands. Hardware imports deferred until --execute.
@@ -13,6 +13,7 @@ FRAME_BYTES = WIDTH * HEIGHT // 2
 
 @dataclass(frozen=True)
 class DisplayConfig:
+    """SPI bus/device, DC/RESET pins, SPI speed and contrast of the SSD1327."""
     bus: int = 0
     device: int = 0
     dc_pin: int = 25
@@ -34,6 +35,7 @@ class Framebuffer:
         self.data = bytearray(FRAME_BYTES)
 
     def clear(self, shade=0):
+        """Fill the frame with one gray shade (0..15)."""
         self._shade(shade)
         self.data[:] = bytes([(shade << 4) | shade]) * FRAME_BYTES
 
@@ -43,6 +45,7 @@ class Framebuffer:
             raise ValueError('shade must be integer 0..15')
 
     def pixel(self, x, y, shade):
+        """Set one pixel to a gray shade (0..15)."""
         self._shade(shade)
         if not (0 <= x < WIDTH and 0 <= y < HEIGHT):
             return
@@ -53,18 +56,21 @@ class Framebuffer:
             self.data[i] = (shade << 4) | (self.data[i] & 0x0f)
 
     def fill_rect(self, x, y, w, h, shade):
+        """Fill a rectangle with a gray shade."""
         self._shade(shade)
         for yy in range(max(0,y), min(HEIGHT,y+h)):
             for xx in range(max(0,x),min(WIDTH,x+w)):
                 self.pixel(xx, yy, shade)
 
     def border(self, shade=15):
+        """Draw a one-pixel border."""
         for x in range(WIDTH):
             self.pixel(x,0,shade); self.pixel(x,HEIGHT-1,shade)
         for y in range(HEIGHT):
             self.pixel(0,y,shade); self.pixel(WIDTH-1,y,shade)
 
     def test_image(self, kind):
+        """Draw a named test image (used by the diagnostic)."""
         self.clear()
         if kind == 'gray':
             for x in range(16):
@@ -102,6 +108,7 @@ class Framebuffer:
         return self
 
 class SSD1327:
+    """Driver for the 128x128 SSD1327 grayscale OLED on SPI0."""
     def __init__(self, config=DisplayConfig(), *, spi=None, gpio=None, sleep=time.sleep,
                  gpio_warnings=False):
         self.config=config; self.spi=spi; self.gpio=gpio; self.sleep=sleep; self.opened=False
@@ -118,6 +125,7 @@ class SSD1327:
             self.spi.writebytes(list(payload[at:at+4096]))
 
     def open(self, *, adopt_existing=False):
+        """Initialize the display; ``adopt_existing`` keeps a picture left by the boot handover."""
         if self.opened: return
         try:
             if self.gpio is None:
@@ -162,6 +170,7 @@ class SSD1327:
             raise
 
     def show(self,frame):
+        """Send a frame to the display."""
         if not self.opened: raise RuntimeError('display not opened')
         if not isinstance(frame, Framebuffer) or len(frame.data)!=FRAME_BYTES: raise ValueError('invalid framebuffer size')
         self._cmd(0x15,0,63)

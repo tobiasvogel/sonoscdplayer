@@ -42,6 +42,7 @@ class SelectedTargetPreview:
         self._busy = False
 
     def submit(self):
+        """Log what a PLAY/PAUSE press would do, without sending it."""
         with self._lock:
             if self._busy:
                 return False

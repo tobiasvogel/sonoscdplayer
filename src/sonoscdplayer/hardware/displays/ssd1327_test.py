@@ -8,6 +8,7 @@ from sonoscdplayer.hardware.displays.ssd1327 import DisplayConfig, Framebuffer, 
 
 
 def main(argv=None):
+    """Command line: show SSD1327 test images."""
     p=argparse.ArgumentParser(description='SSD1327 display self-test')
     p.add_argument('--gpio',action='store_true',help='Use physical SPI and GPIO')
     p.add_argument('--execute',action='store_true',help='Required hardware authorization')

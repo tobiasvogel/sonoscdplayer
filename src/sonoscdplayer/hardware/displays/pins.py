@@ -6,6 +6,7 @@ import tomllib
 
 @dataclass(frozen=True)
 class DisplayPins:
+    """Controller, bus, DC and RESET pins of the display (``[display]`` in player.toml)."""
     controller: str = 'ssd1327'
     interface: str = 'spi'
     spi_bus: int = 0

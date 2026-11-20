@@ -1,4 +1,9 @@
-"""Opt-in PWM output. No Sonos write operations or audio dependencies.
+"""The LED service (sonoscdplayer-led.service): power and connection LED.
+
+Started with ``python3 -m sonoscdplayer.hardware.leds.led_service``. It reads
+the player status and the network state, turns them into LED patterns
+(leds/model.py, leds/patterns.py) and drives both LEDs with PWM, dimmed by
+the ambient light if enabled.
 
 RPi.GPIO.PWM is *software timed PWM*, even on hardware-PWM-capable BCM12/13.
 A future pigpio/backend can supply DMA/hardware timing without changing this model.
@@ -24,6 +29,7 @@ from sonoscdplayer.hardware.leds.patterns import PatternConfig, ErrorHold, inten
 
 @dataclass(frozen=True)
 class OutputConfig:
+    """``[led_outputs]``: pins, PWM frequency, brightness and the ambient light settings."""
     power_pin: int = 12
     connection_pin: int = 13
     pwm_hz: int = 200
@@ -51,6 +57,7 @@ class OutputConfig:
 
 
 def load_config(path: str) -> OutputConfig:
+    """Read and validate ``[led_outputs]``; raises ValueError."""
     import tomllib
     with open(path, 'rb') as f:
         doc = tomllib.load(f)
@@ -101,6 +108,7 @@ class PwmOutputs:
         self._initialized = False
 
     def open(self):
+        """Take both LED pins as PWM outputs."""
         if self._initialized:
             raise RuntimeError('PWM already opened')
         if self.gpio is None:
@@ -122,6 +130,7 @@ class PwmOutputs:
         return self
 
     def write(self, power: float, connection: float):
+        """Set the duty cycles (0..1) of the power and connection LED."""
         if not self._initialized:
             raise RuntimeError('PWM not opened')
         for p, amount in zip(self._pwm, (power, connection)):
@@ -130,6 +139,7 @@ class PwmOutputs:
             p.ChangeDutyCycle((amount if self.config.active_high else 1-amount)*100)
 
     def close(self):
+        """LEDs off and release the pins."""
         for p in self._pwm:
             try:
                 p.ChangeDutyCycle(0 if self.config.active_high else 100)
@@ -157,6 +167,7 @@ class PwmOutputs:
 
 
 class LedRenderer:
+    """Turns the LedState into duty cycles over time (blinking, breathing)."""
     def __init__(self, config: OutputConfig):
         self.config = config
         self.pattern_config = PatternConfig(brightness=config.brightness, error_hold_ms=config.error_hold_ms)
@@ -165,6 +176,7 @@ class LedRenderer:
         self._since = [0.0, 0.0]
 
     def tick(self, state: LedState, now_ms: float, brightness: float | None = None):
+        """Duty cycles for ``now_ms``, scaled by ``brightness``."""
         state = self.hold.update(state, now_ms)
         if brightness is not None and (not math.isfinite(brightness) or not 0<=brightness<=1): raise ValueError('invalid brightness')
         result = []
@@ -220,6 +232,7 @@ def read_network() -> Network:
 
 
 def main(argv=None):
+    """Command line of the LED service (sonoscdplayer-led.service)."""
     parser = argparse.ArgumentParser(description='Read-only LED PWM monitor (configurable BCM12/13 mapping). Dry-run by default.')
     parser.add_argument('--config', default=str(config_paths.player_config()))
     parser.add_argument('--socket', default='/tmp/sonoscdplayer-control.sock')

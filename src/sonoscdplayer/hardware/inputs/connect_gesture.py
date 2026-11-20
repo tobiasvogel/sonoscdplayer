@@ -26,9 +26,11 @@ class ConnectGesture:
 
     @property
     def pressed(self):
+        """True while the button is held."""
         return self._pressed_at is not None
 
     def press(self, now_ms):
+        """The button went down."""
         if self.pressed:
             return None
         self._pressed_at = now_ms
@@ -38,6 +40,7 @@ class ConnectGesture:
         return None
 
     def tick(self, now_ms):
+        """Called regularly while held; returns an action when a hold time is reached."""
         if not self.pressed or now_ms < self._pressed_at:
             return None
         elapsed = now_ms - self._pressed_at
@@ -61,6 +64,7 @@ class ConnectGesture:
         return f'warning_{remaining}'
 
     def release(self, now_ms):
+        """The button went up; returns the action for the press length."""
         if not self.pressed:
             return None
         started = self._pressed_at

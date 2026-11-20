@@ -15,6 +15,7 @@ TRANSITIONS = {
 
 @dataclass(frozen=True)
 class ButtonConfig:
+    """Source, pull, active level and debounce time of one button."""
     pin: int | str
     pull: str
     active_level: str
@@ -22,6 +23,7 @@ class ButtonConfig:
 
 @dataclass(frozen=True)
 class EncoderConfig:
+    """Pins, steps per detent and direction of the rotary encoder."""
     a: int
     b: int
     switch: ButtonConfig
@@ -31,6 +33,7 @@ class EncoderConfig:
 
 @dataclass(frozen=True)
 class ShiftRegisterConfig:
+    """Pins and chip count of the 74HC165 shift registers."""
     load_pin: int
     clock_pin: int
     data_pin: int
@@ -39,6 +42,7 @@ class ShiftRegisterConfig:
 
 @dataclass(frozen=True)
 class Config:
+    """The complete input configuration (interface.toml)."""
     buttons: dict
     encoder: EncoderConfig
     poll_interval_ms: int
@@ -115,6 +119,11 @@ def _registers(raw):
 
 
 def load_config(path):
+    """Read and validate interface.toml.
+
+    Raises:
+        ValueError: an invalid pin, channel, timing or combination.
+    """
     with open(path, 'rb') as f:
         raw = tomllib.load(f)
     gpio = raw.get('gpio', {})
@@ -187,6 +196,7 @@ def load_config(path):
 
 
 class Button:
+    """Debounces one button."""
     def __init__(self, config, initial, now_ms):
         self.cfg = config
         self.stable = self._active(initial)
@@ -197,6 +207,7 @@ class Button:
         return bool(raw) == (self.cfg.active_level == 'high')
 
     def update(self, raw, now_ms):
+        """Feed a raw level; returns 'pressed' or 'released' on a stable change."""
         active = self._active(raw)
         if active != self.candidate:
             self.candidate = active
@@ -219,6 +230,7 @@ class InputEngine:
         self.enc_acc = 0
 
     def sample(self, levels, now_ms):
+        """Feed all raw levels of one sampling round; returns the resulting events."""
         events = []
         for name, button in self.buttons.items():
             ev = button.update(levels[button.cfg.pin], now_ms)

@@ -29,6 +29,7 @@ class VolumeRepeat:
         self._next_ms = None
 
     def event(self, name, event, now_ms):
+        """A button changed; returns the step (+1/-1) on a volume press, else 0."""
         direction = VOLUME_BUTTONS.get(name)
         if direction is None:
             return 0
@@ -42,6 +43,7 @@ class VolumeRepeat:
         return 0
 
     def tick(self, now_ms):
+        """Regular call; returns a step when an auto-repeat is due."""
         if self._held is None or now_ms < self._next_ms:
             return 0
         self._next_ms = max(self._next_ms + self.interval_ms, now_ms)
@@ -49,6 +51,7 @@ class VolumeRepeat:
 
 
 class VolumeExecutor:
+    """Sends volume steps to the player, one at a time."""
     def __init__(self, socket_path, *, sender, publish=None, report=print):
         self.socket_path = socket_path
         self.sender = sender          # (socket_path, command) -> reply dict
@@ -59,6 +62,7 @@ class VolumeExecutor:
         self._last_no_target_notice = float('-inf')
 
     def submit(self, step):
+        """Send ``step`` in the background; dropped while one is in flight."""
         if step == 0:
             return False
         if step not in (-1, 1):

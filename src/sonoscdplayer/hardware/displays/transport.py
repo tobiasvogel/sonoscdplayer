@@ -1,4 +1,9 @@
-"""Bus boundary for display drivers; importing this module never opens hardware."""
+"""SPI and I2C transport for display controllers.
+
+A controller driver (SH1107, ST7735S) sends commands and data through a
+DisplayTransport and does not care about the bus. Importing this module
+opens no hardware; ``open()`` does.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,15 +12,32 @@ import time
 
 
 class DisplayTransport(Protocol):
-    def open(self) -> None: ...
-    def reset(self) -> None: ...
-    def command(self, payload: bytes) -> None: ...
-    def data(self, payload: bytes) -> None: ...
-    def close(self) -> None: ...
+    """What a controller driver needs from the bus."""
+
+    def open(self) -> None:
+        """Open the bus and the control pins."""
+        ...
+
+    def reset(self) -> None:
+        """Pulse the display's RESET pin."""
+        ...
+
+    def command(self, payload: bytes) -> None:
+        """Send command bytes."""
+        ...
+
+    def data(self, payload: bytes) -> None:
+        """Send display data bytes."""
+        ...
+
+    def close(self) -> None:
+        """Release the bus and the pins."""
+        ...
 
 
 @dataclass(frozen=True)
 class I2CConfig:
+    """I2C bus, address and optional RESET pin."""
     bus: int = 1
     address: int = 0x3C
     rst_pin: int = 24
@@ -53,6 +75,7 @@ class I2CTransport:
         self._pin_owned = False
 
     def open(self):
+        """Open the I2C bus and the RESET pin."""
         if self.opened:
             return
         try:
@@ -81,6 +104,7 @@ class I2CTransport:
             raise RuntimeError('transport not opened')
 
     def reset(self):
+        """Pulse RESET (if a pin is configured)."""
         self._require_open()
         self.gpio.output(self.config.rst_pin, self.gpio.HIGH)
         self.sleep(.001)
@@ -98,12 +122,15 @@ class I2CTransport:
                 self.config.address, control, list(payload[offset:offset + 32]))
 
     def command(self, payload):
+        """Send command bytes (control byte 0x00)."""
         self._write(payload, 0x00)
 
     def data(self, payload):
+        """Send data bytes (control byte 0x40)."""
         self._write(payload, 0x40)
 
     def close(self):
+        """Release bus and pin."""
         self.opened = False
         try:
             if self._bus_open:
@@ -117,6 +144,7 @@ class I2CTransport:
 
 @dataclass(frozen=True)
 class SPIConfig:
+    """SPI bus/device, speed and the DC and RESET pins."""
     bus: int = 0
     device: int = 0
     dc_pin: int = 25
@@ -157,6 +185,7 @@ class SPITransport:
         self._spi_open = False
 
     def open(self):
+        """Open SPI and the DC/RESET pins."""
         if self.opened:
             return
         try:
@@ -190,6 +219,7 @@ class SPITransport:
             raise RuntimeError('transport not opened')
 
     def reset(self):
+        """Pulse RESET."""
         self._require_open()
         self.gpio.output(self.config.rst_pin, self.gpio.HIGH)
         self.sleep(.001)
@@ -207,14 +237,17 @@ class SPITransport:
             self.spi.writebytes(list(payload[offset:offset + 4096]))
 
     def command(self, payload):
+        """Send command bytes (DC low)."""
         self._require_open()
         self._write(payload, self.gpio.LOW)
 
     def data(self, payload):
+        """Send data bytes (DC high)."""
         self._require_open()
         self._write(payload, self.gpio.HIGH)
 
     def close(self):
+        """Release SPI and the pins."""
         self.opened = False
         try:
             if self._spi_open:

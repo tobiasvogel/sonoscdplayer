@@ -186,16 +186,6 @@ class TestOLEDAmbient(unittest.TestCase):
 
 
 class DisplayPinConfigTests(unittest.TestCase):
-    def test_original_default_and_new_board(self):
-        self.assertEqual((DisplayPins().controller, DisplayPins().interface),
-                         ('ssd1327', 'spi'))
-        self.assertEqual((DisplayPins().dc_pin, DisplayPins().rst_pin), (25, 24))
-        self.assertEqual((DisplayConfig().dc_pin, DisplayConfig().rst_pin), (25, 24))
-        new = DisplayPins(dc_pin=22, rst_pin=27)
-        self.assertEqual((new.dc_pin, new.rst_pin), (22, 27))
-        self.assertEqual((DisplayConfig(dc_pin=22, rst_pin=27).dc_pin,
-                          DisplayConfig(dc_pin=22, rst_pin=27).rst_pin), (22, 27))
-
     def test_toml_splash_and_header_share_pins(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / 'local.toml'

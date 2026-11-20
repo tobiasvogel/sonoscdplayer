@@ -26,6 +26,7 @@ def contrast_for_lux(lux: float) -> int:
 
 @dataclass(frozen=True)
 class OLEDAmbientConfig:
+    """Light sensor socket, timing and fallback contrast for the OLED."""
     socket_path: str = '/run/apds9306.sock'
     timeout_ms: int = 150
     poll_ms: int = 1000
@@ -64,6 +65,7 @@ class OLEDContrastControl:
                                      smoothing_ms=c.smoothing_ms))
 
     def tick(self, now_ms: float) -> int:
+        """The contrast to use now (0..255), from the latest lux reading."""
         if not math.isfinite(now_ms): raise ValueError('invalid clock')
         if self.last_update_ms is not None and now_ms < self.last_update_ms:
             raise ValueError('clock moved backwards')

@@ -11,6 +11,7 @@ from sonoscdplayer.hardware.displays.ssd1327 import DisplayConfig, Framebuffer, 
 DEFAULT_LEVELS = (16, 32, 64, 96, 128, 160, 192, 224)
 
 def parse_levels(value):
+    """Comma-separated contrast values (0..255) from the command line."""
     try:
         levels = tuple(int(piece.strip()) for piece in value.split(','))
     except ValueError as exc:
@@ -20,6 +21,7 @@ def parse_levels(value):
     return levels
 
 def main(argv=None):
+    """Command line: show a test image at several contrast levels."""
     p=argparse.ArgumentParser(description='Manual SSD1327 contrast test')
     p.add_argument('--gpio',action='store_true')
     p.add_argument('--execute',action='store_true')

@@ -15,6 +15,7 @@ PATTERNS = ('grid', 'checker', 'text', 'clear')
 
 
 def pattern_image(pattern, config=DisplayConfig()):
+    """A test pattern (border, grid, text, ...) for the configured size."""
     from PIL import Image, ImageDraw, ImageFont
     if pattern not in PATTERNS:
         raise ValueError('unknown test pattern')
@@ -44,6 +45,7 @@ def pattern_image(pattern, config=DisplayConfig()):
 
 
 def main(argv=None):
+    """Command line of the SH1107 diagnostic (see docs/SH1107.md)."""
     parser = argparse.ArgumentParser(description='Standalone Waveshare SH1107 SPI/I2C test')
     parser.add_argument('--gpio', action='store_true')
     parser.add_argument('--execute', action='store_true')

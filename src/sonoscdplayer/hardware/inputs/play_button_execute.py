@@ -28,6 +28,7 @@ class SelectedTargetExecutor:
         self._busy = False
 
     def submit(self, action='playpause'):
+        """Carry out one PLAY/PAUSE (or STOP, track change, EJECT) press in the background."""
         if action not in ('playpause', 'stop', 'next', 'previous', 'eject'):
             return False
         with self._lock:

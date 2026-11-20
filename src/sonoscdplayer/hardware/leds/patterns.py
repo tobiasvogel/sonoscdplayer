@@ -9,6 +9,7 @@ from sonoscdplayer.hardware.leds.model import Pattern, LedState, Led
 
 @dataclass(frozen=True)
 class PatternConfig:
+    """Timing of the LED patterns (blink and breathe periods)."""
     brightness: float = 0.7
     slow_on_ms: int = 500
     slow_off_ms: int = 500
@@ -68,6 +69,7 @@ class ErrorHold:
         self._last_time = None
 
     def update(self, state: LedState, now_ms: float, *, operating: bool = True) -> LedState:
+        """Keep an error pattern visible for a minimum time."""
         if not isinstance(state, LedState) or not isinstance(operating, bool):
             raise ValueError('invalid state or operating flag')
         if not isinstance(now_ms, (int, float)) or not isfinite(now_ms) or now_ms < 0:

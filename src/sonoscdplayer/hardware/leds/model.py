@@ -12,6 +12,7 @@ from typing import Mapping
 
 
 class Pattern(str, Enum):
+    """How an LED shows a state: off, on, blinking, breathing ..."""
     OFF = 'off'
     STEADY = 'steady'
     BREATHE = 'breathe'
@@ -23,6 +24,7 @@ class Pattern(str, Enum):
 
 
 class Network(str, Enum):
+    """Network state shown by the connection LED."""
     UNKNOWN = 'unknown'            # status not readable (e.g. no NetworkManager)
     CONNECTED = 'connected'        # LAN or WLAN connected
     CONNECTING = 'connecting'      # a connection is being established
@@ -44,16 +46,19 @@ def classify_network(status) -> Network:
 
 
 class PowerFault(str, Enum):
+    """Kind of error shown by the power LED."""
     DRIVE = 'drive'          # optical drive missing (player status disc NO_DRIVE)
 
 @dataclass(frozen=True)
 class Led:
+    """Pattern of one LED."""
     pattern: Pattern
     reason: str
 
 
 @dataclass(frozen=True)
 class LedState:
+    """Patterns of both LEDs."""
     power: Led
     connection: Led
 

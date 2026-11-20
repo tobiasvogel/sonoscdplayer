@@ -5,11 +5,13 @@ Further cascaded chips use channels 8..15, and so on.
 """
 
 class ShiftRegisterReader:
+    """Reads the button levels from cascaded 74HC165 chips."""
     def __init__(self, gpio, registers):
         self.gpio = gpio
         self.registers = registers
 
     def setup(self):
+        """Configure the LOAD, CLOCK and DATA pins."""
         gpio = self.gpio
         for config in self.registers.values():
             gpio.setup(config.load_pin, gpio.OUT, initial=gpio.HIGH)

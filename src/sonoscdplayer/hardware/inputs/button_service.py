@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""GPIO diagnostic with explicit opt-in, bounded one-shot player commands."""
+"""The button service (sonoscdplayer-buttons.service).
+
+Started with ``python3 -m sonoscdplayer.hardware.inputs.button_service``.
+It samples the buttons and the rotary encoder (directly on GPIO or through
+74HC165 shift registers), debounces them and detects long presses. Playback
+buttons become one command each to the player service; encoder, CONNECT and
+POWER events go to the display service as UI events (``--ui-events-socket``).
+Commands are only sent with ``--execute --selected-target-execute``, as in
+the installed unit; otherwise it only prints what it detects.
+"""
 import argparse
 import queue
 import json
@@ -110,6 +119,7 @@ class CommandDispatcher:
         self._busy = False
 
     def submit(self, command):
+        """Send ``command`` in the background; dropped if one is still running."""
         if command == 'playpause' and self.uid is None:
             print('command skipped: playpause UID unavailable', flush=True)
             return False
@@ -150,6 +160,7 @@ class DriveActivityPublisher:
         self._thread = None
 
     def start(self):
+        """Start the background sender."""
         if self._thread is not None:
             raise RuntimeError('drive activity publisher already started')
         self._thread = threading.Thread(
@@ -160,6 +171,7 @@ class DriveActivityPublisher:
         self._thread.start()
 
     def enqueue(self):
+        """Note a button press that will use the drive (non-blocking)."""
         if self._closed.is_set():
             return False
         try:
@@ -186,6 +198,7 @@ class DriveActivityPublisher:
                 )
 
     def close(self):
+        """Stop the background sender."""
         self._closed.set()
 
 
@@ -214,6 +227,7 @@ def should_publish_drive_activity(name, event, *, safe_executor):
 
 
 def handle_event(name, event, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None, dispatcher=None, target_preview=None, target_executor=None):
+    """Turn one button event into a player command (if commands are enabled)."""
     command = map_event(name, event)
     print(f'{name}: {event}' + (f' -> {command}' if command else ''), flush=True)
     if not command or not commands:
@@ -294,6 +308,7 @@ def tick_connect_event(gesture, now_ms, publish):
 
 
 def pins_for(cfg):
+    """GPIO pins of all buttons and the encoder from the configuration."""
     return {b.pin: b.pull for b in cfg.buttons.values()
             if isinstance(b.pin, int)} | {
         cfg.encoder.a: cfg.encoder.pull, cfg.encoder.b: cfg.encoder.pull,
@@ -301,6 +316,7 @@ def pins_for(cfg):
 
 
 def input_sources(cfg):
+    """Where each input is read from: a GPIO pin or a shift-register channel."""
     return set(pins_for(cfg)) | {
         button.pin for button in cfg.buttons.values()
         if isinstance(button.pin, str)
@@ -332,6 +348,7 @@ def run_sim(cfg, input_file):
 def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, uid=None, ui_events_socket=None, target_preview_enabled=False, target_execute_enabled=False,
              drive_activity_enabled=False, power_actions=False,
              connect_gestures=False, gpio_warnings=False):
+    """Main loop: sample the inputs, detect presses and gestures, send commands and UI events."""
     try:
         import RPi.GPIO as GPIO
     except ImportError as exc:
@@ -435,6 +452,7 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
 
 
 def main():
+    """Command line of the button service (sonoscdplayer-buttons.service)."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--config', type=Path, default=None,
                    help='interface TOML (default: interface.toml in the standard config directory)')
