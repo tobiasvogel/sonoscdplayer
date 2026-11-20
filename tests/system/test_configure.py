@@ -39,9 +39,8 @@ class ConfigureTests(unittest.TestCase):
 
     def test_missing_optional_sections_use_reference_defaults(self):
         parsed = {'streaming': {'max_buffer_mib': 16}}
-        reference = {'metadata': {'online_lookup': True},
-                     'sonos': {'use_queue': True},
-                     'playback': {'continue': True}}
+        import tomllib
+        reference = tomllib.loads(config.REFERENCE.read_text())
         values = config.existing_values(parsed, reference)
         self.assertEqual(values[('metadata', 'online_lookup')], True)
         self.assertEqual(values[('streaming', 'max_buffer_mib')], 16)
@@ -86,43 +85,119 @@ class ConfigureTests(unittest.TestCase):
         self.assertEqual(config.ask('Buffer', 16, 205, 'int', read=lambda _: ''), 205)
 
     def test_section_navigation_and_review(self):
-        current = {('streaming', 'max_buffer_mib'): 16,
-                   ('metadata', 'online_lookup'): True,
-                   ('sonos', 'use_queue'): True,
-                   ('playback', 'continue'): True}
-        replies = iter(['1', '', 'k', '2', 'n', '4', 'y'])
+        current = config.existing_values(
+            {'streaming': {'max_buffer_mib': 16}},
+            __import__('tomllib').loads(config.REFERENCE.read_text()))
+        replies = iter(['1', '', 'k', '2', 'n', '6', 'y'])
         result = config.interactive_choices(current, 205,
                     read=lambda _: next(replies), out=lambda _: None)
         self.assertEqual(result, {('streaming', 'max_buffer_mib'): 205,
                                   ('metadata', 'online_lookup'): False})
 
     def test_returning_to_section_reverts_change(self):
-        current = {('streaming', 'max_buffer_mib'): 16,
-                   ('metadata', 'online_lookup'): True,
-                   ('sonos', 'use_queue'): True,
-                   ('playback', 'continue'): True}
-        replies = iter(['1', '', 'k', '1', 'k', 'k', '4', 'y'])
+        current = config.existing_values(
+            {'streaming': {'max_buffer_mib': 16}},
+            __import__('tomllib').loads(config.REFERENCE.read_text()))
+        replies = iter(['1', '', 'k', '1', 'k', 'k', '6', 'y'])
         result = config.interactive_choices(current, 205,
                     read=lambda _: next(replies), out=lambda _: None)
         self.assertEqual(result, {})
 
     def test_exit_discard_changes(self):
-        current = {('streaming', 'max_buffer_mib'): 16,
-                   ('metadata', 'online_lookup'): True,
-                   ('sonos', 'use_queue'): True,
-                   ('playback', 'continue'): True}
+        current = config.existing_values(
+            {'streaming': {'max_buffer_mib': 16}},
+            __import__('tomllib').loads(config.REFERENCE.read_text()))
         replies = iter(['1', '', 'k', '0'])
         self.assertIsNone(config.interactive_choices(current, 205,
                     read=lambda _: next(replies), out=lambda _: None))
 
     def test_review_must_be_confirmed(self):
-        current = {('streaming', 'max_buffer_mib'): 16,
-                   ('metadata', 'online_lookup'): True,
-                   ('sonos', 'use_queue'): True,
-                   ('playback', 'continue'): True}
-        replies = iter(['4', '', '0'])
+        current = config.existing_values(
+            {'streaming': {'max_buffer_mib': 16}},
+            __import__('tomllib').loads(config.REFERENCE.read_text()))
+        replies = iter(['6', '', '0'])
         self.assertIsNone(config.interactive_choices(current, 205,
                     read=lambda _: next(replies), out=lambda _: None))
+
+
+    def test_m2_current_values_and_missing_idle_runtime_default(self):
+        import tomllib
+        reference = tomllib.loads(config.REFERENCE.read_text())
+        current = config.existing_values({'streaming': {'max_buffer_mib': 16}}, reference)
+        self.assertEqual(current[('audio_startup', 'pcm_timeout_seconds')], 45)
+        self.assertEqual(current[('drive_power', 'strategy')], 'auto')
+        self.assertIsNone(current[('drive_power', 'idle_spin_down_seconds')])
+
+    def test_m2_numeric_limits_and_strategy(self):
+        for field, invalid in ((('audio_startup', 'pcm_timeout_seconds'), 121),
+                               (('drive_power', 'keepalive_interval_seconds'), 2),
+                               (('drive_power', 'idle_spin_down_seconds'), 29)):
+            import tomllib
+            reference = tomllib.loads(config.REFERENCE.read_text())
+            group, key = field
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'invalid'):
+                config.existing_values({'streaming': {'max_buffer_mib': 16},
+                                        group: {key: invalid}}, reference)
+        replies = iter(['invalid', 'keepalive'])
+        self.assertEqual(config.ask('Strategy', 'auto', 'auto', 'strategy',
+                                    choices=config.DRIVE_STRATEGIES,
+                                    read=lambda _: next(replies), out=lambda _: None), 'keepalive')
+
+    def test_m2_idle_off_deletes_setting_without_touching_other_values(self):
+        import tomllib
+        raw = ('[drive_power]\nenabled = true\nstrategy = "auto"\n'
+               'idle_spin_down_seconds = 120 # comment\nkeepalive_interval_seconds = 10\n'
+               '[audio_startup]\nprebuffer_before_sonos = true\n')
+        changed = config.replace_values(raw, {
+            ('drive_power', 'idle_spin_down_seconds'): None,
+            ('drive_power', 'strategy'): 'keepalive',
+            ('audio_startup', 'prebuffer_before_sonos'): False})
+        doc = tomllib.loads(changed)
+        self.assertNotIn('idle_spin_down_seconds', doc['drive_power'])
+        self.assertEqual(doc['drive_power']['strategy'], 'keepalive')
+        self.assertEqual(doc['drive_power']['keepalive_interval_seconds'], 10)
+        self.assertFalse(doc['audio_startup']['prebuffer_before_sonos'])
+
+    def test_m2_idle_dependencies(self):
+        import tomllib
+        current = config.existing_values(
+            {'streaming': {'max_buffer_mib': 16}},
+            tomllib.loads(config.REFERENCE.read_text()))
+        current[('drive_power', 'idle_spin_down_seconds')] = 120
+        for enabled, strategy in ((False, 'auto'), (True, 'off'), (True, 'start'),
+                                  (True, 'power_condition')):
+            candidate = {**current, ('drive_power', 'enabled'): enabled,
+                         ('drive_power', 'strategy'): strategy}
+            with self.subTest(strategy=strategy), self.assertRaisesRegex(ValueError, 'requires'):
+                config.validate_combination(candidate)
+        config.validate_combination({**current, ('drive_power', 'strategy'): 'keepalive'})
+        with self.assertRaisesRegex(ValueError, 'overrides'):
+            config.validate_combination(current, {'drive_power': {'mode_page_overrides': {'IACT': 1}}})
+
+    def test_m2_navigation_and_validation_prevents_invalid_finish(self):
+        import tomllib
+        current = config.existing_values(
+            {'streaming': {'max_buffer_mib': 16}},
+            tomllib.loads(config.REFERENCE.read_text()))
+        replies = iter(['4', 'n', 'k', 'k', '120', '6', '4', 'n', 'k', 'k', 'off', '6', 'y'])
+        output = []
+        result = config.interactive_choices(current, 205,
+                    read=lambda _: next(replies), out=output.append)
+        self.assertIn('Configuration conflict:', '\n'.join(output))
+        self.assertEqual(result[('drive_power', 'enabled')], False)
+        self.assertNotIn(('drive_power', 'idle_spin_down_seconds'), result)
+
+    def test_m2_optional_sections_insert_and_toml_valid(self):
+        import tomllib
+        raw = '[streaming]\nmax_buffer_mib = 16\n'
+        updated = config.replace_values(raw, {
+            ('audio_startup', 'pcm_timeout_seconds'): 60,
+            ('drive_power', 'strategy'): 'keepalive',
+            ('drive_power', 'idle_spin_down_seconds'): 300})
+        parsed = tomllib.loads(updated)
+        self.assertEqual(parsed['audio_startup']['pcm_timeout_seconds'], 60)
+        self.assertEqual(parsed['drive_power']['strategy'], 'keepalive')
+        self.assertEqual(parsed['drive_power']['idle_spin_down_seconds'], 300)
 
 
 

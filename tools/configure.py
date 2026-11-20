@@ -19,6 +19,14 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 SWAP_PATH = ROOT / 'tools' / 'config_swap.py'
 LIMITS = (16, 512)
+# Align these ranges and constraints with player.service and drive.power.
+FIELD_RANGES = {
+    ('streaming', 'max_buffer_mib'): LIMITS,
+    ('audio_startup', 'pcm_timeout_seconds'): (5, 120),
+    ('drive_power', 'keepalive_interval_seconds'): (3, 3600),
+    ('drive_power', 'idle_spin_down_seconds'): (30, 86400),
+}
+DRIVE_STRATEGIES = ('off', 'start', 'keepalive', 'power_condition', 'auto')
 # Optional values are taken from the shipped reference configuration.
 REFERENCE = ROOT / "config" / "player.example.toml"
 FIELDS = (
@@ -26,6 +34,12 @@ FIELDS = (
     ('metadata', 'online_lookup', 'Look up metadata online', 'bool'),
     ('sonos', 'use_queue', 'Use the Sonos queue', 'bool'),
     ('playback', 'continue', 'Continue to the next track', 'bool'),
+    ('audio_startup', 'prebuffer_before_sonos', 'Prebuffer audio before Sonos starts', 'bool'),
+    ('audio_startup', 'pcm_timeout_seconds', 'PCM startup timeout (seconds)', 'int'),
+    ('drive_power', 'enabled', 'Enable CD drive power management', 'bool'),
+    ('drive_power', 'strategy', 'CD drive power strategy', 'strategy'),
+    ('drive_power', 'keepalive_interval_seconds', 'Drive keepalive interval (seconds)', 'int'),
+    ('drive_power', 'idle_spin_down_seconds', 'Idle spin-down after (seconds; off disables)', 'optional_int'),
 )
 SECTION = re.compile(r'^\s*\[([^\]]+)\]\s*(?:#.*)?$')
 ASSIGN = re.compile(r'^(\s*)([A-Za-z0-9_-]+)(\s*=\s*)([^#\r\n]*?)(\s*(?:#.*)?)$')
@@ -56,13 +70,21 @@ def existing_values(parsed: dict, reference: dict) -> dict[tuple[str, str], obje
             raise ValueError(f'invalid [{section}] section')
         if key in group:
             value = group[key]
+        elif (section, key) == ('drive_power', 'idle_spin_down_seconds'):
+            # Unlike the example, the runtime default for an omitted value is off.
+            value = None
         elif (section, key) == ('streaming', 'max_buffer_mib'):
             raise ValueError('missing required [streaming].max_buffer_mib')
         else:
             value = reference.get(section, {}).get(key)
             if value is None:
                 raise ValueError(f'no reference default for {section}.{key}')
-        if ((kind == 'int' and (type(value) is not int or not LIMITS[0] <= value <= LIMITS[1]))
+        field = (section, key)
+        bounds = FIELD_RANGES.get(field)
+        if ((kind == 'int' and (type(value) is not int or not bounds[0] <= value <= bounds[1]))
+                or (kind == 'optional_int' and value is not None
+                    and (type(value) is not int or not bounds[0] <= value <= bounds[1]))
+                or (kind == 'strategy' and (type(value) is not str or value not in DRIVE_STRATEGIES))
                 or (kind == 'bool' and type(value) is not bool)):
             raise ValueError(f'invalid {section}.{key}')
         current[(section, key)] = value
@@ -70,7 +92,13 @@ def existing_values(parsed: dict, reference: dict) -> dict[tuple[str, str], obje
 
 
 def render_value(value: object) -> str:
-    return ('true' if value else 'false') if type(value) is bool else str(value)
+    if value is None:
+        return 'off'  # Only used for a removed optional idle spin-down setting.
+    if type(value) is bool:
+        return 'true' if value else 'false'
+    if type(value) is str:
+        return '"' + value + '"'
+    return str(value)
 
 
 def replace_values(raw: str, changes: dict[tuple[str, str], object]) -> str:
@@ -92,9 +120,13 @@ def replace_values(raw: str, changes: dict[tuple[str, str], object]) -> str:
                 raise ValueError(f'duplicate configuration key {section}.{key[1]}')
             found.add(key)
             eol = line[len(bare):]
-            lines[index] = (assignment.group(1) + assignment.group(2) + assignment.group(3)
-                            + render_value(changes[key]) + assignment.group(5) + eol)
-    missing = changes.keys() - found
+            if changes[key] is None:
+                # TOML has no null. Missing idle_spin_down_seconds means disabled.
+                lines[index] = ''
+            else:
+                lines[index] = (assignment.group(1) + assignment.group(2) + assignment.group(3)
+                                + render_value(changes[key]) + assignment.group(5) + eol)
+    missing = {key for key in changes.keys() - found if changes[key] is not None}
     if any(section == 'streaming' for section, _ in missing):
         raise ValueError('missing required [streaming].max_buffer_mib')
     # Insert a missing key at the end of its existing top-level table, before
@@ -128,16 +160,36 @@ FIELD_HELP = {
     ('metadata', 'online_lookup'): 'Look up CD metadata on MusicBrainz when enabled.',
     ('sonos', 'use_queue'): 'Add CD tracks to the Sonos queue so album and artist are visible.',
     ('playback', 'continue'): 'Automatically play the next CD track after one ends.',
+    ('audio_startup', 'prebuffer_before_sonos'): (
+        'Wait for initial CD audio before asking Sonos to start playback.'),
+    ('audio_startup', 'pcm_timeout_seconds'): (
+        'Time allowed for initial PCM audio from the CD reader: 5..120 seconds.'),
+    ('drive_power', 'enabled'): 'Allow controlled power management of the CD drive.',
+    ('drive_power', 'strategy'): (
+        'off disables motor control; start issues a motor start; keepalive keeps the '
+        'drive awake; power_condition uses supported drive firmware; auto probes '
+        'capabilities and falls back to keepalive.'),
+    ('drive_power', 'keepalive_interval_seconds'): (
+        'Interval between keepalive checks when active: 3..3600 seconds.'),
+    ('drive_power', 'idle_spin_down_seconds'): (
+        'After this much safe inactivity the drive may spin down: 30..86400 seconds. '
+        'Type off to disable. Requires enabled drive management with auto or '
+        'keepalive strategy; cannot combine with mode-page overrides.'),
 }
 MENU_GROUPS = (
     ('Streaming and playback', (('streaming', 'max_buffer_mib'), ('playback', 'continue'))),
     ('CD metadata', (('metadata', 'online_lookup'),)),
     ('Sonos', (('sonos', 'use_queue'),)),
+    ('CD drive and power management', (
+        ('drive_power', 'enabled'), ('drive_power', 'strategy'),
+        ('drive_power', 'keepalive_interval_seconds'), ('drive_power', 'idle_spin_down_seconds'))),
+    ('Audio startup', (
+        ('audio_startup', 'prebuffer_before_sonos'), ('audio_startup', 'pcm_timeout_seconds'))),
 )
 
 
 def ask(label: str, current: object, suggestion: object, kind: str,
-        *, help_text: str = '', read=input, out=print) -> object:
+        *, help_text: str = '', bounds=None, choices=(), read=input, out=print) -> object:
     """Enter explicitly accepts the suggestion; k leaves current untouched."""
     while True:
         value = read(f'{label} (current: {render_value(current)}; '
@@ -150,16 +202,36 @@ def ask(label: str, current: object, suggestion: object, kind: str,
             return suggestion
         if value.lower() == 'k':
             return current
-        if kind == 'int':
-            if re.fullmatch(r'\d+', value) and LIMITS[0] <= int(value) <= LIMITS[1]:
+        if kind in ('int', 'optional_int'):
+            if kind == 'optional_int' and value.lower() == 'off':
+                return None
+            low, high = bounds or LIMITS
+            if re.fullmatch(r'\d+', value) and low <= int(value) <= high:
                 return int(value)
-            out(f'Enter a whole number from {LIMITS[0]} to {LIMITS[1]}.')
+            out(f'Enter a whole number from {low} to {high}'
+                + (' or off.' if kind == 'optional_int' else '.'))
+        elif kind == 'strategy':
+            if value.lower() in choices:
+                return value.lower()
+            out('Choose one of: ' + ', '.join(choices))
         elif value.lower() in ('y', 'yes', 'true', '1'):
             return True
         elif value.lower() in ('n', 'no', 'false', '0'):
             return False
         else:
             out('Enter yes or no.')
+
+
+def validate_combination(staged, parsed=None):
+    """Refuse power configurations rejected by drive.power at service startup."""
+    enabled = staged[('drive_power', 'enabled')]
+    strategy = staged[('drive_power', 'strategy')]
+    idle = staged[('drive_power', 'idle_spin_down_seconds')]
+    if idle is not None and (not enabled or strategy not in ('auto', 'keepalive')):
+        raise ValueError('idle spin-down requires enabled drive power with auto or keepalive strategy')
+    overrides = (parsed or {}).get('drive_power', {}).get('mode_page_overrides', {})
+    if idle is not None and overrides:
+        raise ValueError('idle spin-down cannot be combined with drive power mode-page overrides')
 
 
 def pending_changes(current, staged):
@@ -180,7 +252,7 @@ def review(current, staged, *, out=print):
     return changes
 
 
-def interactive_choices(current, recommendation, *, read=input, out=print):
+def interactive_choices(current, recommendation, *, parsed=None, read=input, out=print):
     """Stage independent sections; review is the only way to finish with changes.
 
     Returning None means the user exited without accepting the review.
@@ -192,19 +264,25 @@ def interactive_choices(current, recommendation, *, read=input, out=print):
         out('\nSonosCDPlayer Configuration')
         for n, (heading, _) in enumerate(MENU_GROUPS, 1):
             out(f'  {n}. {heading}')
-        out('  4. Review pending changes and finish')
+        finish = len(MENU_GROUPS) + 1
+        out(f'  {finish}. Review pending changes and finish')
         out('  0. Exit without applying changes')
-        choice = read('Select a section [4]: ').strip() or '4'
+        choice = read(f'Select a section [{finish}]: ').strip() or str(finish)
         if choice == '0':
             return None
-        if choice == '4':
+        if choice == str(finish):
+            try:
+                validate_combination(staged, parsed)
+            except ValueError as exc:
+                out(f'Configuration conflict: {exc}')
+                continue
             changes = review(current, staged, out=out)
             answer = read('Finish with these selections? [y/N]: ').strip().lower()
             if answer in ('y', 'yes'):
                 return changes
             continue
-        if choice not in ('1', '2', '3'):
-            out('Select 0, 1, 2, 3 or 4.')
+        if not choice.isdigit() or not 1 <= int(choice) <= len(MENU_GROUPS):
+            out(f'Select a number from 0 to {finish}.')
             continue
         heading, group_fields = MENU_GROUPS[int(choice) - 1]
         out(f'\n{heading} (press k to keep the original value)')
@@ -213,7 +291,10 @@ def interactive_choices(current, recommendation, *, read=input, out=print):
             suggestion = (recommendation if field == ('streaming', 'max_buffer_mib')
                           else staged[field])
             staged[field] = ask(label, current[field], suggestion, kind,
-                                help_text=FIELD_HELP[field], read=read, out=out)
+                                help_text=FIELD_HELP[field],
+                                bounds=FIELD_RANGES.get(field),
+                                choices=DRIVE_STRATEGIES if kind == 'strategy' else (),
+                                read=read, out=out)
 
 
 def load_swap():
@@ -251,7 +332,7 @@ def main(argv=None) -> int:
         if sys.stdin.isatty():
             if args.buffer_mib is not None:
                 raise ValueError('--buffer-mib is intended for non-interactive use')
-            changes = interactive_choices(current, recommendation)
+            changes = interactive_choices(current, recommendation, parsed=parsed)
             if changes is None:
                 print('Cancelled; nothing changed.')
                 return 0
