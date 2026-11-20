@@ -382,8 +382,12 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
             out(f'  {n}. {heading}')
         finish = len(groups) + 1
         out(f'  {finish}. Review pending changes and finish')
+        out('  d. Display hardware inventory (read-only)')
         out('  0. Exit without applying changes')
         choice = read(f'Select a section [{finish}]: ').strip() or str(finish)
+        if choice.lower() == 'd':
+            show_display_inventory(parsed or {}, out=out)
+            continue
         if choice == '0':
             return None
         if choice == str(finish):
@@ -438,6 +442,18 @@ def plan_update(changes, current, ui_current, *, player_path, ui_path, raw, ui_r
         list(UI_SERVICES) if ui else ['sonoscdplayer-player.service'])
 
 
+def show_display_inventory(parsed, *, out=print):
+    """Read-only display report; never stages or writes configuration changes."""
+    spec = importlib.util.spec_from_file_location(
+        'sonos_display_inventory', ROOT / 'tools' / 'display_inventory.py')
+    if spec is None or spec.loader is None:
+        raise RuntimeError('display_inventory.py unavailable')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    for line in module.inventory_lines(parsed):
+        out(line)
+
+
 def load_swap():
     spec = importlib.util.spec_from_file_location('sonos_config_swap', SWAP_PATH)
     if not spec or not spec.loader:
@@ -451,10 +467,14 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--config', type=Path, help='player.toml (default: installed location)')
     p.add_argument('--ui-config', type=Path, help='ui.toml (default: same directory as player.toml)')
+    p.add_argument('--display-report', action='store_true',
+                   help='print read-only display inventory and exit (no wizard or writes)')
     p.add_argument('--apply', action='store_true', help='apply after preview and explicit confirmation')
     p.add_argument('--buffer-mib', type=int, help='explicit 16..512 MiB value for automation')
     p.add_argument('--yes', action='store_true', help='confirm apply without a terminal (requires --apply)')
     args = p.parse_args(argv)
+    if args.display_report and (args.apply or args.yes or args.buffer_mib is not None):
+        p.error('--display-report cannot be combined with --apply, --yes or --buffer-mib')
     if args.yes and not args.apply:
         p.error('--yes requires --apply')
     if args.config is None:
@@ -466,6 +486,9 @@ def main(argv=None) -> int:
     try:
         raw = args.config.read_text(encoding='utf-8')
         parsed = tomllib.loads(raw)
+        if args.display_report:
+            show_display_inventory(parsed)
+            return 0
         reference = tomllib.loads(REFERENCE.read_text(encoding='utf-8'))
         current = existing_values(parsed, reference)
         ui_path = args.ui_config or args.config.with_name('ui.toml')
