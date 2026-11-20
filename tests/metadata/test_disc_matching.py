@@ -66,12 +66,18 @@ class MatchingTests(unittest.TestCase):
                          ['Chor vom CD-TEXT', 'MB B', None, 'MB D'])   # CD-TEXT wins
         self.assertEqual(enriched.artist, 'Verschiedene')
 
-    def test_near_tie_stays_manual(self):
+    def test_near_tie_with_different_titles_stays_manual(self):
         similar = candidate('alternative', 'Frühlingslieder', 'Kinderchor',
-                            self.correct.track_titles)
+                            self.correct.track_titles[:3] + ('Bonus Track',))
         decision = self.decide(self.correct, similar)
         self.assertEqual(decision.status, 'manual')
         self.assertEqual(decision.reason, 'margin below minimum')
+
+    def test_tie_of_identical_editions_uses_their_names(self):
+        same = candidate('alternative', 'Frühlingslieder', 'Kinderchor',
+                         self.correct.track_titles)
+        decision = self.decide(self.correct, same)
+        self.assertEqual(decision.status, 'consensus')
 
     def test_no_cdtext_stays_manual(self):
         local = make_local((None, None, None, None), album=None, artist=None)

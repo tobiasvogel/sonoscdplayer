@@ -50,8 +50,9 @@ def matching_policy_from_config(metadata):
         language_rules=load_language_rules(tuple(languages)))
 
 
-#: An offline/unavailable lookup is tried once more after this time.
-RETRY_SECONDS = 120.0
+#: An offline/unavailable lookup is tried again after these delays (s),
+#: then no more for this disc.
+RETRY_DELAYS = (120.0, 600.0, 1800.0)
 _RETRY_STATUSES = ('offline', 'unavailable', 'error')
 
 
@@ -92,9 +93,10 @@ def describe(snapshot):
     titles = sum(1 for t in snapshot.get('tracks') or () if t.get('title'))
     release = snapshot.get('release_id') or '-'
     return ('[metadata] disc={disc} match={match} cdtext={cdtext} lookup={lookup} '
-            'release={release} titles={titles}/{count} cover={cover}').format(
+            'release={release} titles={titles}/{count} cover={cover}{error}').format(
         disc=snapshot.get('disc_id') or '-', match=snapshot.get('match_status'),
         cdtext=snapshot.get('cdtext_status'), lookup=snapshot.get('lookup_status') or '-',
+        error=f" ({snapshot['lookup_error']})" if snapshot.get('lookup_error') else '',
         release=release, titles=titles, count=len(snapshot.get('tracks') or ()),
         cover=snapshot.get('cover_status'))
 
@@ -109,6 +111,8 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
     except Exception:
         cached = None
     lookup_status = None
+    lookup_error = None
+    alternatives = ()
     if cached is not None:
         effective = _prefer_cdtext(local, cached.local)
         release_id = cached.release_id
@@ -123,9 +127,11 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                 result = lookup(identity, track_count=len(toc.tracks),
                                 timeout_seconds=timeout)
                 lookup_status = result.status
-            except Exception:
+                lookup_error = result.error
+            except Exception as exc:
                 result = None
                 lookup_status = 'error'
+                lookup_error = type(exc).__name__
             if result is not None and result.status in ('unique', 'ambiguous'):
                 # Bad external data must not remove the local metadata either.
                 try:
@@ -137,6 +143,8 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                     release_id = decision.selected_release_id
                     match, score = decision.status, decision.score
                     effective = merged
+                    alternatives = tuple(item.release.release_id for item in decision.candidates
+                                         if item.release.release_id != release_id)
                     if release_id:
                         try:
                             cache.put(identity, effective, release_id=release_id,
@@ -146,6 +154,18 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                             pass
     # Cover mode off suppresses even cached files in the UI.
     cover, cover_status = _cover_file(cover_cache, release_id, cover_policy)
+    if match == 'consensus' and cover_status == 'unavailable':
+        # Same names on every release: take the cover of the first one that has one.
+        for other in alternatives:
+            path, status = _cover_file(cover_cache, other, cover_policy)
+            if path is not None:
+                cover, cover_status, release_id = path, status, other
+                try:
+                    cache.put(identity, effective, release_id=release_id,
+                              match_method=match, confidence_score=score)
+                except Exception:
+                    pass
+                break
     return {
         'disc_id': identity.disc_id,
         'album': effective.album,
@@ -160,6 +180,7 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
         'cover_status': cover_status,
         'cdtext_status': local.cdtext_status,
         'lookup_status': lookup_status,
+        'lookup_error': lookup_error,
     }
 
 
@@ -170,7 +191,7 @@ class MetadataWorker:
                  online=True, timeout=8, matching_policy=None,
                  ui_path=None, display_supports_cover=False, sonos_uses_cover=False,
                  identify=identity_from_toc, lookup=lookup_disc,
-                 executor=None, clock=time.monotonic, retry_seconds=RETRY_SECONDS):
+                 executor=None, clock=time.monotonic, retry_delays=RETRY_DELAYS):
         self._cache = DiscCache(cache_path)
         self._cover = CoverStore(cover_dir)
         self._policy = matching_policy or MatchingPolicy()
@@ -187,9 +208,9 @@ class MetadataWorker:
         self._last_cdtext = None
         self._result = None
         self._clock = clock
-        self._retry_seconds = retry_seconds
-        self._retry_at = None       # one later lookup when the first was offline
-        self._retried = None        # TOC whose one retry is used up
+        self._retry_delays = tuple(retry_delays)
+        self._retry_at = None       # next lookup when the last was offline/unavailable
+        self._retries = 0           # retries already scheduled for the current disc
 
     def observe(self, toc, cdtext=None):
         """Called on the serialized player worker after a verified TOC change.
@@ -203,6 +224,7 @@ class MetadataWorker:
         self._last_cdtext = cdtext
         self._result = None
         self._retry_at = None
+        self._retries = 0
         if toc is None:
             self._pending, self._pending_toc = None, None
             return True
@@ -240,10 +262,11 @@ class MetadataWorker:
         value = pending.result()
         if value is None:
             return False
-        if value.get('lookup_status') in _RETRY_STATUSES and self._retried != toc:
-            # Only one later attempt per disc; never a retry loop.
-            self._retried = toc
-            self._retry_at = self._clock() + self._retry_seconds
+        if (value.get('lookup_status') in _RETRY_STATUSES
+                and self._retries < len(self._retry_delays)):
+            # A few later attempts per disc, further apart; never a loop.
+            self._retry_at = self._clock() + self._retry_delays[self._retries]
+            self._retries += 1
         self._result = value
         return True
 
@@ -258,7 +281,7 @@ class MetadataWorker:
             raise ValueError('no disc inserted')
         self._cache.delete(self._identify(toc))
         self._result = None
-        self._retry_at, self._retried = None, None
+        self._retry_at, self._retries = None, 0
         self._submit(toc)
         return True
 

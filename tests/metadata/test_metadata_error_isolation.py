@@ -29,7 +29,7 @@ class FailureIsolationTests(unittest.TestCase):
             cover_dir=Path(self.temp.name) / 'covers',
             executor=self.executor,
             identify=lambda toc: DiscIdentity('A' * 28, toc.label),
-            lookup=self.lookup, retry_seconds=120)
+            lookup=self.lookup, retry_delays=(120,))
         self.toc = FakeToc('test-disc')
 
     def finish(self):

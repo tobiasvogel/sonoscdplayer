@@ -100,7 +100,7 @@ class DiscCache:
             release_id=None, match_method=None, confidence_score=None,
             confirmed_by_user=False) -> bool:
         """Never replace a manually confirmed release with another release."""
-        if match_method not in (None, 'unique', 'confidence', 'manual'):
+        if match_method not in (None, 'unique', 'confidence', 'consensus', 'manual'):
             raise ValueError('invalid match method')
         if release_id is None and (match_method is not None or confidence_score is not None
                                    or confirmed_by_user):

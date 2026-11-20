@@ -6,6 +6,13 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- CDs without CD-TEXT that MusicBrainz lists in several editions now get
+  their titles when all editions name album, artist and tracks alike
+  (spelling differences such as case or "…" are ignored); the cover comes
+  from the first edition that has one. Editions that differ still show
+  track numbers only.
+- An unreachable or overloaded MusicBrainz is asked again after 2, 10 and
+  30 minutes (before: once), and the log shows the reason (e.g. HTTP 503).
 - STOP on a group (and the stop at shutdown) releases the group before the
   disc is removed from the Sonos queue. Before, the release could fail,
   and the remaining "group cleanup pending" blocked EJECT and PLAY.

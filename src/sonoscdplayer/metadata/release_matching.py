@@ -84,7 +84,7 @@ class ScoredRelease:
 @dataclass(frozen=True)
 class MatchDecision:
     """The chosen release (if any), the reason and all scored candidates."""
-    status: str  # unique | confidence | manual | disabled | not_found
+    status: str  # unique | confidence | consensus | manual | disabled | not_found
     selected_release_id: str | None
     score: int | None
     margin: int | None
@@ -206,7 +206,34 @@ def decide_release(local: LocalDiscMetadata, lookup: LookupResult,
     else:
         return MatchDecision('confidence', best.release.release_id, best.score,
                              margin, ranked, 'high-confidence CD-TEXT agreement')
+    if (not _has_protected_conflict(local, best.release, policy)
+            and releases_agree(ranked, len(local.tracks), policy)):
+        # Which edition it is cannot be told, but they all name the album,
+        # the artist and every track the same: those names are safe to use.
+        return MatchDecision('consensus', best.release.release_id, best.score, margin,
+                             ranked, 'all releases agree on album, artist and titles')
     return MatchDecision('manual', None, best.score, margin, ranked, reason)
+
+
+def releases_agree(ranked, track_count, policy: MatchingPolicy = MatchingPolicy()):
+    """True if all candidates fit the disc and name album, artist and tracks alike.
+
+    Spelling differences that the comparison key folds (case, punctuation,
+    "…" versus "...", hyphen characters) do not count as differences.
+    """
+    if len(ranked) < 2:
+        return False
+    key = policy.language_rules.normalize
+
+    def names(release):
+        titles = tuple(key(t) for t in release.track_titles)
+        return key(release.title), key(release.artist), titles
+
+    first = names(ranked[0].release)
+    album, artist, titles = first
+    if not album or not artist or len(titles) != track_count or not all(titles):
+        return False
+    return all(item.structure_score == 10 and names(item.release) == first for item in ranked)
 
 
 def merged_metadata(local: LocalDiscMetadata, decision: MatchDecision) -> LocalDiscMetadata:

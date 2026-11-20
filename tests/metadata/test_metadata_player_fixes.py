@@ -71,26 +71,49 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(snap['album'], 'MB Album')
         self.assertIsNone(snap['cover_file'])
 
-    def test_one_later_lookup_when_offline(self):
-        self.lookup.return_value = LookupResult('offline', error='x')
-        worker = self.worker(retry_seconds=120)
+    def test_consensus_takes_the_cover_of_the_first_release_that_has_one(self):
+        other = '22222222-2222-2222-2222-222222222222'
+        self.lookup.return_value = LookupResult('ambiguous', (
+            ReleaseCandidate(RELEASE, 'MB Album', 'MB Artist', None, None, ('MB Track',)),
+            ReleaseCandidate(other, 'MB Album', 'MB Artist', None, None, ('MB track',))))
+        worker = self.worker(sonos_uses_cover=True)
+        worker._cover_policy = CoverPreferences('on').download_policy(display_supports_cover=False)
+        cover = Path(self.tmp.name) / 'cover.jpg'
+        worker._cover = SimpleNamespace(get_or_download=Mock(
+            side_effect=lambda release, policy: cover if release == other else None))
+        snap = self.run_job(worker, FakeToc('a'))
+        self.assertEqual((snap['match_status'], snap['album'], snap['tracks'][0]['title']),
+                         ('consensus', 'MB Album', 'MB Track'))
+        self.assertEqual((snap['release_id'], snap['cover_file']), (other, str(cover)))
+
+    def test_later_lookups_when_unavailable_then_stop(self):
+        self.lookup.return_value = LookupResult('unavailable', error='MusicBrainz temporarily unavailable (HTTP 503)')
+        worker = self.worker(retry_delays=(120, 600))
         toc = FakeToc('a')
         snap = self.run_job(worker, toc)
-        self.assertEqual((snap['album'], snap['lookup_status']), (None, 'offline'))
+        self.assertEqual((snap['album'], snap['lookup_status']), (None, 'unavailable'))
+        self.assertIn('HTTP 503', snap['lookup_error'])
         self.assertFalse(worker.poll(toc))
         self.assertEqual(len(self.executor.jobs), 1)
-        self.clock.now = 121
+        self.clock.now = 121                         # first retry, still unavailable
+        worker.poll(toc)
+        self.executor.finish(1)
+        self.assertTrue(worker.poll(toc))
+        self.clock.now = 121 + 599
+        worker.poll(toc)
+        self.assertEqual(len(self.executor.jobs), 2)  # not yet
+        self.clock.now = 121 + 601                   # second retry succeeds
         self.lookup.return_value = LookupResult('unique', (
             ReleaseCandidate(RELEASE, 'MB Album', 'MB Artist', None, None, ('MB Track',)),))
-        self.assertFalse(worker.poll(toc))           # resubmitted
-        self.assertEqual(len(self.executor.jobs), 2)
-        self.executor.finish(1)
+        worker.poll(toc)
+        self.assertEqual(len(self.executor.jobs), 3)
+        self.executor.finish(2)
         self.assertTrue(worker.poll(toc))
         self.assertEqual(worker.snapshot['album'], 'MB Album')
         self.lookup.return_value = LookupResult('offline', error='x')
-        self.clock.now = 1000
+        self.clock.now = 100000
         worker.poll(toc)
-        self.assertEqual(len(self.executor.jobs), 2)  # never a loop
+        self.assertEqual(len(self.executor.jobs), 3)  # never a loop
 
     def test_retry_is_dropped_with_the_disc(self):
         self.lookup.return_value = LookupResult('offline', error='x')
@@ -164,3 +187,41 @@ class MonitorCdtextTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ConsensusTests(unittest.TestCase):
+    """Several editions, no CD-TEXT: their shared names are used."""
+
+    def releases(self, *variants):
+        from sonoscdplayer.metadata.musicbrainz import ReleaseCandidate
+        return tuple(ReleaseCandidate(f'00000000-0000-0000-0000-00000000000{i}', album, 'The Band',
+                                      None, None, titles)
+                     for i, (album, titles) in enumerate(variants))
+
+    def decide(self, releases, track_count=2):
+        from sonoscdplayer.metadata.local_metadata import build_local_metadata
+        from sonoscdplayer.metadata.release_matching import decide_release
+        toc = SimpleNamespace(tracks=tuple(SimpleNamespace(number=n, duration_seconds=100.0)
+                                           for n in range(1, track_count + 1)))
+        local = build_local_metadata(toc, cdtext_status='absent')
+        return local, decide_release(local, LookupResult('ambiguous', releases))
+
+    def test_spelling_variants_still_agree(self):
+        local, decision = self.decide(self.releases(
+            ('…Come Down', ('Be‐In', 'Not If You Were the Last')),
+            ('...Come Down', ('Be-in', 'Not If You Were The Last'))))
+        self.assertEqual(decision.status, 'consensus')
+        from sonoscdplayer.metadata.release_matching import merged_metadata
+        merged = merged_metadata(local, decision)
+        self.assertEqual(merged.album, decision.candidates[0].release.title)
+        self.assertTrue(all(t.title for t in merged.tracks))
+
+    def test_different_titles_stay_manual(self):
+        _, decision = self.decide(self.releases(
+            ('Album', ('One', 'Two')), ('Album', ('One', 'Bonus Mix'))))
+        self.assertEqual(decision.status, 'manual')
+
+    def test_wrong_track_count_stays_manual(self):
+        _, decision = self.decide(self.releases(
+            ('Album', ('One', 'Two', 'Three')), ('Album', ('One', 'Two', 'Three'))), track_count=2)
+        self.assertEqual(decision.status, 'manual')
