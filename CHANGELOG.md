@@ -6,6 +6,9 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- Developer documentation: [architecture overview](docs/ARCHITECTURE.md),
+  [adding a display](docs/ADDING_A_DISPLAY.md) and
+  [adding buttons and input modules](docs/ADDING_INPUTS.md).
 - Code reference: every public module, class and function is documented;
   `tools/build_api_docs.sh` builds HTML with pdoc.
 - The controller's interactive console mode (`player_controller.py` run

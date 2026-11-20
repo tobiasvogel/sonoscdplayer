@@ -211,6 +211,9 @@ Additional documentation is available in the [`docs/`](docs/) directory.
 | [Status LEDs](docs/STATUS_LEDS.md) | Meaning of the power and connection (network) LEDs |
 | [Checking a CD drive](docs/DRIVE_CHECK.md) | Test whether a USB CD drive suits the player and share the result |
 | [Displays](docs/DISPLAYS.md) | Supported and evaluated display modules; [SH1107](docs/SH1107.md) and [ST7735S](docs/ST7735S.md) details |
+| [Architecture](docs/ARCHITECTURE.md) | Services, sockets, data flow and package layout, for developers |
+| [Adding a display](docs/ADDING_A_DISPLAY.md) | Driver, test program, renderer and tests for a new display module |
+| [Adding buttons and input modules](docs/ADDING_INPUTS.md) | New buttons, shift registers or other input modules, rotary encoder |
 | [Releases and updates](docs/RELEASE.md) | Version number, making a release, updating the device |
 | [Changelog](CHANGELOG.md) | Changes per version |
 
@@ -220,7 +223,7 @@ Some features are optional or hardware-specific. Consult each guide for its requ
 
 Contributions are welcome, including software improvements, hardware compatibility reports, testing feedback, translations, wiring diagrams, documentation, and enclosure designs.
 
-The Python code is one package, `src/sonoscdplayer/`, organized by area: `audio` (reading and streaming the CD), `drive` (the optical drive), `metadata`, `sonos`, `player` (the player service), `ui` (the display service and menu), `hardware` (displays, buttons, LEDs, sensors), `network_setup` and `system`. Native C code is in `src/native/`. Tests mirror the package under `tests/` and run with `python3 -m pytest`. Every public module, class and function has a docstring (Google style); run `tools/build_api_docs.sh` to turn them into an HTML code reference in `docs/api/` with [pdoc](https://pdoc.dev) (Debian package `python3-pdoc`, installed by `scripts/setup.sh`).
+The Python code is one package, `src/sonoscdplayer/`, organized by area: `audio` (reading and streaming the CD), `drive` (the optical drive), `metadata`, `sonos`, `player` (the player service), `ui` (the display service and menu), `hardware` (displays, buttons, LEDs, sensors), `network_setup` and `system`. Native C code is in `src/native/`. Tests mirror the package under `tests/` and run with `python3 -m pytest`. Every public module, class and function has a docstring (Google style); run `tools/build_api_docs.sh` to turn them into an HTML code reference in `docs/api/` with [pdoc](https://pdoc.dev) (Debian package `python3-pdoc`, installed by `scripts/setup.sh`). Start with the [architecture overview](docs/ARCHITECTURE.md).
 
 For substantial code changes, please open an issue describing the proposed improvement or problem before beginning work. The project favours maintainable implementations and incremental, hardware-backed testing.
 
