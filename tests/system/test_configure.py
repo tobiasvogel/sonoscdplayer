@@ -333,7 +333,7 @@ class CoverWizardTests(unittest.TestCase):
                                          tomllib.loads(config.REFERENCE.read_text()))
         ui_current = config.existing_ui_values({},
                                                tomllib.loads(config.UI_REFERENCE.read_text()))
-        replies = iter(['7', 'off', 'k', '75', '200', '8', 'y'])
+        replies = iter(['7', 'off', 'k', '75', '200', '9', 'y'])
         changes = config.interactive_choices(current, 205, ui_current=ui_current,
                     read=lambda _: next(replies), out=lambda _: None)
         self.assertEqual(changes, {('ui.cover', 'mode'): 'off',
@@ -377,8 +377,8 @@ class CoverWizardTests(unittest.TestCase):
                                                tomllib.loads(config.UI_REFERENCE.read_text()))
         # First change the buffer, then the cover mode. Review refuses mixing;
         # return to streaming, use k to revert, then confirm the UI-only change.
-        answers = iter(['1', '', 'k', '7', 'off', 'k', 'k', 'k', '8',
-                        '1', 'k', 'k', '8', 'y'])
+        answers = iter(['1', '', 'k', '7', 'off', 'k', 'k', 'k', '9',
+                        '1', 'k', 'k', '9', 'y'])
         output = []
         changes = config.interactive_choices(current, 205, ui_current=ui_current,
                    read=lambda _: next(answers), out=output.append)
@@ -426,6 +426,89 @@ class CoverWizardTests(unittest.TestCase):
                 self.assertEqual(config.main(['--config', str(player)]), 0)
             self.assertEqual(ui.read_text(), '[ui]\nlanguage = "en"\n')
 
+
+class DisplayUiWizardTests(unittest.TestCase):
+    def test_ui_language_and_extra_character_defaults(self):
+        import tomllib
+        ref = tomllib.loads(config.UI_REFERENCE.read_text(encoding='utf-8'))
+        values = config.existing_ui_values({}, ref)
+        self.assertEqual(values[('ui', 'language')], 'de')
+        self.assertEqual(values[('ui.text_input', 'extra_characters')], 'äöüÄÖÜß')
+
+    def test_ui_language_and_extra_characters_reject_invalid_values(self):
+        import tomllib
+        ref = tomllib.loads(config.UI_REFERENCE.read_text(encoding='utf-8'))
+        for group, key, value in (
+            ('ui', 'language', 'fr'),
+            ('ui', 'language', True),
+            ('ui.text_input', 'extra_characters', 10),
+            ('ui.text_input', 'extra_characters', 'a'),
+            ('ui.text_input', 'extra_characters', 'ää'),
+            ('ui.text_input', 'extra_characters', 'ä '),
+            ('ui.text_input', 'extra_characters', '界' * 65),
+        ):
+            nested = {'ui': {key: value}} if group == 'ui' else {
+                'ui': {'text_input': {key: value}}}
+            with self.subTest(nested=nested), self.assertRaisesRegex(ValueError, 'invalid'):
+                config.existing_ui_values(nested, ref)
+
+    def test_ui_language_navigation_and_review(self):
+        import tomllib
+        current = config.existing_values({'streaming': {'max_buffer_mib': 16}},
+                                         tomllib.loads(config.REFERENCE.read_text()))
+        ui_current = config.existing_ui_values({}, tomllib.loads(config.UI_REFERENCE.read_text()))
+        replies = iter(['8', 'en', 'k', '9', 'y'])
+        changes = config.interactive_choices(current, 205, ui_current=ui_current,
+                   read=lambda _: next(replies), out=lambda _: None)
+        self.assertEqual(changes, {('ui', 'language'): 'en'})
+
+    def test_extra_characters_escaping_and_existing_comments(self):
+        import tomllib
+        raw = ('[ui]\nlanguage = "de"  # keep\n'
+               '[ui.text_input]\nextra_characters = "äöüÄÖÜß"  # keep too\n'
+               '[ui.cover]\nmode = "auto"\n')
+        updated = config.replace_values(raw, {
+            ('ui', 'language'): 'en',
+            ('ui.text_input', 'extra_characters'): 'àé#"\\',
+        })
+        values = tomllib.loads(updated)
+        self.assertEqual(values['ui']['language'], 'en')
+        self.assertEqual(values['ui']['text_input']['extra_characters'], 'àé#"\\')
+        self.assertIn('# keep too', updated)
+        self.assertEqual(values['ui']['cover']['mode'], 'auto')
+
+    def test_ui_update_targets_only_ui_config(self):
+        from pathlib import Path
+        raw = '[ui]\nlanguage = "de"\n'
+        player = '[streaming]\nmax_buffer_mib = 16\n'
+        result = config.plan_update({('ui', 'language'): 'en'},
+                                    {('streaming', 'max_buffer_mib'): 16},
+                                    {('ui', 'language'): 'de'},
+                                    player_path=Path('/tmp/player.toml'),
+                                    ui_path=Path('/tmp/ui.toml'), raw=player, ui_raw=raw)
+        path, updated, reference, services = result
+        self.assertEqual(path.name, 'ui.toml')
+        self.assertEqual(reference, config.UI_REFERENCE)
+        self.assertEqual(services, list(config.UI_SERVICES))
+        self.assertEqual(config.replace_values(raw, {}), raw)
+        self.assertIn('language = "en"', updated)
+
+    def test_saved_language_warning_on_preview(self):
+        from unittest.mock import patch
+        from contextlib import redirect_stdout
+        import io
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            (folder / 'player.toml').write_text('[streaming]\nmax_buffer_mib = 16\n')
+            (folder / 'ui.toml').write_text('[ui]\nlanguage = "de"\n')
+            out = io.StringIO()
+            with (patch.object(config.sys.stdin, 'isatty', return_value=True),
+                  patch.object(config, 'interactive_choices', return_value={('ui', 'language'): 'en'}),
+                  patch.object(config, 'load_swap', side_effect=AssertionError('preview tried to swap')),
+                  redirect_stdout(out)):
+                self.assertEqual(config.main(['--config', str(folder / 'player.toml')]), 0)
+            self.assertIn('ui.json takes precedence', out.getvalue())
+            self.assertEqual((folder / 'ui.toml').read_text(), '[ui]\nlanguage = "de"\n')
 
 if __name__ == '__main__':
     unittest.main()

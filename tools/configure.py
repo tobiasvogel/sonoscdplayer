@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import os
 from pathlib import Path
 import re
+import string
 import sys
 import tempfile
 import tomllib
@@ -39,6 +41,8 @@ REFERENCE = ROOT / "config" / "player.example.toml"
 UI_REFERENCE = ROOT / 'config' / 'ui.example.toml'
 UI_SERVICES = ('sonoscdplayer-player.service', 'sonoscdplayer-oled.service')
 UI_FIELDS = (
+    ('ui', 'language', 'Interface language (de/en)', 'language'),
+    ('ui.text_input', 'extra_characters', 'Extra encoder text characters', 'extra_chars'),
     ('ui.cover', 'mode', 'Cover art mode (auto/on/off)', 'cover_mode'),
     ('ui.cover', 'max_dimension_px', 'Maximum cover dimension (pixels)', 'int'),
     ('ui.cover', 'jpeg_quality', 'JPEG quality', 'int'),
@@ -66,7 +70,7 @@ FIELDS = (
     ('drive_power', 'idle_spin_down_seconds', 'Idle spin-down after (seconds; off disables)', 'optional_int'),
 )
 SECTION = re.compile(r'^\s*\[([^\]]+)\]\s*(?:#.*)?$')
-ASSIGN = re.compile(r'^(\s*)([A-Za-z0-9_-]+)(\s*=\s*)([^#\r\n]*?)(\s*(?:#.*)?)$')
+ASSIGN = re.compile(r"^(\s*)([A-Za-z0-9_-]+)(\s*=\s*)(\"(?:\\.|[^\"\\])*\"|'[^']*'|[^#\r\n]*?)(\s*(?:#.*)?)$")
 
 
 def total_ram_mib(meminfo: Path = Path('/proc/meminfo')) -> int:
@@ -120,6 +124,15 @@ def existing_values(parsed: dict, reference: dict) -> dict[tuple[str, str], obje
     return current
 
 
+def valid_extra_characters(value):
+    """Match the encoder's extra character rules; reject lossy input."""
+    if type(value) is not str or len(value) > 64:
+        return False
+    ascii_chars = string.ascii_letters + string.digits + string.punctuation
+    return (len(set(value)) == len(value) and all(
+        ch.isprintable() and not ch.isspace() and ch not in ascii_chars for ch in value))
+
+
 def existing_ui_values(parsed: dict, reference: dict) -> dict[tuple[str, str], object]:
     """Read optional ui.toml values without altering unrelated UI preferences."""
     current = {}
@@ -133,6 +146,8 @@ def existing_ui_values(parsed: dict, reference: dict) -> dict[tuple[str, str], o
         value = group.get(key, defaults.get(key))
         bounds = FIELD_RANGES.get((section, key))
         if ((kind == 'int' and (type(value) is not int or not bounds[0] <= value <= bounds[1]))
+                or (kind == 'language' and (type(value) is not str or value not in ('de', 'en')))
+                or (kind == 'extra_chars' and not valid_extra_characters(value))
                 or (kind == 'cover_mode' and (type(value) is not str
                                               or value not in ('auto', 'on', 'off')))):
             raise ValueError(f'invalid {section}.{key}')
@@ -146,7 +161,7 @@ def render_value(value: object) -> str:
     if type(value) is bool:
         return 'true' if value else 'false'
     if type(value) is str:
-        return '"' + value + '"'
+        return json.dumps(value, ensure_ascii=False)
     return str(value)
 
 
@@ -210,6 +225,11 @@ def replace_values(raw: str, changes: dict[tuple[str, str], object]) -> str:
 
 
 FIELD_HELP = {
+    ('ui', 'language'): ('Language in ui.toml. A language already selected on the '
+                           'device is saved in ui.json and takes precedence.'),
+    ('ui.text_input', 'extra_characters'): ('Additional printable non-whitespace characters '
+        'available for names entered with the encoder (not Wi-Fi passwords). '
+        'Up to 64 characters; use - to clear the list.'),
     ('streaming', 'max_buffer_mib'): (
         'RAM used for PCM and the next track read-ahead. Valid range: 16..512 MiB. '
         'The recommendation is 10% of total physical RAM, capped at 512 MiB.'),
@@ -264,7 +284,9 @@ MENU_GROUPS = (
 )
 
 
-UI_MENU_GROUP = ('Cover art and cache (ui.toml)', tuple((s, k) for s, k, _, _ in UI_FIELDS))
+UI_MENU_GROUP = ('Cover art and cache (ui.toml)', tuple((s, k) for s, k, _, _ in UI_FIELDS if s == 'ui.cover'))
+UI_LANGUAGE_GROUP = ('Interface language and text input (ui.toml)',
+                     tuple((s, k) for s, k, _, _ in UI_FIELDS if s != 'ui.cover'))
 
 def ask(label: str, current: object, suggestion: object, kind: str,
         *, help_text: str = '', bounds=None, choices=(), read=input, out=print) -> object:
@@ -288,6 +310,16 @@ def ask(label: str, current: object, suggestion: object, kind: str,
                 return int(value)
             out(f'Enter a whole number from {low} to {high}'
                 + (' or off.' if kind == 'optional_int' else '.'))
+        elif kind == 'language':
+            if value.lower() in ('de', 'en'):
+                return value.lower()
+            out('Choose de or en.')
+        elif kind == 'extra_chars':
+            if value == '-':
+                return ''
+            if valid_extra_characters(value):
+                return value
+            out('Enter up to 64 printable non-whitespace characters, or - to clear.')
         elif kind == 'cover_mode':
             if value.lower() in ('auto', 'on', 'off'):
                 return value.lower()
@@ -343,7 +375,7 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
     current = {**current, **(ui_current or {})}
     staged = dict(current)
     fields = {(section, key): (label, kind) for section, key, label, kind in (*FIELDS, *UI_FIELDS)}
-    groups = (*MENU_GROUPS, UI_MENU_GROUP) if ui_current is not None else MENU_GROUPS
+    groups = (*MENU_GROUPS, UI_MENU_GROUP, UI_LANGUAGE_GROUP) if ui_current is not None else MENU_GROUPS
     while True:
         out('\nSonosCDPlayer Configuration')
         for n, (heading, _) in enumerate(groups, 1):
@@ -463,6 +495,9 @@ def main(argv=None) -> int:
         if not changes:
             print('No configuration changes selected.')
             return 0
+        if ('ui', 'language') in changes:
+            print('Note: the language saved on the device in ui.json takes precedence over ui.toml. '
+                  'Use the device language menu to change an existing saved selection.')
         target_config, updated, target_reference, target_services = plan_update(
             changes, current, ui_current, player_path=args.config, ui_path=ui_path,
             raw=raw, ui_raw=ui_raw)
