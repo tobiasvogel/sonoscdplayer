@@ -19,6 +19,8 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 SWAP_PATH = ROOT / 'tools' / 'config_swap.py'
 LIMITS = (16, 512)
+# Optional values are taken from the shipped reference configuration.
+REFERENCE = ROOT / "config" / "player.example.toml"
 FIELDS = (
     ('streaming', 'max_buffer_mib', 'PCM ring buffer (MiB)', 'int'),
     ('metadata', 'online_lookup', 'Look up metadata online', 'bool'),
@@ -45,33 +47,78 @@ def suggested_buffer(total_mib: int) -> int:
     return max(LIMITS[0], min(LIMITS[1], (total_mib + 5) // 10))
 
 
+def existing_values(parsed: dict, reference: dict) -> dict[tuple[str, str], object]:
+    """Use shipped defaults for absent optional keys; do not invent required ones."""
+    current = {}
+    for section, key, _, kind in FIELDS:
+        group = parsed.get(section, {})
+        if not isinstance(group, dict):
+            raise ValueError(f'invalid [{section}] section')
+        if key in group:
+            value = group[key]
+        elif (section, key) == ('streaming', 'max_buffer_mib'):
+            raise ValueError('missing required [streaming].max_buffer_mib')
+        else:
+            value = reference.get(section, {}).get(key)
+            if value is None:
+                raise ValueError(f'no reference default for {section}.{key}')
+        if ((kind == 'int' and (type(value) is not int or not LIMITS[0] <= value <= LIMITS[1]))
+                or (kind == 'bool' and type(value) is not bool)):
+            raise ValueError(f'invalid {section}.{key}')
+        current[(section, key)] = value
+    return current
+
+
+def render_value(value: object) -> str:
+    return ('true' if value else 'false') if type(value) is bool else str(value)
+
+
 def replace_values(raw: str, changes: dict[tuple[str, str], object]) -> str:
-    """Patch only existing keys in their existing sections, preserving comments."""
+    """Change selected values, inserting only changed optional missing keys."""
     lines = raw.splitlines(keepends=True)
     section = None
     found = set()
-    output = []
-    for line in lines:
+    section_positions = {}
+    for index, line in enumerate(lines):
         bare = line.rstrip('\r\n')
-        eol = line[len(bare):]
         section_match = SECTION.fullmatch(bare)
         if section_match:
             section = section_match.group(1)
+            section_positions.setdefault(section, []).append(index)
         assignment = ASSIGN.fullmatch(bare)
         if assignment and (section, assignment.group(2)) in changes:
             key = (section, assignment.group(2))
             if key in found:
                 raise ValueError(f'duplicate configuration key {section}.{key[1]}')
             found.add(key)
-            value = changes[key]
-            rendered = ('true' if value else 'false') if type(value) is bool else str(value)
-            line = (assignment.group(1) + assignment.group(2) + assignment.group(3)
-                    + rendered + assignment.group(5) + eol)
-        output.append(line)
+            eol = line[len(bare):]
+            lines[index] = (assignment.group(1) + assignment.group(2) + assignment.group(3)
+                            + render_value(changes[key]) + assignment.group(5) + eol)
     missing = changes.keys() - found
-    if missing:
-        raise ValueError('missing keys: ' + ', '.join('.'.join(p) for p in sorted(missing)))
-    return ''.join(output)
+    if any(section == 'streaming' for section, _ in missing):
+        raise ValueError('missing required [streaming].max_buffer_mib')
+    # Insert a missing key at the end of its existing top-level table, before
+    # the next table header (possibly a nested subsection). Missing tables are
+    # inserted at the beginning, avoiding TOML parent-after-child conflicts.
+    inserts = []
+    grouped = {}
+    for section, key in sorted(missing):
+        grouped.setdefault(section, []).append(f'{key} = {render_value(changes[(section, key)])}\n')
+    for section, additions in grouped.items():
+        if section in section_positions:
+            start = section_positions[section][0] + 1
+            stop = next((i for i in range(start, len(lines))
+                         if SECTION.fullmatch(lines[i].rstrip('\r\n'))), len(lines))
+            if stop and lines[stop - 1] and not lines[stop - 1].endswith(('\n', '\r')):
+                additions.insert(0, '\n')
+            inserts.append((stop, additions))
+        else:
+            inserts.append((0, [f'[{section}]\n', *additions, '\n']))
+    for position, additions in sorted(inserts, key=lambda p: p[0], reverse=True):
+        lines[position:position] = additions
+    result = ''.join(lines)
+    tomllib.loads(result)
+    return result
 
 
 def ask(label: str, current: object, suggestion: object, kind: str) -> object:
@@ -119,13 +166,8 @@ def main(argv=None) -> int:
     try:
         raw = args.config.read_text(encoding='utf-8')
         parsed = tomllib.loads(raw)
-        current = {}
-        for section, key, _, kind in FIELDS:
-            value = parsed[section][key]
-            if (kind == 'int' and (type(value) is not int or not LIMITS[0] <= value <= LIMITS[1])) or (
-                kind == 'bool' and type(value) is not bool):
-                raise ValueError(f'invalid {section}.{key}')
-            current[(section, key)] = value
+        reference = tomllib.loads(REFERENCE.read_text(encoding='utf-8'))
+        current = existing_values(parsed, reference)
         ram = total_ram_mib()
         recommendation = suggested_buffer(ram)
         print(f'Detected physical RAM: {ram} MiB; buffer recommendation: {recommendation} MiB (10%, capped at 512 MiB)')
@@ -166,7 +208,7 @@ def main(argv=None) -> int:
             target = Path(directory) / 'player.toml'
             target.write_text(updated, encoding='utf-8')
             return swap.swap(args.config, target, services=[swap.DEFAULT_SERVICE],
-                             reference=ROOT / 'config/player.example.toml', apply=True)
+                             reference=REFERENCE, apply=True)
     except (OSError, ValueError, KeyError, tomllib.TOMLDecodeError) as exc:
         print(f'Configuration wizard: {exc}', file=sys.stderr)
         return 1
