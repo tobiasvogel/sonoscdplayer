@@ -13,6 +13,7 @@ from sonoscdplayer.ui.renderers.oled_128_speakers import MultiRenderer
 from sonoscdplayer.ui.i18n import Translator, available_languages
 from sonoscdplayer.ui.menu.speakers.single_target import select_one, TargetSelectionError
 from sonoscdplayer.ui.menu.speakers.target_rpc_client import submit_target, rejection_notice, loggable
+from sonoscdplayer.ui.menu import play_feedback
 from sonoscdplayer.ui.menu.speakers.selection_plan import plan_from_applied
 from sonoscdplayer.ui.menu.connect_notice import ConnectNoticeView
 from sonoscdplayer.ui.notices.notice import Notice
@@ -106,6 +107,8 @@ class InteractiveMenu:
         self._netsetup_last = None
         self._netsetup_was_active = None
         self.player_mode = None   # updated by the OLED loop from the player status
+        self._play_pending = False        # PLAY pressed, no answer yet
+        self._rejection_seq = None        # last PLAY rejection already seen
         self._current_loaded = current_target is None
         self._current_worker = None
         self._current_result = None
@@ -366,6 +369,53 @@ class InteractiveMenu:
             return bool(changed)
         return False
 
+    def _play_event(self, event, now):
+        """PLAY/PAUSE was pressed: say that playback starts, or why not."""
+        if self._power_busy or self.power_menu or self.netsetup_snapshot() is not None:
+            return False
+        if event == 'requested':
+            if self.player_mode not in (None, 'STOPPED', 'ERROR'):
+                return False                    # a pause or resume needs no notice
+            self._play_pending = True
+            self._show_notice(Notice('play.requested', priority=45,
+                                     duration_seconds=play_feedback.REQUEST_SECONDS), now)
+            return True
+        self._play_pending = False
+        key = 'play.no_target' if event == 'no_target' else 'play.blocked'
+        self._show_notice(Notice(key, severity='warning', priority=45,
+                                 duration_seconds=play_feedback.REJECTION_SECONDS), now)
+        return True
+
+    def player_status(self, state, now=None):
+        """Take the player's status from the display loop; True if the screen changed."""
+        now = time.monotonic() if now is None else now
+        player = state.get('player') if isinstance(state, dict) else None
+        self.player_mode = player.get('mode') if isinstance(player, dict) else None
+        changed = False
+        if self._play_pending and self.player_mode in ('STARTING', 'PLAYING', 'PAUSED'):
+            self._play_pending = False
+            current = self.connect_notices.current(now=now)
+            if current is not None and current.key == 'play.requested':
+                self.connect_notices.clear(now=now)
+                self._restore_after_notice()
+                changed = True
+        rejection = state.get('last_rejection') if isinstance(state, dict) else None
+        seq = rejection.get('seq') if isinstance(rejection, dict) else None
+        if seq is None:
+            if self._rejection_seq is None:
+                self._rejection_seq = 0
+        elif self._rejection_seq is None:
+            self._rejection_seq = seq           # from before this display started
+        elif seq != self._rejection_seq:
+            self._rejection_seq = seq
+            self._play_pending = False
+            if not (self._power_busy or self.power_menu):
+                self._show_notice(Notice(play_feedback.rejection_notice(rejection.get('reason')),
+                                         severity='warning', priority=45,
+                                         duration_seconds=play_feedback.REJECTION_SECONDS), now)
+                changed = True
+        return changed
+
     def _restore_after_notice(self):
         if self._notice_previous_active is not None:
             self.active = self._notice_previous_active
@@ -460,8 +510,7 @@ class InteractiveMenu:
         try:
             if self.state.topology.error:
                 raise ValueError('topology unavailable')
-            intent = plan_from_applied(self.state.topology.targets, self.state.draft,
-                                      own=self.state.applied)
+            intent = plan_from_applied(self.state.topology.targets, self.state.draft)
         except (ValueError, TypeError):
             self.state = replace(self.state, notice='status.target_rejected')
             return
@@ -663,6 +712,8 @@ class InteractiveMenu:
             self._show_notice(Notice('status.volume_no_target', priority=35,
                                      duration_seconds=2.0), now)
             return True
+        if name == 'play':
+            return self._play_event(event, now)
         if name == 'volume':
             # Display only: the level was already set and acknowledged by the player.
             if not (isinstance(event, str) and event.isdigit() and 0 <= int(event) <= 100):

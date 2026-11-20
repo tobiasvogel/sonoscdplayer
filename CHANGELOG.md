@@ -6,6 +6,16 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- Pressing PLAY shows "Starting playback …" at once (while the drive spins
+  up); if the player refuses, the display says why (speaker grouped,
+  playing or missing, no speaker selected, CD not ready, drive error).
+- The player remembers the speakers of the running playback group in its
+  state directory (`playback_group.json`). After a restart or crash, a
+  stopped leftover of that group, including speakers added in the Sonos
+  app, is split at the next selection or PLAY. When the player leaves a
+  group alone, the log says why.
+- The menu no longer refuses grouped speakers itself; the player checks
+  them live and reports the reason.
 - The speakers can be changed in the menu during playback: adding or
   removing speakers keeps the music playing; choosing another main speaker
   restarts the current track there. The playing main speaker stays main

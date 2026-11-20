@@ -12,11 +12,16 @@ from sonoscdplayer.hardware.inputs.play_button_preview import read_snapshot
 SAFE_COMMANDS = frozenset(('play-selected', 'pause', 'resume', 'stop', 'reset', 'next', 'previous', 'eject'))
 
 
+def _has_selection(target):
+    selection = target.get('target_selection') if isinstance(target, dict) else None
+    return isinstance(selection, dict) and selection.get('selected') is True
+
+
 class SelectedTargetExecutor:
     """Nonblocking one-shot transport worker; at most one in flight."""
 
     def __init__(self, socket_path, *, reader=read_snapshot, sender=None,
-                 report=print, activity_before_read=False):
+                 report=print, activity_before_read=False, notify=None):
         if sender is None:
             raise ValueError('a one-shot sender must be supplied')
         self.socket_path = socket_path
@@ -24,6 +29,8 @@ class SelectedTargetExecutor:
         self.sender = sender
         self.report = report
         self.activity_before_read = activity_before_read
+        # Optional display feedback: notify('requested' | 'no_target' | 'blocked').
+        self.notify = notify
         self._lock = threading.Lock()
         self._busy = False
 
@@ -35,8 +42,11 @@ class SelectedTargetExecutor:
             if self._busy:
                 return False
             self._busy = True
+        if action == 'playpause':
+            self._notify('requested')
 
         def perform():
+            sent = False
             try:
                 if self.activity_before_read:
                     # Finish wake/verification before short status reads.
@@ -60,15 +70,20 @@ class SelectedTargetExecutor:
                            else plan_playpause(status, target))
                 if command not in SAFE_COMMANDS:
                     self.report('selected-target execute: blocked')
+                    if action == 'playpause':
+                        self._notify('no_target' if not _has_selection(target) else 'blocked')
                     return
                 # Each command is a fresh, explicit physical-press intent.
                 # The player independently checks live ownership/safety.
                 # No UID is transmitted from the button service.
+                sent = True     # a refusal from here on is reported by the player
                 self.sender(self.socket_path, command, None)
                 self.report('selected-target execute: ' + command + ' acknowledged')
             except Exception as exc:
                 self.report('selected-target execute: unavailable or rejected (' +
                             type(exc).__name__ + '); not retrying')
+                if action == 'playpause' and not sent:
+                    self._notify('blocked')   # e.g. the drive did not wake
             finally:
                 with self._lock:
                     self._busy = False
@@ -81,3 +96,11 @@ class SelectedTargetExecutor:
                 self._busy = False
             raise
         return True
+
+    def _notify(self, event):
+        if self.notify is None:
+            return
+        try:
+            self.notify(event)
+        except Exception:
+            pass               # feedback only; never blocks the button

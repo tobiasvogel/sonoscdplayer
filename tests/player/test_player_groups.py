@@ -156,15 +156,6 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.a.stop_calls, 0)
         self.assertEqual(self.topo.leaders['C'], 'A')
 
-    def test_menu_may_choose_speakers_of_the_own_group(self):
-        a = NS(key='RINCON_A1', members=('RINCON_A1', 'RINCON_B1'))
-        b = NS(key='RINCON_B1', members=('RINCON_A1', 'RINCON_B1'))
-        with self.assertRaises(ValueError):
-            plan_from_applied((a, b), {'RINCON_A1', 'RINCON_B1'})
-        plan = plan_from_applied((a, b), {'RINCON_A1', 'RINCON_B1'},
-                                 own={'RINCON_A1', 'RINCON_B1'})
-        self.assertEqual(plan.members, ('RINCON_B1',))
-
     def test_speaker_removed_in_app_is_no_longer_released(self):
         self.start()
         self.topo.leaders['B'] = 'B'                # taken out in the Sonos app
@@ -470,9 +461,10 @@ class StagedGroupTests(unittest.TestCase):
         b=NS(key='B',members=('B',))
         self.assertEqual(plan_from_applied((a,b),{'A','B'}).members,('B',))
 
-    def test_existing_group_not_planned(self):
+    def test_grouped_speaker_is_left_to_the_player(self):
+        # The player checks groups live (and splits leftovers of its own).
         a=NS(key='A',members=('A','B'))
-        with self.assertRaises(ValueError): plan_from_applied((a,),{'A'})
+        self.assertEqual(plan_from_applied((a,),{'A'}).coordinator,'A')
 
     def test_set_target_preflights_all_members_without_join(self):
         member=StagingSpeaker('B')

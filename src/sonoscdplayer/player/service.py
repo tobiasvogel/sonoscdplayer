@@ -46,12 +46,14 @@ from sonoscdplayer.drive.wake_validation import wait_for_woken_disc
 from sonoscdplayer.drive.usb_identity import usb_identity, recovered_device
 from sonoscdplayer.player.controller import Controller, TrackServerProcess, routed_source_ip
 from sonoscdplayer.sonos.target_selection import SelectedTarget
-from sonoscdplayer.sonos.target_store import TargetStore, default_state_dir
+from sonoscdplayer.sonos.target_store import PlaybackGroupStore, TargetStore, default_state_dir
 from sonoscdplayer.sonos.volume import VolumeControl, parse_volume_command
 from sonoscdplayer.sonos.groups import normalize_members
 from sonoscdplayer.system.package_paths import SOURCE_ROOT
 
 MAX_REQUEST = 1024
+# Commands whose refusal the display reports ("playback not possible ...").
+PLAY_COMMANDS = frozenset(('play', 'play-selected', 'playpause', 'resume'))
 COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'eject', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery', 'volume +N|-N', 'reset-disc')
 
 
@@ -586,6 +588,18 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 publisher.publish(controller, power)
                 return reply
 
+            unrecorded = operate
+
+            def operate(request):
+                reply = unrecorded(request)
+                command = request.get('command') if isinstance(request, dict) else None
+                if (reply.get('ok') is False and isinstance(command, str)
+                        and command.strip().lower() in PLAY_COMMANDS):
+                    controller.note_rejection(command.strip().lower(), reply.get('error'))
+                    reply['state'] = controller.status_snapshot()
+                    publisher.publish(controller, power)
+                return reply
+
             # Retry only when the old optical path disappears/changes. Avoid
             # probing healthy drives and preserve the normal keepalive cadence.
             next_drive_recovery = 0.0
@@ -830,6 +844,7 @@ def run(argv=None):
         if monitor is not None:
             monitor.loaded_toc = toc  # verified startup TOC, never stale
             monitor.loaded_cdtext = startup_cdtext
+        ctrl.group_store = PlaybackGroupStore(ns.state_dir)
         serve(ctrl, ns.socket, power=power, drive_id=identity,
               drive_toc=toc, disc_monitor=monitor,
               target_store=TargetStore(ns.state_dir),

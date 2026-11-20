@@ -123,3 +123,59 @@ def test_selection_rejects_a_group_with_foreign_speakers(topo):
     with pytest.raises(SpeakerGrouped):
         selection.set(controller, 'A')
     assert topo.leaders['C'] == 'A'
+
+
+class MemoryGroupStore:
+    def __init__(self, uids=()):
+        self.uids = frozenset(uids)
+
+    def load(self):
+        return self.uids
+
+    def save(self, uids):
+        self.uids = frozenset(uids)
+
+
+def test_play_after_restart_splits_a_group_with_app_added_speakers(topo):
+    """Speakers added in the app were remembered in the playback group store;
+    after a restart PLAY splits the whole leftover, not only the selection."""
+    topo.leaders.update({'B': 'A', 'C': 'A', 'D': 'A'})     # D was added in the app
+    a = topo.devices['A']
+    store = MemoryGroupStore({'A', 'B', 'C', 'D'})
+
+    def verify(uid):
+        speaker = topo.devices[uid]
+        require_solo_and_stopped(speaker, uid)
+        return speaker
+
+    class Server:
+        running = False
+        def alive(self): return self.running
+        def start(self, track, **options): self.running = True
+        def close(self): self.running = False
+
+    a.play_uri = lambda url, **kw: None
+    controller = Controller(PlayerState().disc_loaded((1, 2)), 'A', '192.0.2.10', 8765,
+                            Server(), verify=verify,
+                            find_many=lambda uids: {u: topo.devices[u] for u in uids})
+    controller.use_queue = False
+    controller.group_store = store
+    controller.play('A', ['B', 'C'])
+    assert topo.leaders['D'] == 'D'
+    assert store.uids == {'A', 'B', 'C'}                     # the new playback group
+
+
+def test_without_memory_a_foreign_speaker_keeps_the_group(topo, capsys):
+    topo.leaders['D'] = 'A'
+    assert not groups.release_leftover(topo.devices['A'], {'A', 'B', 'C'}, sleep=no_wait)
+    assert '1 of them not ours' in capsys.readouterr().out
+
+
+def test_playback_group_store_round_trip(tmp_path):
+    from sonoscdplayer.sonos.target_store import PlaybackGroupStore
+    store = PlaybackGroupStore(tmp_path, log=lambda *_: None)
+    assert store.load() == frozenset()
+    store.save({'RINCON_A1', 'RINCON_B1'})
+    assert store.load() == {'RINCON_A1', 'RINCON_B1'}
+    store.save(set())
+    assert store.load() == frozenset() and not store.path.exists()

@@ -383,6 +383,8 @@ def run_gpio(cfg, *, commands=False, execute=False, socket_path=DEFAULT_SOCKET, 
                 socket_path,
                 sender=send_command,
                 activity_before_read=drive_activity_enabled,
+                notify=((lambda event: publisher.enqueue('play', event))
+                        if publisher is not None else None),
             )
             if target_execute_enabled else None
         )

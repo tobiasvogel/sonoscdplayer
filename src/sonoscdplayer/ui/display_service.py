@@ -537,7 +537,9 @@ def main(argv=None):
                         next_status_at=time.monotonic()+args.refresh_ms/1000
                         state=hold.success(request_status(args.socket), time.monotonic())
                     ready_state=None
-                    if menu is not None and hasattr(menu, 'player_mode'):
+                    if menu is not None and hasattr(menu, 'player_status'):
+                        menu.player_status(state)
+                    elif menu is not None and hasattr(menu, 'player_mode'):
                         menu.player_mode = (state.get('player') or {}).get('mode')
                     frame=selected_status_frame(
                         state, menu=menu, ui_modern=args.ui_modern,

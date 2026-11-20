@@ -121,9 +121,17 @@ def release_leftover(speaker, own_uids, *, sleep=time.sleep, clock=time.monotoni
     group = speaker.group
     coordinator = group.coordinator
     members = list(group.members)
-    if len(members) < 2 or not {p.uid for p in members} <= set(own_uids):
+    if len(members) < 2:
         return False
-    if coordinator.get_current_transport_info()['current_transport_state'] != 'STOPPED':
+    foreign = len({p.uid for p in members} - set(own_uids))
+    if foreign:
+        print(f'[sonos] group of {len(members)} speakers left alone: '
+              f'{foreign} of them not ours', flush=True)
+        return False
+    transport = coordinator.get_current_transport_info()['current_transport_state']
+    if transport != 'STOPPED':
+        print(f'[sonos] group of {len(members)} own speakers left alone: '
+              f'coordinator is {transport}', flush=True)
         return False
     others = [p for p in members if p.uid != coordinator.uid]
     for member in others:

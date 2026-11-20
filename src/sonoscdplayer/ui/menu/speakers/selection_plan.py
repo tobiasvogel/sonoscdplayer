@@ -8,16 +8,14 @@ class GroupIntent:
     coordinator: str
     members: tuple[str, ...]
 
-def plan_from_applied(targets, applied, own=frozenset()):
+def plan_from_applied(targets, applied):
     """Turn the checked speakers into a GroupIntent (first one coordinates).
 
-    ``own`` are the speakers of the current selection: a group made only
-    of them (the player's own playback group, or one left behind) may be
-    chosen; the player changes it.
+    Whether a grouped speaker may be used is decided by the player, which
+    checks the speakers live (and splits a leftover group of its own).
 
     Raises:
-        ValueError: nothing checked, an invalid UID, or a speaker that is
-            already in another Sonos group.
+        ValueError: nothing checked, or an invalid UID.
     """
     ordered = [t for t in targets if t.key in applied]
     if not ordered or len(ordered) != len(applied):
@@ -26,8 +24,6 @@ def plan_from_applied(targets, applied, own=frozenset()):
         raise ValueError('duplicate speaker')
     if any(not UID_RE.fullmatch(t.key or '') for t in ordered):
         raise ValueError('invalid UID')
-    if any(tuple(t.members) != (t.key,) and not set(t.members) <= set(own) for t in ordered):
-        raise ValueError('existing Sonos group must not be changed')
     coordinator = ordered[0].key
     return GroupIntent(coordinator, tuple(sorted(normalize_members(
         coordinator, [t.key for t in ordered[1:]]))))

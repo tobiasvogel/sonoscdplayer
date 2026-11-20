@@ -17,6 +17,7 @@ import socket
 import subprocess
 import sys
 import threading
+import re
 import time
 
 from sonoscdplayer.audio.track_server_process import (forward_server_output, track_stream_url,
@@ -188,6 +189,31 @@ class Controller:
         self._group_members = frozenset()
         self._group_uncertain = False
         self._recovery_url = None
+        self.group_store = None      # optional PlaybackGroupStore (survives restarts)
+        self.last_rejection = None   # {'seq', 'command', 'reason'} of a refused PLAY
+
+    def note_rejection(self, command, reason):
+        """Remember a refused PLAY for the display (status ``last_rejection``)."""
+        seq = (self.last_rejection or {}).get('seq', 0) + 1
+        text = re.sub(r'RINCON_[0-9A-Za-z]+', '<speaker>', str(reason))[:160]
+        self.last_rejection = {'seq': seq, 'command': command, 'reason': text}
+
+    def _store_group(self):
+        """Write the current playback group to the group store, if any."""
+        if self.group_store is None:
+            return
+        uids = (({self._group_coord.uid} | set(self._joined))
+                if self._joined and self._group_coord is not None else set())
+        try:
+            self.group_store.save(uids)
+        except Exception as exc:
+            print(f'[player] playback group not stored: {type(exc).__name__}', flush=True)
+
+    def remembered_group(self):
+        """Speakers of the current or last unreleased playback group."""
+        current = ({self._group_coord.uid} | set(self._joined)) if self._group_coord else set()
+        stored = self.group_store.load() if self.group_store is not None else frozenset()
+        return frozenset(current) | stored
 
     def _url(self, track):
         return track_stream_url(self.host, self.port, track)
@@ -231,6 +257,8 @@ class Controller:
             snapshot['progress'] = dict(self._display_progress)
         if self.disc_status is not None:
             snapshot['disc'] = self.disc_status.snapshot()
+        if self.last_rejection is not None:
+            snapshot['last_rejection'] = dict(self.last_rejection)
         if self.metadata_snapshot is not None:
             # Compact on purpose: status readers have small reply limits.
             snapshot['metadata'] = status_metadata(self.metadata_snapshot,
@@ -255,6 +283,7 @@ class Controller:
             self._group_coord = None
             self._group_members = frozenset()
             self._recovery_url = None
+        self._store_group()
         return not remaining
 
     def _verify_releasing_leftover(self, uid, members):
@@ -267,9 +296,15 @@ class Controller:
         try:
             return self.verify(uid)
         except SpeakerGrouped as exc:
-            if not groups.release_leftover(exc.speaker, {uid, *members}):
+            if not groups.release_leftover(exc.speaker, {uid, *members, *self.remembered_group()}):
                 raise
+            self.forget_leftover_group()
         return self.verify(uid)
+
+    def forget_leftover_group(self):
+        """A leftover group was split: forget it unless a group is still ours."""
+        if not self._joined:
+            self._store_group()
 
     def inspect_group_recovery(self):
         """Read-only status; no Sonos mutations or hidden retry."""
@@ -509,6 +544,7 @@ class Controller:
         self._joined = members
         self._group_coord = coordinator if members else None
         self._group_members = frozenset(members)
+        self._store_group()
 
     def _toc_duration(self, track):
         try:
@@ -659,7 +695,8 @@ class Controller:
             if set(member_players) != set(wanted):
                 raise RuntimeError('member discovery incomplete')
             for member_uid, member in member_players.items():
-                groups.require_member_ready_releasing(member, member_uid, {candidate, *wanted})
+                groups.require_member_ready_releasing(
+                    member, member_uid, {candidate, *wanted, *self.remembered_group()})
         host = self.route(target.ip_address) if self.route is not None else self.host
         url = track_stream_url(host, self.port, self.state.selected_track)
         self.server.close()
@@ -696,12 +733,14 @@ class Controller:
                     self._joined = groups.form(player, member_players)
                     self._group_coord = player
                     self._group_members = wanted
+                    self._store_group()
                 except groups.GroupRollbackIncomplete as rollback:
                     self._joined = rollback.remaining
                     self._group_coord = player
                     self._group_members = wanted
                     self._group_uncertain = True
                     self._recovery_url = None
+                    self._store_group()
                     raise
             cover_url = (f'http://{host}:{self.port}{cover_route(cover_path)}'
                          if cover_path else None)

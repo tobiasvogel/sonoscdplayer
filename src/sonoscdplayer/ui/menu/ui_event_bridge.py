@@ -22,6 +22,8 @@ ALLOWED = frozenset({
     # acknowledged level or missing-target info (no private UID).
     *(('volume', str(level)) for level in range(101)),
     ('volume', 'no_target'),
+    # PLAY/PAUSE pressed, and why the button service did not even ask the player.
+    ('play', 'requested'), ('play', 'no_target'), ('play', 'blocked'),
 })
 MAX_EVENT_BYTES = 128
 

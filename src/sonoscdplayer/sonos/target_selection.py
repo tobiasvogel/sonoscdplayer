@@ -90,11 +90,17 @@ class SelectedTarget:
         # A leftover group of the old or new selection is split (and only
         # such a group); see groups.release_leftover().
         own = {uid, *selected_members, *self.speakers()}
+        remembered = getattr(controller, 'remembered_group', None)
+        if callable(remembered):
+            own |= remembered()
         try:
             self._verify(uid)
         except SpeakerGrouped as exc:
             if not release_leftover(exc.speaker, own):
                 raise
+            forget = getattr(controller, 'forget_leftover_group', None)
+            if callable(forget):
+                forget()
             self._verify(uid)
         if selected_members:
             discovered = self._find_many(selected_members)
