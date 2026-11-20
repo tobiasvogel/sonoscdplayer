@@ -121,6 +121,50 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.a.transport, 'PLAYING')
         self.assertEqual(set(self.player._joined), {'B', 'C'})
 
+    def test_menu_adds_and_removes_members_without_interrupting(self):
+        self.start()
+        self.player.retarget('A', ['C'])
+        self.assertEqual(self.topo.leaders, {'A': 'A', 'B': 'B', 'C': 'A'})
+        self.assertEqual((self.a.stop_calls, self.a.play_calls), (0, 1))
+        self.assertEqual(self.player.state.mode, Mode.PLAYING)
+        self.player.stop()
+        self.assertEqual(self.topo.leaders, {'A': 'A', 'B': 'B', 'C': 'C'})
+
+    def test_menu_rejects_a_busy_new_member_and_plays_on(self):
+        self.start()
+        self.c.transport = 'PLAYING'                 # C plays something else
+        with self.assertRaisesRegex(RuntimeError, 'active transport'):
+            self.player.retarget('A', ['B', 'C'])
+        self.assertEqual(self.player.state.mode, Mode.PLAYING)
+        self.assertEqual(self.topo.leaders['C'], 'C')
+
+    def test_menu_new_coordinator_restarts_the_track_there(self):
+        self.start()
+        self.player.retarget('C', [])
+        self.assertEqual(self.a.stop_calls, 1)
+        self.assertEqual(self.c.play_calls, 1)
+        self.assertEqual(self.player.uid, 'C')
+        self.assertEqual(self.player.state.mode, Mode.STARTING)
+        self.assertEqual(self.topo.leaders, {'A': 'A', 'B': 'B', 'C': 'C'})
+
+    def test_selection_keeps_the_playing_coordinator(self):
+        self.start()
+        selection = SelectedTarget(verify=lambda uid: None,
+                                   find_many=lambda uids: {u: self.topo.devices[u] for u in uids})
+        selection.set(self.player, 'B', ['A', 'C'])      # menu order put B first
+        self.assertEqual(selection.speakers(), ['A', 'B', 'C'])
+        self.assertEqual(self.a.stop_calls, 0)
+        self.assertEqual(self.topo.leaders['C'], 'A')
+
+    def test_menu_may_choose_speakers_of_the_own_group(self):
+        a = NS(key='RINCON_A1', members=('RINCON_A1', 'RINCON_B1'))
+        b = NS(key='RINCON_B1', members=('RINCON_A1', 'RINCON_B1'))
+        with self.assertRaises(ValueError):
+            plan_from_applied((a, b), {'RINCON_A1', 'RINCON_B1'})
+        plan = plan_from_applied((a, b), {'RINCON_A1', 'RINCON_B1'},
+                                 own={'RINCON_A1', 'RINCON_B1'})
+        self.assertEqual(plan.members, ('RINCON_B1',))
+
     def test_speaker_removed_in_app_is_no_longer_released(self):
         self.start()
         self.topo.leaders['B'] = 'B'                # taken out in the Sonos app

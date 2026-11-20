@@ -816,6 +816,40 @@ class Controller:
             return
         self._stop_owned()
 
+    def retarget(self, uid, members=None):
+        """Change the speakers of the running playback.
+
+        Same coordinator: members are added or removed while the music plays
+        on. Another coordinator: our playback stops there and starts on the
+        new speakers at the beginning of the current track.
+
+        Raises:
+            ValueError: no own playback (PLAYING or PAUSED) is running.
+            RuntimeError: a speaker check failed; for members the playback
+                keeps running, for a new coordinator it is in ERROR.
+        """
+        if self.state.mode not in (Mode.PLAYING, Mode.PAUSED) or not self.seen_playing or not self.owned_url:
+            raise ValueError('speaker change requires own PLAYING or PAUSED playback')
+        wanted = groups.normalize_members(uid, members)
+        player = self._follow_group(self.verify_existing())
+        if uid == self.uid:
+            expected = 'PLAYING' if self.state.mode == Mode.PLAYING else 'PAUSED_PLAYBACK'
+            self._ownership(player, expected)
+            if wanted == frozenset(self._joined):
+                return
+            try:
+                self._joined = groups.change_members(player, self._joined, wanted, self.find_many)
+            finally:
+                # Whatever happened, remember what Sonos reports now.
+                self._adopt_group(player)
+            print(f'[player] speakers changed during playback; now {len(self._joined)} member(s)',
+                  flush=True)
+            return
+        print('[player] new coordinator chosen during playback; restarting the track there',
+              flush=True)
+        self._stop_owned()
+        self.play(uid, sorted(wanted))
+
     def can_reset(self):
         """ERROR whose local session is fully released (see reset())."""
         return (self.state.mode == Mode.ERROR and not self.server.alive()

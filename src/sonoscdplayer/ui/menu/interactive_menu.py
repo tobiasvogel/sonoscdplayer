@@ -460,7 +460,8 @@ class InteractiveMenu:
         try:
             if self.state.topology.error:
                 raise ValueError('topology unavailable')
-            intent = plan_from_applied(self.state.topology.targets, self.state.draft)
+            intent = plan_from_applied(self.state.topology.targets, self.state.draft,
+                                      own=self.state.applied)
         except (ValueError, TypeError):
             self.state = replace(self.state, notice='status.target_rejected')
             return

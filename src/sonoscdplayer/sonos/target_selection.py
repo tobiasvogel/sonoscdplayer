@@ -64,17 +64,29 @@ class SelectedTarget:
     def set(self, controller, uid, members=None):
         """Select a coordinator and members after checking them live.
 
-        Allowed only while the player is stopped and plays nothing of its own.
+        While the player is stopped the speakers are checked; during own
+        playback the controller changes the running playback (see
+        Controller.retarget()).
 
         Raises:
             ValueError: the player is busy, or a member UID is invalid.
             RuntimeError: a speaker is missing, grouped or not stopped.
         """
-        if controller.state.mode != Mode.STOPPED or controller.owned_url:
-            raise ValueError('target selection requires stopped, unowned player')
-        # Reuse the same live verification performed before existing PLAY.
-        # Validates STOPPED solo coordinator and does not send Sonos writes.
         selected_members = tuple(sorted(normalize_members(uid, members)))
+        if controller.state.mode in (Mode.PLAYING, Mode.PAUSED) and controller.owned_url:
+            # During playback the controller changes the speakers itself.
+            # The playing coordinator stays coordinator while it is still
+            # chosen, so adding a speaker never restarts the track.
+            chosen = {uid, *selected_members}
+            if controller.uid in chosen and controller.uid != uid:
+                uid = controller.uid
+                selected_members = tuple(sorted(chosen - {uid}))
+            controller.retarget(uid, selected_members)
+            self._remember(uid, selected_members)
+            return
+        if controller.state.mode != Mode.STOPPED or controller.owned_url:
+            raise ValueError('speaker change not possible while playback is starting')
+        # Reuse the same live verification performed before existing PLAY.
         # A leftover group of the old or new selection is split (and only
         # such a group); see groups.release_leftover().
         own = {uid, *selected_members, *self.speakers()}
@@ -90,10 +102,13 @@ class SelectedTarget:
                 raise RuntimeError('incomplete member discovery')
             for member_uid in selected_members:
                 require_member_ready_releasing(discovered[member_uid], member_uid, own)
+        self._remember(uid, selected_members)
+
+    def _remember(self, uid, members):
         self._uid = uid
-        self._members = selected_members
+        self._members = members
         if self._store is not None:
-            self._store.save(uid, selected_members)
+            self._store.save(uid, members)
 
     def clear(self, controller):
         """Forget the selection (only while the player is stopped)."""

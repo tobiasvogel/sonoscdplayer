@@ -146,6 +146,48 @@ def require_member_ready_releasing(player, uid, own_uids):
         require_member_ready(player, uid)
 
 
+def change_members(coordinator, joined, wanted, find_many, *, sleep=time.sleep,
+                   clock=time.monotonic, settle=3.0):
+    """Add and remove members of a playing group without interrupting it.
+
+    Args:
+        coordinator: the group coordinator (plays our stream).
+        joined: {uid: speaker} of the current members.
+        wanted: UIDs of the members the group should have.
+        find_many: finds speakers by UID (for new members).
+
+    Returns:
+        {uid: speaker} of the members after the change.
+
+    Raises:
+        RuntimeError: a new member is not ready (grouped elsewhere, playing,
+            not found), or the group did not settle in time.
+    """
+    wanted = frozenset(wanted)
+    joined = dict(joined)
+    own = {coordinator.uid, *wanted, *joined}
+    added = {}
+    if wanted - set(joined):
+        added = find_many(sorted(wanted - set(joined)))
+        if set(added) != wanted - set(joined):
+            raise RuntimeError('member discovery incomplete')
+        for uid, member in added.items():
+            require_member_ready_releasing(member, uid, own)
+    for uid in sorted(set(joined) - wanted):
+        joined.pop(uid).unjoin()
+    for uid, member in added.items():
+        member.join(coordinator)
+        joined[uid] = member
+    deadline = clock() + settle
+    while True:
+        refresh_topology(coordinator)
+        if is_expected_group(coordinator, coordinator.uid, joined):
+            return joined
+        if clock() >= deadline:
+            raise RuntimeError('changed group did not settle')
+        sleep(0.25)
+
+
 def release(coordinator, joined, *, owned_url=None, sleep=time.sleep, clock=time.monotonic):
     """Release the members the player joined, if the group is still ours.
 

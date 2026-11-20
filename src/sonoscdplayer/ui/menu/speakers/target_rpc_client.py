@@ -9,8 +9,11 @@ import socket
 DEFAULT_SOCKET = '/run/sonoscdplayer/control.sock'
 
 
-def submit_target(uid, *, members=None, socket_path=DEFAULT_SOCKET, timeout=4.0):
+def submit_target(uid, *, members=None, socket_path=DEFAULT_SOCKET, timeout=60.0):
     """Send the speaker selection to the player service; True if it accepted.
+
+    During playback a new coordinator restarts the track there, which can
+    take as long as a PLAY; hence the long timeout.
 
     Raises:
         ValueError: invalid UID or members.

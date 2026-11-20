@@ -6,6 +6,10 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- The speakers can be changed in the menu during playback: adding or
+  removing speakers keeps the music playing; choosing another main speaker
+  restarts the current track there. The playing main speaker stays main
+  speaker as long as it is still chosen.
 - Changing the group in the Sonos app during CD playback no longer ends it
   with a player error: added or removed speakers become part of the
   playback, and if the app moves the playback to one of the group's
