@@ -45,6 +45,7 @@ def info() -> dict:
 
 
 def describe() -> str:
+    """Version for logs and the status reply, e.g. ``0.9.0 (abc1234)``."""
     data = info()
     return data['version'] + (f' ({data["commit"]})' if data['commit'] else '')
 

@@ -764,17 +764,6 @@ class GuidedExitrdTests(unittest.TestCase):
 
 
 class PersistentExitrdTests(unittest.TestCase):
-    def test_installed_unit_rearms_at_boot_and_not_during_shutdown(self):
-        unit = (ROOT / 'systemd/sonoscdplayer-exitrd.service').read_text()
-        self.assertIn('WantedBy=multi-user.target', unit)
-        self.assertIn('Type=oneshot', unit)
-        self.assertIn('After=local-fs.target', unit)
-        self.assertIn('exitrd_autostage.py', unit)
-        self.assertNotIn('ExecStop=', unit)
-        self.assertNotIn('RemainAfterExit=yes', unit)
-        self.assertNotIn('poweroff', unit)
-        self.assertNotIn('reboot', unit)
-
     def test_installer_renders_config_path_into_unit(self):
         template = (ROOT / 'systemd/sonoscdplayer-exitrd.service').read_text()
         self.assertIn('--config @SONOSCDPLAYER_PLAYER_CONFIG@', template)

@@ -28,6 +28,7 @@ class NmError(RuntimeError):
 
 @dataclass(frozen=True)
 class WifiNetwork:
+    """A WLAN found by a scan: name, signal strength (0..100) and whether it needs a password."""
     ssid: str
     signal: int
     secure: bool
@@ -52,6 +53,7 @@ def split_terse(line):
 
 
 def valid_ssid(ssid):
+    """True for a printable network name of 1 to 32 bytes."""
     return isinstance(ssid, str) and 1 <= len(ssid.encode('utf-8')) <= 32 and ssid.isprintable()
 
 
@@ -64,10 +66,12 @@ def valid_password(password):
 
 
 def profile_name(ssid):
+    """Name of the NetworkManager profile the setup creates for ``ssid``."""
     return WIFI_PROFILE_PREFIX + hashlib.sha256(ssid.encode('utf-8')).hexdigest()[:8]
 
 
 class Nm:
+    """Runs the nmcli commands of the WLAN setup, each with a timeout."""
     def __init__(self, runner=subprocess.run, timeout=15):
         self._run_command = runner
         self._timeout = timeout
@@ -124,6 +128,7 @@ class Nm:
         return networks[:MAX_NETWORKS]
 
     def start_hotspot(self, device, ssid, password):
+        """Start the setup hotspot on ``device`` (never reconnects after a restart)."""
         self.stop_hotspot()
         self._run('device', 'wifi', 'hotspot', 'ifname', device, 'con-name', HOTSPOT_PROFILE,
                   'ssid', ssid, 'password', password, timeout=30)

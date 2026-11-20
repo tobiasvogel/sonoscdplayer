@@ -34,12 +34,14 @@ PASSWORD_LENGTH = 8
 
 
 def new_password():
+    """A random password for the setup hotspot."""
     return ''.join(secrets.choice(PASSWORD_ALPHABET) for _ in range(PASSWORD_LENGTH))
 
 
 @dataclass(frozen=True)
 class SetupSnapshot:
     # idle, preparing, hotspot, scanning, choosing, connecting, connected, unavailable
+    """State of the setup for the display and the web page."""
     state: str = 'idle'
     hotspot_ssid: str = ''
     password: str = ''
@@ -54,6 +56,11 @@ class SetupSnapshot:
 
 
 class SetupSession:
+    """One WLAN setup: hotspot, network list, connecting, timeout.
+
+    Started with CONNECT (held 10 s) or from the menu, driven by the display service
+    and the setup web page. NetworkManager work goes through ``Nm``.
+    """
     def __init__(self, nm, *, clock=time.monotonic, web_factory=None,
                  password_factory=new_password, hotspot_seconds=HOTSPOT_SECONDS, log=print,
                  sleep=time.sleep):
@@ -76,6 +83,7 @@ class SetupSession:
 
     # ---- read side -------------------------------------------------------
     def snapshot(self):
+        """Current state, with the remaining hotspot time."""
         with self._lock:
             snap = self._snap
             if snap.state in ('hotspot', 'choosing'):
@@ -85,6 +93,7 @@ class SetupSession:
 
     @property
     def active(self):
+        """True while a setup is running."""
         return self.snapshot().state != 'idle'
 
     # ---- control ---------------------------------------------------------

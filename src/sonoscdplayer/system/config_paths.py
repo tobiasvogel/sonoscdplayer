@@ -33,12 +33,15 @@ def config_dir():
 
 
 def player_config():
+    """Path of player.toml."""
     return config_dir() / PLAYER_TOML
 
 
 def interface_config():
+    """Path of interface.toml."""
     return config_dir() / INTERFACE_TOML
 
 
 def ui_config():
+    """Path of ui.toml."""
     return config_dir() / UI_TOML

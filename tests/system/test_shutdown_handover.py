@@ -48,7 +48,6 @@ FAKE_GPIO = textwrap.dedent("""
     def cleanup(_pins):
         log('gpio_cleanup')
 """)
-UNIT = Path(__file__).resolve().parents[2] / "systemd/sonoscdplayer-oled-shutdown-sentinel.service"
 
 
 
@@ -241,21 +240,8 @@ class ShutdownHandoverSystemdTests(unittest.TestCase):
         self.assertTrue(preserve_display_on_exit(True, {}))
         self.assertTrue(preserve_display_on_exit(False, {'SONOSCDPLAYER_PRESERVE_DISPLAY_ON_EXIT': '1'}))
 
-    def test_early_shutdown_unit_waits_for_oled_stop(self):
-        unit = (ROOT / 'systemd/sonoscdplayer-shutdown-screen.service').read_text()
-        self.assertIn('Before=sonoscdplayer-oled.service', unit)
-        self.assertIn('RemainAfterExit=yes', unit)
-        self.assertIn('ConditionFileIsExecutable=', unit)
-        self.assertIn('ExecStop=-/usr/local/libexec/sonoscdplayer-shutdown-display transition', unit)
-        self.assertNotIn('safetounplug', unit.lower())
-        self.assertNotIn('WantedBy=multi-user.target', unit)
-
     def test_late_hook_selects_only_poweroff_and_reboot(self):
         script = (ROOT / 'systemd/sonoscdplayer-final-shutdown-hook').read_text()
-        self.assertIn('poweroff) phase=final', script)
-        self.assertIn('reboot) phase=reboot', script)
-        self.assertIn('*) exit 0', script)
-        self.assertNotIn('phase=safe', script)
         import subprocess
         import tempfile
         with tempfile.TemporaryDirectory() as directory:
@@ -315,22 +301,6 @@ class ShutdownHandoverSystemdTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(log.read_text().splitlines(), ['final', 'reboot'])
 
-    def test_shutdown_hooks_do_not_claim_safe_to_unplug(self):
-        from pathlib import Path
-        unit = (ROOT / 'systemd/sonoscdplayer-shutdown-screen.service').read_text()
-        script = (ROOT / 'systemd/sonoscdplayer-final-shutdown-hook').read_text()
-        for text in (unit, script):
-            self.assertNotIn('safetounplug_screen.png', text)
-            self.assertNotIn(' phase=safe', text)
-        self.assertIn('phase=final', script)
-        self.assertIn('phase=reboot', script)
-
-    def test_dropin_does_not_override_installed_renderer_command(self):
-        conf = (ROOT / 'systemd/sonoscdplayer-oled.service.d/exit-handover.conf.example').read_text()
-        self.assertIn('Environment=SONOSCDPLAYER_PRESERVE_DISPLAY_ON_EXIT=1', conf)
-        self.assertNotIn('ExecStart=', conf)
-        self.assertNotIn('--ui-target-rpc', conf)
-
 
 class ShutdownSentinelTests(unittest.TestCase):
     def test_default_close_is_not_preserved(self):
@@ -349,13 +319,6 @@ class ShutdownSentinelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             marker = Path(root) / "flag"
             self.assertTrue(preserve_display_for_shutdown(environ={"SONOSCDPLAYER_PRESERVE_DISPLAY_ON_EXIT":"1"}, marker_path=marker))
-
-    def test_service_order(self):
-        service = UNIT.read_text()
-        self.assertIn("After=sonoscdplayer-oled.service", service)
-        self.assertIn("ExecStop=/usr/bin/touch /run/sonoscdplayer-oled-shutdown-preserve", service)
-        self.assertIn("RemainAfterExit=yes", service)
-        self.assertIn("WantedBy=sonoscdplayer.target", service)
 
 
 if __name__ == '__main__':

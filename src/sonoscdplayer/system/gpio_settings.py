@@ -12,6 +12,7 @@ from sonoscdplayer.system import config_paths
 
 
 def gpio_warnings_from_document(document):
+    """``[gpio] warnings`` from a parsed player.toml (default False); raises ValueError."""
     gpio = document.get('gpio', {})
     if not isinstance(gpio, dict):
         raise ValueError('[gpio] must be a TOML table')

@@ -23,6 +23,7 @@ def default_state_dir():
 
 
 def read_json(path, *, log=print):
+    """The JSON object in ``path``, or None if missing, unreadable or invalid."""
     path = Path(path)
     try:
         if path.is_symlink() or not path.is_file():
@@ -59,6 +60,7 @@ def write_json(path, data, *, log=print):
 
 
 def remove(path, *, log=print):
+    """Delete ``path`` if present; False if it could not be removed."""
     try:
         Path(path).unlink(missing_ok=True)
         return True

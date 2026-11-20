@@ -32,6 +32,7 @@ class PowerRequester:
 
     @property
     def issued(self):
+        """True once systemd accepted a poweroff or reboot."""
         return self._issued
 
     def request(self, action):

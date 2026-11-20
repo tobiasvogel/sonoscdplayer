@@ -27,6 +27,7 @@ PORTS = (80, 8080)   # 80 needs CAP_NET_BIND_SERVICE; 8080 is the fallback
 
 
 def page(translator, snapshot, *, message_key=''):
+    """HTML of the setup page: network list, password field and status."""
     t = _T(translator)
     options = []
     for index, network in enumerate(snapshot.networks):
@@ -68,6 +69,7 @@ button{{width:100%;padding:.7rem;font-size:1rem}} small{{color:#777}} .msg{{colo
 
 
 def done_page(translator, ssid):
+    """HTML shown after the network was chosen."""
     t = _T(translator)
     return f'''<!DOCTYPE html>
 <html lang="{escape(t.language)}"><head><meta charset="utf-8">
@@ -99,6 +101,7 @@ class SetupWebServer:
         self._thread.start()
 
     def stop(self):
+        """Stop serving the setup page."""
         self._server.shutdown()
         self._server.server_close()
 

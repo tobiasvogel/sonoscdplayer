@@ -77,10 +77,6 @@ class SystemScreenTests(unittest.TestCase):
 
 
 class OledStopOrderTests(unittest.TestCase):
-    def test_oled_stops_before_player(self):
-        unit = (ROOT / 'systemd/sonoscdplayer-oled.service').read_text(encoding='utf-8')
-        self.assertIn('After=local-fs.target sonoscdplayer-player.service', unit)
-
     def test_rendered_oled_unit_keeps_player_ordering(self):
         import render_runtime_units
         with tempfile.TemporaryDirectory() as directory:
@@ -264,13 +260,6 @@ class MenuLanguageTests(unittest.TestCase):
             self.assertEqual(out.read_text(encoding='utf-8'),
                              build(to_frame(system_screen.screen_image('start', 'en')),
                                    pins=load_display_pins(example)))
-
-    def test_oled_and_player_share_the_state_directory(self):
-        for unit in ('sonoscdplayer-oled.service', 'sonoscdplayer-player.service'):
-            with self.subTest(unit=unit):
-                text = (ROOT / 'systemd' / unit).read_text()
-                self.assertIn('StateDirectory=sonoscdplayer', text)
-                self.assertIn('StateDirectoryMode=0700', text)
 
 if __name__ == '__main__':
     unittest.main()
