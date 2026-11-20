@@ -114,9 +114,11 @@ class TrackStream:
         self.thread = threading.Thread(target=self._produce, daemon=True, name='cd-reader')
 
     def log(self, msg):
+        """Log a line with the time since this stream started."""
         print(f'[+{time.monotonic()-self.started:8.3f}s] {msg}', flush=True)
 
     def start(self):
+        """Start the cdparanoia reader and the diagnostics thread."""
         self.thread.start()
         self._diag_thread = threading.Thread(target=self._diag_loop, daemon=True, name='pcm-diagnostics')
         self._diag_thread.start()
@@ -135,15 +137,18 @@ class TrackStream:
             self._diag_thread.join(timeout=min(timeout, 2.0))
 
     def http_begin(self, reader_id: int, client: str):
+        """Note an HTTP client that started reading (for diagnostics)."""
         with self._diag_lock:
             self._http_clients[reader_id] = {'client': client, 'sent': 0}
 
     def http_sent(self, reader_id: int, sent: int):
+        """Update how many bytes a client received (for diagnostics)."""
         with self._diag_lock:
             if reader_id in self._http_clients:
                 self._http_clients[reader_id]['sent'] = sent
 
     def http_end(self, reader_id: int):
+        """Forget a client that finished."""
         with self._diag_lock:
             self._http_clients.pop(reader_id, None)
 
@@ -175,6 +180,7 @@ class TrackStream:
                 break
 
     def attach(self, offset=0):
+        """Register a ring reader at ``offset``; raises DataExpired if that data is gone."""
         with self.lock:
             reader = self.ring.register(offset)  # DataExpired if requested history recycled
             if self.anchor is not None:
@@ -384,6 +390,7 @@ class TrackRequestHandler(BaseHTTPRequestHandler):
         return True
 
     def do_HEAD(self):
+        """Answer HEAD: size and type, no reader is attached."""
         if self._serve_cover(body=False):
             return
         span = self._request_span()
@@ -394,6 +401,7 @@ class TrackRequestHandler(BaseHTTPRequestHandler):
                       content_range=f'bytes {start}-{end}/{self.server.size_for(track)}' if partial else None)
 
     def do_GET(self):
+        """Answer GET: WAV header and PCM, with Range support."""
         if self._serve_cover(body=True):
             return
         span = self._request_span()
@@ -533,6 +541,7 @@ class TrackServer(ThreadingHTTPServer):
             super().server_close()
 
     def try_cached_probe(self, handler):
+        """Answer Sonos' first short probe from the kept start of the track, if possible."""
         with self._generation_lock:
             stream = self.stream
             cache = stream.probe_cache
@@ -713,6 +722,7 @@ class DiscServer(TrackServer):
         super().__init__(addr, stream, track, cover=cover)
 
     def track_for(self, path):
+        """Track number of a ``/track/<n>.wav`` path on this disc, or None."""
         m = re.fullmatch(r'/track/(\d{1,2})\.wav', urlsplit(path).path)
         if m is None:
             return None
@@ -720,11 +730,18 @@ class DiscServer(TrackServer):
         return track if track in self.tracks else None
 
     def size_for(self, track):
+        """WAV size (header + PCM) of the track."""
         return self.tracks[track] + 44
 
     def acquire_get(self, offset=0, track=None):
         # Check and attach under ONE lock hold: a request for another track
         # must never switch the ring between the check and the attach.
+        """Reader for a GET of ``track`` at ``offset``; switches the ring to that track if needed.
+
+        Raises:
+            Superseded: Sonos already moved on to the selected start track.
+            ReplayBusy: the switch did not happen in time (answered with 409).
+        """
         deadline = time.monotonic() + self.SWITCH_WAIT_SECONDS
         guard_until = time.monotonic() + self.START_GUARD_SECONDS
         with self._generation_lock:
@@ -752,6 +769,7 @@ class DiscServer(TrackServer):
             time.sleep(self.SWITCH_POLL_SECONDS)
 
     def release_get(self, stream, disconnected, complete=False):
+        """A GET ended; after a complete track, wait briefly for cdparanoia to exit."""
         super().release_get(stream, disconnected, complete=complete)
         if disconnected or not complete:
             return

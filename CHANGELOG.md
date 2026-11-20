@@ -6,6 +6,8 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- Code reference: every public module, class and function is documented;
+  `tools/build_api_docs.sh` builds HTML with pdoc.
 - The controller's interactive console mode (`player_controller.py` run
   directly) is removed; the player is controlled through the service.
 - Unused USB-reconnect modules (`reconnect_observer`, `reconnect_policy`,

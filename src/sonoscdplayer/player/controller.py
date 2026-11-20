@@ -89,6 +89,7 @@ class TrackServerProcess:
             raise
 
     def alive(self):
+        """True while the server process runs."""
         return self.proc is not None and self.proc.poll() is None
 
     def close(self):

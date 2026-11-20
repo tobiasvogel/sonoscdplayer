@@ -15,6 +15,7 @@ venv/
 /player.toml
 
 # Build output
+/docs/api/
 *.o
 *.so
 build/

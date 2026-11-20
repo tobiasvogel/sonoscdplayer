@@ -2,7 +2,7 @@
 """The table of contents of an audio CD, read with ``cdparanoia -Q``.
 
 Positions are in sectors (1/75 s, 2352 bytes of PCM). A track's end sector
-is exclusive. Run as a program it prints the tracks of /dev/sr0.
+is exclusive. Run as a program it prints the tracks of a drive.
 """
 from __future__ import annotations
 
@@ -124,6 +124,7 @@ def read_toc(device: str = '/dev/sr0', timeout: int = 30) -> DiscTOC:
 
 
 def main() -> int:
+    """Command line: print the tracks of the drive given with --device."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--device', required=True, help='Current optical drive path (e.g. /dev/sr1)')
     args = parser.parse_args()
