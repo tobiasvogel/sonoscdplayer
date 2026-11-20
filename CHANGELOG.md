@@ -6,6 +6,9 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- A track change of the disc that happens between two reads of the
+  regular ownership check no longer ends playback with "exact URI
+  mismatch"; the player follows the new track on the next check.
 - CDs without CD-TEXT that MusicBrainz lists in several editions now get
   their titles when all editions name album, artist and tracks alike
   (spelling differences such as case or "…" are ignored); the cover comes

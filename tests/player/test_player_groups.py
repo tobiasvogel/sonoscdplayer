@@ -184,6 +184,26 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.player._joined, {})
         self.assertFalse(self.player._group_uncertain)
 
+    def test_track_change_between_two_reads_is_not_an_error(self):
+        """At a track change Sonos can report the next track of our block
+        on the second read of a check; the next refresh follows it."""
+        self.start()
+        first, second = self.a.uri, self.a.uri.replace('/track/1.wav', '/track/2.wav')
+        self.player._queue_block = {'first': 1, 'tracks': [1, 2], 'urls': [first, second]}
+        reads = iter([first, second])                       # moves on during the check
+        self.a.get_current_track_info = lambda: {'uri': next(reads, second)}
+        self.player.refresh()
+        self.assertEqual(self.player.state.mode, Mode.PLAYING)
+        self.player.refresh()
+        self.assertEqual(self.player.owned_url, second)
+        self.assertEqual(self.player.state.selected_track, 2)
+
+    def test_foreign_uri_still_fails(self):
+        self.start()
+        self.a.uri = 'https://example.invalid/radio'
+        self.player.refresh()
+        self.assertEqual(self.player.state.mode, Mode.ERROR)
+
     def test_speaker_removed_in_app_is_no_longer_released(self):
         self.start()
         self.topo.leaders['B'] = 'B'                # taken out in the Sonos app

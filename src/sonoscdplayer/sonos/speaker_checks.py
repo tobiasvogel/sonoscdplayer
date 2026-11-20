@@ -37,6 +37,14 @@ def find_speaker(uid: str, *, discover=None):
     return matches[0]
 
 
+class UriChanged(RuntimeError):
+    """The speaker plays another URI than ours; ``uri`` is what it plays."""
+
+    def __init__(self, uri):
+        super().__init__('ownership denied: exact URI mismatch')
+        self.uri = uri
+
+
 class SpeakerGrouped(RuntimeError):
     """The speaker is not alone in its group; ``speaker`` is the found speaker."""
 
@@ -85,7 +93,8 @@ def require_our_stream(speaker, uid: str, url: str, expected_transport: str,
 
     Raises:
         TransportChanged: everything matches except the transport state.
-        RuntimeError: another UID, another group or another stream.
+        UriChanged: the speaker plays another URI.
+        RuntimeError: another UID or another group.
     """
     if speaker.uid != uid:
         raise RuntimeError('ownership denied: UID changed')
@@ -95,5 +104,6 @@ def require_our_stream(speaker, uid: str, url: str, expected_transport: str,
     if transport != expected_transport:
         raise TransportChanged(
             f'ownership denied: transport {transport}, expected {expected_transport}')
-    if speaker.get_current_track_info().get('uri') != url:
-        raise RuntimeError('ownership denied: exact URI mismatch')
+    uri = speaker.get_current_track_info().get('uri')
+    if uri != url:
+        raise UriChanged(uri)

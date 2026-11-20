@@ -24,7 +24,7 @@ from sonoscdplayer.audio.track_server_process import (forward_server_output, tra
                                                       wait_for_reader_start)
 from sonoscdplayer.player.state import Mode
 from sonoscdplayer.system.version import info as software_info
-from sonoscdplayer.sonos.speaker_checks import (SpeakerGrouped, TransportChanged, find_solo_stopped_speaker,
+from sonoscdplayer.sonos.speaker_checks import (SpeakerGrouped, TransportChanged, UriChanged, find_solo_stopped_speaker,
                                                 require_our_stream)
 from sonoscdplayer.ui.menu.playback_progress import verified_progress
 from sonoscdplayer.sonos import groups
@@ -472,6 +472,15 @@ class Controller:
             else:
                 self._display_progress = None
                 self._display_progress_poll_at = None
+        except UriChanged as exc:
+            if self._is_our_uri(exc.uri):
+                # Sonos went on to the next track of our disc between two
+                # reads (it happens right at a track change). The next
+                # refresh follows it; nothing foreign is adopted.
+                print('[player] Sonos moved to another track of the disc during the check; '
+                      'rechecking', flush=True)
+            else:
+                self._fail(f'ownership/status check failed: RuntimeError: {exc}')
         except TransportChanged as exc:
             # Play/pause in the Sonos app between our two reads: the next
             # refresh sees the new state. UID, group and URI are still checked
