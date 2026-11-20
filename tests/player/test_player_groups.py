@@ -156,6 +156,20 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.a.stop_calls, 0)
         self.assertEqual(self.topo.leaders['C'], 'A')
 
+    def test_selection_follows_a_group_change_in_the_app(self):
+        seen = []
+        self.player.selection_hook = lambda uid, members: seen.append((uid, members))
+        self.start()
+        self.topo.leaders['C'] = 'A'
+        self.player.refresh()
+        self.player.refresh()                       # no second report for the same group
+        self.assertEqual(seen, [('A', ('B', 'C'))])
+
+    def test_paused_speaker_counts_as_idle_for_a_new_playback(self):
+        self.b.transport = 'PAUSED_PLAYBACK'        # paused queue on B
+        self.player.play('A', ['B'])
+        self.assertEqual(self.topo.leaders['B'], 'A')
+
     def test_speaker_removed_in_app_is_no_longer_released(self):
         self.start()
         self.topo.leaders['B'] = 'B'                # taken out in the Sonos app
@@ -485,14 +499,29 @@ class StagedGroupTests(unittest.TestCase):
         self.assertFalse(reply['ok'])
         self.assertIsNone(sel.coordinator_uid())
 
-    def test_grouped_member_rejected_without_mutation(self):
+    def test_member_of_a_playing_group_rejected_without_mutation(self):
         member=StagingSpeaker('B')
         coord=StagingSpeaker('Z')
+        coord.transport='PLAYING'
         member._group=NS(coordinator=coord,members=(coord,member))
         sel=SelectedTarget(verify=lambda uid:True,find_many=lambda uids:{'B':member})
         reply=handle_command(FakeController(),{'command':'set-target','uid':'A','members':['B']},sel)
         self.assertFalse(reply['ok'])
         self.assertIsNone(sel.coordinator_uid())
+        self.assertEqual(member.unjoins,0)
+
+    def test_chosen_member_is_taken_out_of_an_idle_group(self):
+        for transport in ('STOPPED','PAUSED_PLAYBACK'):
+            with self.subTest(transport=transport):
+                member=StagingSpeaker('B')
+                coord=StagingSpeaker('Z')
+                coord.transport=transport
+                member._group=NS(coordinator=coord,members=(coord,member))
+                sel=SelectedTarget(verify=lambda uid:True,find_many=lambda uids:{'B':member})
+                reply=handle_command(FakeController(),{'command':'set-target','uid':'A','members':['B']},sel)
+                self.assertTrue(reply['ok'])
+                self.assertEqual(member.unjoins,1)
+                self.assertEqual(sel.speakers(),['A','B'])
 
     def test_uncertain_release_remains_tracked(self):
         a,b=StagingSpeaker('A'),StagingSpeaker('B')

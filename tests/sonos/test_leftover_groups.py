@@ -46,7 +46,11 @@ class Speaker:
 
     def unjoin(self):
         self.unjoin_calls += 1
-        self.topology.leaders[self.uid] = self.uid
+        leaders = self.topology.leaders
+        others = sorted(u for u, v in leaders.items() if v == self.uid and u != self.uid)
+        for uid in others:                 # like Sonos: the next member coordinates
+            leaders[uid] = others[0]
+        leaders[self.uid] = self.uid
 
 
 def no_wait(*_):
@@ -110,8 +114,7 @@ def test_selection_splits_a_leftover_of_the_old_selection(topo):
     assert selection.speakers() == ['A']
 
 
-def test_selection_rejects_a_group_with_foreign_speakers(topo):
-    topo.leaders['D'] = 'A'
+def selection_with_verify(topo):
     def verify(uid):
         speaker = topo.devices[uid]
         require_solo_and_stopped(speaker, uid)
@@ -120,10 +123,26 @@ def test_selection_rejects_a_group_with_foreign_speakers(topo):
     selection._uid, selection._members = 'A', ('B', 'C')
     controller = Controller(PlayerState().disc_loaded((1, 2)), 'A', '192.0.2.10', 8765,
                             server=None, verify=verify)
+    return selection, controller
+
+
+@pytest.mark.parametrize('transport', ['STOPPED', 'PAUSED_PLAYBACK'])
+def test_chosen_speaker_leaves_an_idle_foreign_group_alone(topo, transport):
+    """A is grouped with C and a foreign D; only A leaves, C and D stay together."""
+    topo.leaders['D'] = 'A'
+    topo.devices['A'].transport = transport
+    selection, controller = selection_with_verify(topo)
+    selection.set(controller, 'A')
+    assert topo.leaders == {'A': 'A', 'B': 'B', 'C': 'C', 'D': 'C'}
+
+
+def test_playing_foreign_group_is_not_touched(topo):
+    topo.leaders['D'] = 'A'
+    topo.devices['A'].transport = 'PLAYING'
+    selection, controller = selection_with_verify(topo)
     with pytest.raises(SpeakerGrouped):
         selection.set(controller, 'A')
-    assert topo.leaders['C'] == 'A'
-
+    assert topo.leaders['C'] == 'A' and topo.devices['A'].unjoin_calls == 0
 
 class MemoryGroupStore:
     def __init__(self, uids=()):

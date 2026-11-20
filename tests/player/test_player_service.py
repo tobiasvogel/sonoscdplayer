@@ -198,6 +198,7 @@ class StatusAPITests(unittest.TestCase):
                      'group_cleanup_pending':False},
             'stream':{'active':False},
             'software':reply['state']['software'],
+            'target_rev':0,
         })
         self.assertRegex(reply['state']['software']['version'], r'^\d+\.\d+\.\d+')
         self.assertEqual(self.verify_calls, 0)

@@ -109,6 +109,8 @@ class InteractiveMenu:
         self.player_mode = None   # updated by the OLED loop from the player status
         self._play_pending = False        # PLAY pressed, no answer yet
         self._rejection_seq = None        # last PLAY rejection already seen
+        self._target_rev = None           # player's selection version already seen
+        self._selection_reload = False    # re-read the selection, it changed elsewhere
         self._current_loaded = current_target is None
         self._current_worker = None
         self._current_result = None
@@ -399,6 +401,17 @@ class InteractiveMenu:
                 self.connect_notices.clear(now=now)
                 self._restore_after_notice()
                 changed = True
+        rev = state.get('target_rev') if isinstance(state, dict) else None
+        if isinstance(rev, int):
+            if (self._target_rev is not None and rev != self._target_rev
+                    and self._current_target is not None):
+                # The selection changed (e.g. in the Sonos app): read it again
+                # and search, so the list shows the new groups.
+                self._selection_reload = True
+                self._current_loaded = False
+                self._next_current_try = 0.0
+                self._start_discovery(now)
+            self._target_rev = rev
         rejection = state.get('last_rejection') if isinstance(state, dict) else None
         seq = rejection.get('seq') if isinstance(rejection, dict) else None
         if seq is None:
@@ -660,6 +673,14 @@ class InteractiveMenu:
         if result is not None:
             if isinstance(result, frozenset):
                 self._current_loaded = True
+                reload, self._selection_reload = self._selection_reload, False
+                editing = self.state.draft != self.state.applied or self._target_pending
+                if reload and not editing:
+                    # Changed elsewhere (Sonos app): show the player's selection.
+                    if result != self.state.applied:
+                        self.state = replace(self.state, applied=result, draft=result)
+                        return True
+                    return False
                 # Never overwrite a selection the user has started or confirmed here.
                 if (result and not self.state.applied and not self.state.draft
                         and not self._target_pending):

@@ -120,6 +120,7 @@ def handle_command(controller, request, selection=None, eject=None, volume=None)
                 raise RuntimeError('target selection unavailable')
             if command == 'set-target':
                 selection.set(controller, uid, members)
+                controller.target_rev = getattr(controller, "target_rev", 0) + 1
             elif command == 'clear-target':
                 selection.clear(controller)
             reply = response(controller, ok=True)
@@ -472,6 +473,13 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
     selection = SelectedTarget(store=target_store)
     if selection.restore():
         print('[target] remembered speaker selection restored; no Sonos action until PLAY', flush=True)
+
+    def follow_app(uid, members):
+        selection.follow(uid, members)
+        controller.target_rev += 1
+        print('[target] selection follows the group changed in the Sonos app', flush=True)
+    if hasattr(controller, 'selection_hook'):
+        controller.selection_hook = follow_app
     volume = VolumeControl()
     if hasattr(controller, 'status_hook'):
         controller.status_hook = lambda: publisher.publish(controller, power)

@@ -6,6 +6,12 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- A speaker chosen on the CD player that sits in an idle Sonos group
+  (stopped or paused) is taken out of it on its own; the rest of the group
+  stays together. Groups that are playing are never touched. Idle speakers
+  (stopped or paused) can be used for CD playback.
+- Group changes made in the Sonos app during CD playback now also change
+  the speaker selection, and the menu shows them.
 - Pressing PLAY shows "Starting playback …" at once (while the drive spins
   up); if the player refuses, the display says why (speaker grouped,
   playing or missing, no speaker selected, CD not ready, drive error).

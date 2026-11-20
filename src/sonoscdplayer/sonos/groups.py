@@ -9,6 +9,10 @@ from __future__ import annotations
 import re
 import time
 
+#: A speaker in one of these states plays nothing anybody listens to; the
+#: player may use it (a paused queue stays in the Sonos queue).
+IDLE_TRANSPORTS = frozenset(('STOPPED', 'PAUSED_PLAYBACK'))
+
 UID_RE = re.compile(r'[A-Za-z0-9_:-]{1,128}\Z')
 MAX_MEMBERS = 15
 
@@ -48,7 +52,7 @@ def is_expected_group(player, coordinator_uid, members=frozenset()):
             len(actual) == len(set(actual)) and set(actual) == expected)
 
 def require_member_ready(player, uid):
-    """Check that a member speaker is alone and stopped before joining it.
+    """Check that a member speaker is alone and idle before joining it.
 
     Raises:
         RuntimeError: another UID, grouped, or playing.
@@ -58,7 +62,7 @@ def require_member_ready(player, uid):
     refresh_topology(player)
     if not is_expected_group(player, uid):
         raise RuntimeError('member not standalone')
-    if player.get_current_transport_info()['current_transport_state'] != 'STOPPED':
+    if player.get_current_transport_info()['current_transport_state'] not in IDLE_TRANSPORTS:
         raise RuntimeError('member has active transport')
 
 def find_speakers(uids, *, discover=None, timeout=5):
@@ -129,7 +133,7 @@ def release_leftover(speaker, own_uids, *, sleep=time.sleep, clock=time.monotoni
               f'{foreign} of them not ours', flush=True)
         return False
     transport = coordinator.get_current_transport_info()['current_transport_state']
-    if transport != 'STOPPED':
+    if transport not in IDLE_TRANSPORTS:
         print(f'[sonos] group of {len(members)} own speakers left alone: '
               f'coordinator is {transport}', flush=True)
         return False
@@ -144,12 +148,44 @@ def release_leftover(speaker, own_uids, *, sleep=time.sleep, clock=time.monotoni
     return alone
 
 
+def detach_from_idle_group(speaker, *, sleep=time.sleep, clock=time.monotonic):
+    """Take ``speaker`` alone out of a group that plays nothing.
+
+    Used for a speaker the user explicitly chose on the CD player. Only
+    this speaker leaves; the rest of the group stays together. A group
+    that is playing is left alone.
+
+    Returns:
+        True if ``speaker`` is alone afterwards.
+    """
+    refresh_topology(speaker)
+    group = speaker.group
+    members = list(group.members)
+    if len(members) < 2:
+        return True
+    transport = group.coordinator.get_current_transport_info()['current_transport_state']
+    if transport not in IDLE_TRANSPORTS:
+        print(f'[sonos] chosen speaker stays in its group: the group is {transport}', flush=True)
+        return False
+    speaker.unjoin()
+    alone = wait_standalone(speaker, speaker.uid, sleep=sleep, clock=clock)
+    print(f'[sonos] chosen speaker taken out of an idle group of {len(members)}; '
+          f'{"done" if alone else "not confirmed"}', flush=True)
+    return alone
+
+
+def make_alone(speaker, own_uids, *, sleep=time.sleep, clock=time.monotonic):
+    """Split a leftover group of our own, else take the chosen speaker out of an idle group."""
+    return (release_leftover(speaker, own_uids, sleep=sleep, clock=clock)
+            or detach_from_idle_group(speaker, sleep=sleep, clock=clock))
+
+
 def require_member_ready_releasing(player, uid, own_uids):
     """require_member_ready(); a leftover group of own speakers is split first."""
     try:
         require_member_ready(player, uid)
     except RuntimeError as exc:
-        if str(exc) != 'member not standalone' or not release_leftover(player, own_uids):
+        if str(exc) != 'member not standalone' or not make_alone(player, own_uids):
             raise
         require_member_ready(player, uid)
 
@@ -259,7 +295,7 @@ def form(coordinator, members, *, settle=3.0, sleep=time.sleep, clock=time.monot
     try:
         if not is_expected_group(coordinator, coordinator.uid):
             raise RuntimeError('coordinator not standalone')
-        if coordinator.get_current_transport_info()['current_transport_state'] != 'STOPPED':
+        if coordinator.get_current_transport_info()['current_transport_state'] not in IDLE_TRANSPORTS:
             raise RuntimeError('coordinator transport active')
         for uid, player in members.items():
             require_member_ready(player, uid)

@@ -191,6 +191,8 @@ class Controller:
         self._recovery_url = None
         self.group_store = None      # optional PlaybackGroupStore (survives restarts)
         self.last_rejection = None   # {'seq', 'command', 'reason'} of a refused PLAY
+        self.selection_hook = None   # selection_hook(uid, members) when the app changes the group
+        self.target_rev = 0          # counts selection changes, for the display
 
     def note_rejection(self, command, reason):
         """Remember a refused PLAY for the display (status ``last_rejection``)."""
@@ -257,6 +259,7 @@ class Controller:
             snapshot['progress'] = dict(self._display_progress)
         if self.disc_status is not None:
             snapshot['disc'] = self.disc_status.snapshot()
+        snapshot['target_rev'] = self.target_rev
         if self.last_rejection is not None:
             snapshot['last_rejection'] = dict(self.last_rejection)
         if self.metadata_snapshot is not None:
@@ -287,16 +290,16 @@ class Controller:
         return not remaining
 
     def _verify_releasing_leftover(self, uid, members):
-        """verify(uid); a leftover group of the selection is released first.
+        """verify(uid); a grouped coordinator is made alone first.
 
-        After an interrupted playback the selected coordinator can still be
-        grouped with speakers of the selection. Those (and only those) are
-        detached from the stopped coordinator, then the check is repeated.
+        A leftover group of our own speakers is split; otherwise the chosen
+        speaker alone leaves an idle group (see groups.make_alone()). Then
+        the check is repeated.
         """
         try:
             return self.verify(uid)
         except SpeakerGrouped as exc:
-            if not groups.release_leftover(exc.speaker, {uid, *members, *self.remembered_group()}):
+            if not groups.make_alone(exc.speaker, {uid, *members, *self.remembered_group()}):
                 raise
             self.forget_leftover_group()
         return self.verify(uid)
@@ -533,6 +536,7 @@ class Controller:
     def _adopt_group(self, coordinator):
         group = coordinator.group
         members = {p.uid: p for p in group.members if p.uid != coordinator.uid}
+        changed = coordinator.uid != self.uid or set(members) != set(self._joined)
         if coordinator.uid != self.uid:
             print(f'[player] playback moved to another speaker in the Sonos app; '
                   f'following ({len(members)} member(s))', flush=True)
@@ -545,6 +549,12 @@ class Controller:
         self._group_coord = coordinator if members else None
         self._group_members = frozenset(members)
         self._store_group()
+        if changed and self.selection_hook is not None:
+            # The selection follows changes made in the Sonos app.
+            try:
+                self.selection_hook(coordinator.uid, tuple(sorted(members)))
+            except Exception as exc:
+                print(f'[player] selection not updated: {type(exc).__name__}', flush=True)
 
     def _toc_duration(self, track):
         try:

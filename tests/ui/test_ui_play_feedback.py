@@ -117,3 +117,23 @@ def test_player_reports_refusals_without_uids():
     ctrl.note_rejection('play', 'RuntimeError: speaker RINCON_AB12 not found')
     assert ctrl.status_snapshot()['last_rejection']['reason'] == \
         'RuntimeError: speaker <speaker> not found'
+
+
+def test_menu_shows_a_selection_changed_in_the_sonos_app():
+    selection = {'A'}
+    m = InteractiveMenu(discover=lambda **_: None, current_target=lambda: set(selection))
+    m.player_status({'player': {'mode': 'PLAYING'}, 'target_rev': 1}, now=0)
+    import time
+
+    def settle(now):
+        for _ in range(100):
+            m.poll(now=now)
+            if m._current_loaded:
+                return
+            time.sleep(0.01)
+    settle(0)
+    assert m.state.applied == {'A'}
+    selection.add('K')                                   # added in the Sonos app
+    m.player_status({'player': {'mode': 'PLAYING'}, 'target_rev': 2}, now=1)
+    settle(1)
+    assert m.state.applied == m.state.draft == {'A', 'K'}

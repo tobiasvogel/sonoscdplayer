@@ -7,7 +7,7 @@ selection is checked against Sonos only at the next PLAY.
 All methods are called by the player service's serialized control worker.
 """
 from sonoscdplayer.player.state import Mode
-from sonoscdplayer.sonos.groups import normalize_members, find_speakers, require_member_ready_releasing, release_leftover
+from sonoscdplayer.sonos.groups import normalize_members, find_speakers, require_member_ready_releasing, make_alone
 from sonoscdplayer.sonos.speaker_checks import SpeakerGrouped
 
 
@@ -96,7 +96,7 @@ class SelectedTarget:
         try:
             self._verify(uid)
         except SpeakerGrouped as exc:
-            if not release_leftover(exc.speaker, own):
+            if not make_alone(exc.speaker, own):
                 raise
             forget = getattr(controller, 'forget_leftover_group', None)
             if callable(forget):
@@ -109,6 +109,10 @@ class SelectedTarget:
             for member_uid in selected_members:
                 require_member_ready_releasing(discovered[member_uid], member_uid, own)
         self._remember(uid, selected_members)
+
+    def follow(self, uid, members):
+        """Take over a group change made in the Sonos app during playback."""
+        self._remember(uid, tuple(sorted(members)))
 
     def _remember(self, uid, members):
         self._uid = uid
