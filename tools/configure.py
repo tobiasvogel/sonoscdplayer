@@ -25,13 +25,25 @@ FIELD_RANGES = {
     ('audio_startup', 'pcm_timeout_seconds'): (5, 120),
     ('drive_power', 'keepalive_interval_seconds'): (3, 3600),
     ('drive_power', 'idle_spin_down_seconds'): (30, 86400),
+    ('metadata.musicbrainz', 'timeout_seconds'): (1, 30),
+    ('metadata.matching', 'confidence_threshold'): (0, 100),
+    ('metadata.matching', 'minimum_margin'): (0, 100),
+    ('metadata.matching', 'minimum_track_titles'): (1, 99),
 }
 DRIVE_STRATEGIES = ('off', 'start', 'keepalive', 'power_condition', 'auto')
 # Optional values are taken from the shipped reference configuration.
 REFERENCE = ROOT / "config" / "player.example.toml"
 FIELDS = (
     ('streaming', 'max_buffer_mib', 'PCM ring buffer (MiB)', 'int'),
+    ('metadata', 'enabled', 'Enable CD metadata', 'bool'),
+    ('metadata', 'read_cd_text', 'Read CD-TEXT from discs', 'bool'),
     ('metadata', 'online_lookup', 'Look up metadata online', 'bool'),
+    ('metadata.musicbrainz', 'enabled', 'Enable MusicBrainz provider', 'bool'),
+    ('metadata.musicbrainz', 'timeout_seconds', 'MusicBrainz request timeout (seconds)', 'int'),
+    ('metadata', 'auto_match', 'Automatically select matched releases', 'bool'),
+    ('metadata.matching', 'confidence_threshold', 'Matching confidence threshold (0..100)', 'int'),
+    ('metadata.matching', 'minimum_margin', 'Minimum score margin (0..100)', 'int'),
+    ('metadata.matching', 'minimum_track_titles', 'Minimum comparable titles (1..99)', 'int'),
     ('sonos', 'use_queue', 'Use the Sonos queue', 'bool'),
     ('playback', 'continue', 'Continue to the next track', 'bool'),
     ('audio_startup', 'prebuffer_before_sonos', 'Prebuffer audio before Sonos starts', 'bool'),
@@ -65,7 +77,12 @@ def existing_values(parsed: dict, reference: dict) -> dict[tuple[str, str], obje
     """Use shipped defaults for absent optional keys; do not invent required ones."""
     current = {}
     for section, key, _, kind in FIELDS:
-        group = parsed.get(section, {})
+        group = parsed
+        default_group = reference
+        for component in section.split('.'):
+            group = group.get(component, {}) if isinstance(group, dict) else None
+            default_group = (default_group.get(component, {})
+                             if isinstance(default_group, dict) else None)
         if not isinstance(group, dict):
             raise ValueError(f'invalid [{section}] section')
         if key in group:
@@ -76,7 +93,7 @@ def existing_values(parsed: dict, reference: dict) -> dict[tuple[str, str], obje
         elif (section, key) == ('streaming', 'max_buffer_mib'):
             raise ValueError('missing required [streaming].max_buffer_mib')
         else:
-            value = reference.get(section, {}).get(key)
+            value = default_group.get(key) if isinstance(default_group, dict) else None
             if value is None:
                 raise ValueError(f'no reference default for {section}.{key}')
         field = (section, key)
@@ -144,6 +161,13 @@ def replace_values(raw: str, changes: dict[tuple[str, str], object]) -> str:
             if stop and lines[stop - 1] and not lines[stop - 1].endswith(('\n', '\r')):
                 additions.insert(0, '\n')
             inserts.append((stop, additions))
+        elif '.' in section:
+            # Nested table after existing top-level tables is always legal TOML.
+            # Inserting it at the beginning could create an implicit parent and
+            # make the existing explicit parent declaration invalid.
+            if lines and not lines[-1].endswith(('\n', '\r')):
+                additions.insert(0, '\n')
+            inserts.append((len(lines), [f'\n[{section}]\n', *additions]))
         else:
             inserts.append((0, [f'[{section}]\n', *additions, '\n']))
     for position, additions in sorted(inserts, key=lambda p: p[0], reverse=True):
@@ -157,7 +181,15 @@ FIELD_HELP = {
     ('streaming', 'max_buffer_mib'): (
         'RAM used for PCM and the next track read-ahead. Valid range: 16..512 MiB. '
         'The recommendation is 10% of total physical RAM, capped at 512 MiB.'),
-    ('metadata', 'online_lookup'): 'Look up CD metadata on MusicBrainz when enabled.',
+    ('metadata', 'enabled'): 'Enable CD metadata processing, including local titles and cover lookup.',
+    ('metadata', 'read_cd_text'): 'Read titles directly from the inserted CD before online lookup.',
+    ('metadata', 'online_lookup'): 'Allow online release identification when CD metadata is enabled.',
+    ('metadata.musicbrainz', 'enabled'): 'Enable MusicBrainz as an online metadata provider.',
+    ('metadata.musicbrainz', 'timeout_seconds'): 'One MusicBrainz request timeout: 1..30 seconds.',
+    ('metadata', 'auto_match'): 'Select an unambiguous MusicBrainz release automatically.',
+    ('metadata.matching', 'confidence_threshold'): 'Required matching score for ambiguous releases: 0..100.',
+    ('metadata.matching', 'minimum_margin'): 'Minimum lead over competing release candidates: 0..100.',
+    ('metadata.matching', 'minimum_track_titles'): 'Minimum CD-TEXT titles for ambiguous matches: 1..99.',
     ('sonos', 'use_queue'): 'Add CD tracks to the Sonos queue so album and artist are visible.',
     ('playback', 'continue'): 'Automatically play the next CD track after one ends.',
     ('audio_startup', 'prebuffer_before_sonos'): (
@@ -178,13 +210,20 @@ FIELD_HELP = {
 }
 MENU_GROUPS = (
     ('Streaming and playback', (('streaming', 'max_buffer_mib'), ('playback', 'continue'))),
-    ('CD metadata', (('metadata', 'online_lookup'),)),
+    ('CD metadata', (
+        ('metadata', 'enabled'), ('metadata', 'read_cd_text'),
+        ('metadata', 'online_lookup'), ('metadata.musicbrainz', 'enabled'),
+        ('metadata.musicbrainz', 'timeout_seconds'), ('metadata', 'auto_match'))),
     ('Sonos', (('sonos', 'use_queue'),)),
     ('CD drive and power management', (
         ('drive_power', 'enabled'), ('drive_power', 'strategy'),
         ('drive_power', 'keepalive_interval_seconds'), ('drive_power', 'idle_spin_down_seconds'))),
     ('Audio startup', (
         ('audio_startup', 'prebuffer_before_sonos'), ('audio_startup', 'pcm_timeout_seconds'))),
+    ('Release matching (advanced)', (
+        ('metadata.matching', 'confidence_threshold'),
+        ('metadata.matching', 'minimum_margin'),
+        ('metadata.matching', 'minimum_track_titles'))),
 )
 
 

@@ -88,7 +88,7 @@ class ConfigureTests(unittest.TestCase):
         current = config.existing_values(
             {'streaming': {'max_buffer_mib': 16}},
             __import__('tomllib').loads(config.REFERENCE.read_text()))
-        replies = iter(['1', '', 'k', '2', 'n', '6', 'y'])
+        replies = iter(['1', '', 'k', '2', 'k', 'k', 'n', 'k', 'k', 'k', '7', 'y'])
         result = config.interactive_choices(current, 205,
                     read=lambda _: next(replies), out=lambda _: None)
         self.assertEqual(result, {('streaming', 'max_buffer_mib'): 205,
@@ -98,7 +98,7 @@ class ConfigureTests(unittest.TestCase):
         current = config.existing_values(
             {'streaming': {'max_buffer_mib': 16}},
             __import__('tomllib').loads(config.REFERENCE.read_text()))
-        replies = iter(['1', '', 'k', '1', 'k', 'k', '6', 'y'])
+        replies = iter(['1', '', 'k', '1', 'k', 'k', '7', 'y'])
         result = config.interactive_choices(current, 205,
                     read=lambda _: next(replies), out=lambda _: None)
         self.assertEqual(result, {})
@@ -115,7 +115,7 @@ class ConfigureTests(unittest.TestCase):
         current = config.existing_values(
             {'streaming': {'max_buffer_mib': 16}},
             __import__('tomllib').loads(config.REFERENCE.read_text()))
-        replies = iter(['6', '', '0'])
+        replies = iter(['7', '', '0'])
         self.assertIsNone(config.interactive_choices(current, 205,
                     read=lambda _: next(replies), out=lambda _: None))
 
@@ -179,7 +179,7 @@ class ConfigureTests(unittest.TestCase):
         current = config.existing_values(
             {'streaming': {'max_buffer_mib': 16}},
             tomllib.loads(config.REFERENCE.read_text()))
-        replies = iter(['4', 'n', 'k', 'k', '120', '6', '4', 'n', 'k', 'k', 'off', '6', 'y'])
+        replies = iter(['4', 'n', 'k', 'k', '120', '7', '4', 'n', 'k', 'k', 'off', '7', 'y'])
         output = []
         result = config.interactive_choices(current, 205,
                     read=lambda _: next(replies), out=output.append)
@@ -198,6 +198,79 @@ class ConfigureTests(unittest.TestCase):
         self.assertEqual(parsed['audio_startup']['pcm_timeout_seconds'], 60)
         self.assertEqual(parsed['drive_power']['strategy'], 'keepalive')
         self.assertEqual(parsed['drive_power']['idle_spin_down_seconds'], 300)
+
+    def test_m3_metadata_defaults_are_not_written_implicitly(self):
+        import tomllib
+        raw = '[streaming]\nmax_buffer_mib = 16\n'
+        reference = tomllib.loads(config.REFERENCE.read_text())
+        current = config.existing_values(tomllib.loads(raw), reference)
+        self.assertTrue(current[('metadata', 'read_cd_text')])
+        self.assertTrue(current[('metadata', 'auto_match')])
+        self.assertEqual(current[('metadata.musicbrainz', 'timeout_seconds')], 8)
+        self.assertEqual(current[('metadata.matching', 'confidence_threshold')], 90)
+        self.assertEqual(config.replace_values(raw, config.pending_changes(current, current)), raw)
+
+    def test_m3_matching_ranges_and_musicbrainz_timeout(self):
+        import tomllib
+        reference = tomllib.loads(config.REFERENCE.read_text())
+        for section, key, value in (
+                ('metadata.musicbrainz', 'timeout_seconds', 31),
+                ('metadata.matching', 'minimum_track_titles', 0),
+                ('metadata.matching', 'minimum_margin', -1),
+                ('metadata.matching', 'confidence_threshold', True),
+                ('metadata', 'read_cd_text', 'yes')):
+            with self.subTest(field=(section, key)), self.assertRaisesRegex(ValueError, 'invalid'):
+                parsed = {'streaming': {'max_buffer_mib': 16}}
+                group = parsed
+                for part in section.split('.'):
+                    group = group.setdefault(part, {})
+                group[key] = value
+                config.existing_values(parsed, reference)
+
+    def test_m3_existing_parent_and_missing_nested_table(self):
+        import tomllib
+        raw = ('[metadata]\n# preserve this\nonline_lookup = true\n'
+               '[streaming]\nmax_buffer_mib = 16\n')
+        updated = config.replace_values(raw, {
+            ('metadata.matching', 'confidence_threshold'): 94,
+            ('metadata.musicbrainz', 'timeout_seconds'): 12})
+        cfg = tomllib.loads(updated)
+        self.assertEqual(cfg['metadata']['matching']['confidence_threshold'], 94)
+        self.assertEqual(cfg['metadata']['musicbrainz']['timeout_seconds'], 12)
+        self.assertIn('# preserve this', updated)
+
+    def test_m3_missing_parent_and_multiple_nested_tables(self):
+        import tomllib
+        raw = '[streaming]\nmax_buffer_mib = 16\n'
+        updated = config.replace_values(raw, {
+            ('metadata', 'enabled'): False,
+            ('metadata.matching', 'minimum_margin'): 20,
+            ('metadata.musicbrainz', 'enabled'): False})
+        cfg = tomllib.loads(updated)
+        self.assertFalse(cfg['metadata']['enabled'])
+        self.assertFalse(cfg['metadata']['musicbrainz']['enabled'])
+        self.assertEqual(cfg['metadata']['matching']['minimum_margin'], 20)
+
+    def test_m3_menu_metadata_and_advanced_review(self):
+        import tomllib
+        current = config.existing_values(
+            {'streaming': {'max_buffer_mib': 16}},
+            tomllib.loads(config.REFERENCE.read_text()))
+        answers = iter(['2', 'k', 'n', 'k', 'k', 'k', 'k',
+                        '6', '95', 'k', 'k', '7', 'y'])
+        changes = config.interactive_choices(current, 205,
+                    read=lambda _: next(answers), out=lambda _: None)
+        self.assertEqual(changes, {('metadata', 'read_cd_text'): False,
+                                   ('metadata.matching', 'confidence_threshold'): 95})
+
+    def test_m3_preserves_existing_matching_customizations(self):
+        import tomllib
+        raw = ('[metadata.matching]\nsoft_suffixes = ["Sonderedition"]\n'
+               'confidence_threshold = 90  # inline\n')
+        updated = config.replace_values(raw, {('metadata.matching', 'confidence_threshold'): 95})
+        cfg = tomllib.loads(updated)
+        self.assertEqual(cfg['metadata']['matching']['soft_suffixes'], ['Sonderedition'])
+        self.assertIn('confidence_threshold = 95  # inline', updated)
 
 
 
