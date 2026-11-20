@@ -1,5 +1,4 @@
 """Speaker selection in the menu: checkboxes, single/multi target, apply feedback and the player RPC boundary (no Sonos)."""
-import time
 import unittest
 from dataclasses import replace
 from threading import Event

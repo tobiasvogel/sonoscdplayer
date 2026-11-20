@@ -1,7 +1,6 @@
 """Shared read-only semantic source for UI states."""
 import unittest
 from dataclasses import replace
-from types import SimpleNamespace
 
 from sonoscdplayer.network_setup.session import SetupSnapshot
 from sonoscdplayer.ui.renderers.character_adapters import (

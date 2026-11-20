@@ -4,7 +4,6 @@ No real drive, cdparanoia or sg_start is used. The simulated drive answers
 the same commands the check sends and advances a fake clock by the time a
 drive of the given speed would need.
 """
-import hashlib
 import io
 import json
 import subprocess

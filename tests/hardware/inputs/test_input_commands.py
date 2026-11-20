@@ -1,13 +1,12 @@
 """Button command mapping, dispatch and the command bridge to the player socket (mocked)."""
 import contextlib
 import io
-import sys
 import tempfile
 import threading
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from sonoscdplayer.hardware.inputs.button_commands import map_event
 from sonoscdplayer.hardware.inputs.button_service import (
     CommandDispatcher,

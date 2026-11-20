@@ -3,7 +3,6 @@ import contextlib
 import hashlib
 import io
 import os
-import platform
 import stat
 import struct
 import subprocess
@@ -440,9 +439,8 @@ class ExitrdPreflightTests(unittest.TestCase):
         self.assertEqual(preflight.mount_fs_type(Path("/run"), mountinfo), "tmpfs")
 
     def test_rejects_live_exitrd_ancestors(self):
-        with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(preflight.PreflightError, "/run/initramfs"):
-                preflight.inspect_stage_dir(Path("/"), "")
+        with self.assertRaisesRegex(preflight.PreflightError, "/run/initramfs"):
+            preflight.inspect_stage_dir(Path("/"), "")
 
     def test_rejects_non_tmpfs_destination(self):
         with tempfile.TemporaryDirectory() as directory:

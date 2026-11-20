@@ -3,7 +3,6 @@ import contextlib
 import io
 import threading
 import unittest
-from types import SimpleNamespace
 from unittest import mock
 from unittest.mock import Mock, patch
 from sonoscdplayer.hardware.inputs.play_button_policy import (

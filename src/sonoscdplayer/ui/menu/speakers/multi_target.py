@@ -6,6 +6,7 @@ new live ownership and topology checks in the player service.
 """
 from __future__ import annotations
 from dataclasses import dataclass, replace
+from sonoscdplayer.sonos.groups import visible_members
 from sonoscdplayer.ui.i18n import Translator
 
 @dataclass(frozen=True)
@@ -44,7 +45,7 @@ def from_devices(devices, *, language='de'):
                 raise ValueError('invalid speaker')
             group = device.group
             coordinator = group.coordinator
-            members = tuple(group.members)
+            members = tuple(visible_members(group))
             coordinator_uid = coordinator.uid
             if not isinstance(coordinator_uid, str) or not coordinator_uid or not members:
                 raise ValueError('invalid coordinator')

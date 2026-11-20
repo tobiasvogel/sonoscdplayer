@@ -1,7 +1,6 @@
 """Pure, hardware-independent GPIO event engine. No Sonos/device commands."""
 from dataclasses import dataclass, field
 import re
-from pathlib import Path
 import tomllib
 
 BUTTON_NAMES = ('power', 'connect', 'eject', 'previous', 'stop', 'playpause',

@@ -7,7 +7,7 @@ UID is left alone.
 """
 from __future__ import annotations
 
-from sonoscdplayer.sonos.groups import IDLE_TRANSPORTS, is_expected_group
+from sonoscdplayer.sonos.groups import IDLE_TRANSPORTS, is_expected_group, visible_members
 
 
 class TransportChanged(RuntimeError):
@@ -65,7 +65,7 @@ def require_solo_and_stopped(speaker, uid: str) -> None:
     if speaker.uid != uid:
         raise RuntimeError('speaker UID does not match')
     group = speaker.group
-    members = list(group.members)
+    members = visible_members(group)
     if len(members) != 1 or members[0].uid != uid or group.coordinator.uid != uid:
         raise SpeakerGrouped(speaker)
     transport = speaker.get_current_transport_info()['current_transport_state']

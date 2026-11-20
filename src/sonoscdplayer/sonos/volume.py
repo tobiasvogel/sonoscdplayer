@@ -18,7 +18,7 @@ from __future__ import annotations
 import time
 
 from sonoscdplayer.player.state import Mode
-from sonoscdplayer.sonos.groups import find_speakers
+from sonoscdplayer.sonos.groups import find_speakers, visible_members
 
 MAX_STEP = 10            # largest relative change per request
 IDLE_CHECK_SECONDS = 5.0  # reuse of the "nothing is playing" check
@@ -52,7 +52,7 @@ def _group_relative(coordinator, step):
         return int(setter(step))
     # Older SoCo without group volume: change each member relatively.
     level = None
-    for member in group.members:
+    for member in visible_members(group):
         new = _relative(member, step)
         if member.uid == coordinator.uid:
             level = new

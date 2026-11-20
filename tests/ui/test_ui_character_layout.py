@@ -4,8 +4,6 @@ import unittest
 from sonoscdplayer.ui.renderers.character_layout import portable_text, render_character_screen
 from sonoscdplayer.ui.renderers.character_adapters import (
     navigation_screen, render_navigation, text_entry_frame,
-    speaker_selection_screen, power_menu_screen, language_menu_screen,
-    wifi_choice_screen, network_status_screen,
 )
 from sonoscdplayer.ui.displays.backend import validate_frame
 from sonoscdplayer.ui.displays.capabilities import DisplayCapabilities, SSD1327_CAPABILITIES

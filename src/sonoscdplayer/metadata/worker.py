@@ -10,8 +10,7 @@ completed results, and only while the identical TOC remains selected.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, replace
-from pathlib import Path
+from dataclasses import replace
 
 from sonoscdplayer.metadata.cache import DiscCache, DEFAULT_DB_PATH
 from sonoscdplayer.metadata.cover_store import CoverBudgetFull, CoverStore, DEFAULT_COVER_DIR

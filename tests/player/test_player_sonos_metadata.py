@@ -1,9 +1,7 @@
 """Track information and album art for Sonos."""
 import os
 import tempfile
-import threading
 import unittest
-import urllib.request
 import xml.etree.ElementTree as ET
 
 from sonoscdplayer.player.controller import Controller

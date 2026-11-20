@@ -7,7 +7,6 @@ Encode Sans Semi Condensed (SIL OFL 1.1, ``src/sonoscdplayer/assets/fonts``).
 Used at runtime for the OLED start screen and at build time for the shutdown
 frames of the C programs (``tools/build_shutdown_renderer.py``).
 """
-from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from sonoscdplayer.system.package_paths import FONTS, SCREEN_IMAGES

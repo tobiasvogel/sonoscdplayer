@@ -1,7 +1,6 @@
 """Read-only projection of the player service's status into display state."""
 import json
 import socket
-from dataclasses import replace
 from sonoscdplayer.ui.screens.model import DisplayModel
 
 MAX_RESPONSE = 65536

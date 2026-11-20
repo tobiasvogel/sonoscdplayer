@@ -1,6 +1,4 @@
 """Temporary Sonos groups: staging, lifecycle, recovery and controller ownership (simulated)."""
-import contextlib
-import io
 import unittest
 from types import SimpleNamespace as NS, SimpleNamespace
 from unittest import mock
@@ -14,8 +12,6 @@ from sonoscdplayer.player.state import PlayerState, Mode
 from sonoscdplayer.player.service import handle_command
 from sonoscdplayer.sonos.target_selection import SelectedTarget
 from sonoscdplayer.sonos.groups import (
-    normalize_members,
-    is_expected_group,
     release,
     unresolved_members,
 )
@@ -229,6 +225,15 @@ class LifecycleTests(unittest.TestCase):
         self.a.transport = 'STOPPED'
         self.assertTrue(self.player.resolve_idle_group())
         self.assertEqual(self.topo.leaders['B'], 'B')
+
+    def test_pending_group_whose_members_left_on_their_own_is_cleared(self):
+        self.start()
+        self.player._release_group(owned_url='http://other.invalid/x')   # kept
+        self.player.state = self.player.state.natural_end()
+        self.player.owned_url = None
+        self.topo.leaders['B'] = 'B'                     # left in the Sonos app
+        self.assertTrue(self.player.resolve_idle_group())
+        self.assertFalse(self.player._group_uncertain)
 
     def test_speaker_removed_in_app_is_no_longer_released(self):
         self.start()

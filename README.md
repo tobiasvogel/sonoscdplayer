@@ -131,7 +131,10 @@ Speaker selection and playback remain separate operations:
 - The player checks the target state before taking control.
 - Playback commands are restricted to the player's own active stream where appropriate.
 - Unrelated playback sessions and groups must not be changed without explicit authorisation.
-- Temporary groups created by the player are handled through controlled playback and cleanup operations. If an interrupted playback leaves a stopped group made only of the selected speakers, the player splits it at the next selection or PLAY; groups with other speakers are never changed. Speakers added to or removed from the group in the Sonos app during playback are taken over and released at the end. In the device menu, speakers can be added or removed during playback without interruption; choosing another main speaker restarts the current track on it. A chosen speaker that is part of an idle group (stopped or paused) is taken out of it on its own; groups that are playing are never changed. Group changes made in the Sonos app during CD playback become the new speaker selection.
+- Temporary groups created by the player are released again when playback ends; the player remembers them across restarts and cleans up a leftover of its own speakers at the next selection, PLAY or EJECT.
+- A speaker chosen on the device that sits in an idle Sonos group (stopped or paused) is taken out of that group on its own; the rest of the group stays together. Groups that are playing are never changed.
+- During playback, speakers can be added or removed in the device menu without interruption; choosing another main speaker restarts the current track on it. Changes made in the Sonos app are taken over and become the new speaker selection.
+- Stereo pairs and home-theatre sets (Sub, surrounds) count as one speaker.
 
 Individual-speaker playback and controlled group operation have been tested on real Sonos hardware. Compatibility with every Sonos model, firmware version, and network environment has not been established.
 

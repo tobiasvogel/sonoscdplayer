@@ -1,7 +1,7 @@
 """UI rendering: Modern Hi-Fi screens, cover policy, display profiles and marquee text."""
 import unittest
 from unittest import mock
-from unittest.mock import patch, Mock
+from unittest.mock import Mock
 from sonoscdplayer.ui import display_service as oled_status
 from sonoscdplayer.hardware.displays.ssd1327 import Framebuffer, SSD1327, DisplayConfig
 from sonoscdplayer.ui.displays.layout import DisplayProfile, show_cover

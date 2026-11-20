@@ -14,14 +14,12 @@ from sonoscdplayer.system import config_paths
 from sonoscdplayer.system.gpio_settings import apply_gpio_warnings, gpio_warnings_enabled
 import json
 import math
-import signal
 import subprocess
 import socket
 import time
 from concurrent.futures import ThreadPoolExecutor
 from sonoscdplayer.hardware.sensors.ambient_light import AmbientConfig, read_lux, lux_to_brightness, BrightnessSmoother
 from dataclasses import dataclass
-from pathlib import Path
 
 from sonoscdplayer.hardware.leds.model import LedState, Led, Network, Pattern, classify_network, derive_led_state
 from sonoscdplayer.hardware.leds.patterns import PatternConfig, ErrorHold, intensity

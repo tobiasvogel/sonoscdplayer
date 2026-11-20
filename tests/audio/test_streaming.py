@@ -6,7 +6,6 @@ import sys
 import threading
 import time
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 from sonoscdplayer.audio import track_http_server as t
 from sonoscdplayer.audio.pcm_ring_buffer import PCMRing, BufferTimeout, DataExpired, BufferClosed

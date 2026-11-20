@@ -1,5 +1,4 @@
 """Ambient integration tests: pure data path, no sensor/GPIO required."""
-import math
 import tempfile
 import unittest
 from pathlib import Path

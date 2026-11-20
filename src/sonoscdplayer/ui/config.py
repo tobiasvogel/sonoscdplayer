@@ -4,7 +4,6 @@ No os locale detection. UI never writes configuration in this milestone.
 A future settings writer must be explicitly enabled and atomically persist.
 """
 from dataclasses import dataclass
-from pathlib import Path
 import tomllib
 import logging
 from sonoscdplayer.ui.i18n import available_languages

@@ -1,7 +1,6 @@
 """WLAN setup via a temporary hotspot."""
 import http.client
 import subprocess
-import threading
 import unittest
 from unittest import mock
 from urllib.parse import urlencode

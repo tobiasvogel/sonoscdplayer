@@ -90,7 +90,7 @@ All Python code is the package `src/sonoscdplayer/`; tests mirror it under
 3. The player service hands it to its worker. If the drive was spun down it
    is woken first (`drive/power.py`).
 4. The controller (`player/controller.py`) checks the selected speaker:
-   found, alone or the expected group, stopped (`sonos/speaker_checks.py`).
+   found, alone or the expected group, idle (stopped or paused) (`sonos/speaker_checks.py`).
 5. It starts the track server process and waits until its CD reader runs
    (`audio/track_server_process.py`).
 6. It tells Sonos to play `http://<pi>:8765/track/N.wav`, as a block of all

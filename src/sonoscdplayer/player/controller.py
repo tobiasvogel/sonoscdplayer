@@ -275,6 +275,14 @@ class Controller:
 
     def _release_group(self, *, owned_url=None):
         if not self._joined:
+            # Nothing (left) to release: also clear a pending cleanup, e.g.
+            # when the remaining members left the group on their own.
+            if self._group_uncertain or self._group_coord is not None:
+                self._group_uncertain = False
+                self._group_coord = None
+                self._group_members = frozenset()
+                self._recovery_url = None
+                self._store_group()
             return True
         result = groups.release(self._group_coord, self._joined, owned_url=owned_url)
         _log_release(result)
@@ -467,7 +475,6 @@ class Controller:
                     first = self._block_track(info.get('uri'))
                     if first is not None:
                         self.state = self.state.followed(first)
-                url = self.owned_url
                 # In block mode Sonos plays on by itself.
                 advance = (None if self._queue_block
                            else self._next_after_end(self._display_progress))
@@ -551,7 +558,7 @@ class Controller:
         if player.uid != self.uid:
             return player                      # another device: the checks refuse it
         group = player.group
-        members = {p.uid: p for p in group.members if p.uid != self.uid}
+        members = {p.uid: p for p in groups.visible_members(group) if p.uid != self.uid}
         if group.coordinator.uid == self.uid and set(members) == set(self._joined):
             return player                      # nothing changed (no extra Sonos calls)
         # Only our coordinator or a speaker of our group may take over.
@@ -583,7 +590,7 @@ class Controller:
 
     def _adopt_group(self, coordinator):
         group = coordinator.group
-        members = {p.uid: p for p in group.members if p.uid != coordinator.uid}
+        members = {p.uid: p for p in groups.visible_members(group) if p.uid != coordinator.uid}
         changed = coordinator.uid != self.uid or set(members) != set(self._joined)
         if coordinator.uid != self.uid:
             print(f'[player] playback moved to another speaker in the Sonos app; '
@@ -989,7 +996,7 @@ class Controller:
             if target.uid != uid:
                 raise RuntimeError('force STOP UID mismatch')
             group = target.group
-            members = list(group.members)
+            members = groups.visible_members(group)
             if (len(members) != 1 or members[0].uid != uid
                     or group.coordinator.uid != uid):
                 raise RuntimeError('force STOP blocked: target not a solo coordinator')
@@ -1136,7 +1143,7 @@ class Controller:
         if player.uid != uid:
             raise RuntimeError('live status target UID mismatch')
         group = player.group
-        members = list(group.members)
+        members = groups.visible_members(group)
         is_solo = (len(members) == 1 and members[0].uid == uid
                    and group.coordinator.uid == uid)
         transport = player.get_current_transport_info()['current_transport_state']

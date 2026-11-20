@@ -3,7 +3,6 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from dataclasses import replace
 from types import SimpleNamespace as NS
 from unittest.mock import patch
 from sonoscdplayer.ui.i18n import Translator

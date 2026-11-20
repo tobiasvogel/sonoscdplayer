@@ -6,6 +6,9 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- Stereo pairs and home-theatre sets (soundbar with Sub or surrounds) count
+  as one speaker: their hidden bonded speakers no longer make them look
+  grouped, which refused them for playback.
 - A group left pending after STOP no longer blocks PLAY, EJECT and the
   drive's spin-down when it consists only of the player's own speakers and
   plays nothing: the player releases it right after STOP, and otherwise

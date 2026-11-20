@@ -2,7 +2,6 @@
 import queue
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
 from sonoscdplayer.player.controller import Controller, wait_startup_pcm, TrackServerProcess
 from sonoscdplayer.player.state import PlayerState, Mode
 from sonoscdplayer.player.service import handle_command

@@ -7,7 +7,6 @@ one speaker only within the snapshot it came from.
 from __future__ import annotations
 from dataclasses import dataclass
 from collections import Counter
-import time
 from sonoscdplayer.ui.i18n import Translator
 
 @dataclass(frozen=True)

@@ -4,7 +4,7 @@ No drive, Sonos or playback access. Online errors never replace local CD-TEXT.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import json
 import re
 import socket

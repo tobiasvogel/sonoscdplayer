@@ -36,6 +36,17 @@ def normalize_members(coordinator_uid, members):
         raise ValueError('too many members')
     return frozenset(result)
 
+def visible_members(group):
+    """The rooms of a Sonos group, without bonded hidden speakers.
+
+    SoCo lists the hidden half of a stereo pair, a Sub and home-theatre
+    surrounds as group members too. They are part of their room, not
+    separate speakers: counting them would make a stereo pair look like a
+    group of two and refuse it.
+    """
+    return [p for p in group.members if getattr(p, 'is_visible', True) is not False]
+
+
 def refresh_topology(player):
     """Make SoCo read the current group layout instead of a cached one."""
     state = getattr(player, 'zone_group_state', None)
@@ -46,7 +57,7 @@ def refresh_topology(player):
 def is_expected_group(player, coordinator_uid, members=frozenset()):
     """True if the player's group is exactly the coordinator plus ``members``."""
     group = player.group
-    actual = [p.uid for p in group.members]
+    actual = [p.uid for p in visible_members(group)]
     expected = set(members) | {coordinator_uid}
     return (group.coordinator.uid == coordinator_uid and
             len(actual) == len(set(actual)) and set(actual) == expected)
@@ -124,7 +135,7 @@ def release_leftover(speaker, own_uids, *, sleep=time.sleep, clock=time.monotoni
     refresh_topology(speaker)
     group = speaker.group
     coordinator = group.coordinator
-    members = list(group.members)
+    members = visible_members(group)
     if len(members) < 2:
         return False
     foreign = len({p.uid for p in members} - set(own_uids))
@@ -160,7 +171,7 @@ def detach_from_idle_group(speaker, *, sleep=time.sleep, clock=time.monotonic):
     """
     refresh_topology(speaker)
     group = speaker.group
-    members = list(group.members)
+    members = visible_members(group)
     if len(members) < 2:
         return True
     transport = group.coordinator.get_current_transport_info()['current_transport_state']
@@ -264,7 +275,7 @@ def release(coordinator, joined, *, owned_url=None, sleep=time.sleep, clock=time
             # Sonos reports a member's unjoin to the others with a delay, so
             # a member released just before may still be listed here.
             group = player.group
-            actual = [p.uid for p in group.members]
+            actual = [p.uid for p in visible_members(group)]
             if (group.coordinator.uid != coordinator.uid or
                     len(actual) != len(set(actual)) or
                     not {coordinator.uid, uid} <= set(actual) <= {coordinator.uid, *joined}):
@@ -330,7 +341,7 @@ def inspect_recovery(coordinator, joined):
             raise RuntimeError('missing coordinator')
         refresh_topology(coordinator)
         group = coordinator.group
-        actual = [p.uid for p in group.members]
+        actual = [p.uid for p in visible_members(group)]
         exact = (group.coordinator.uid == coordinator.uid and
                  len(actual) == len(set(actual)) and
                  set(actual).issubset({coordinator.uid, *joined}))

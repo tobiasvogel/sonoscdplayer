@@ -5,7 +5,7 @@ Elapsed time is supplied by the caller. No sleeps, threads or I/O.
 from __future__ import annotations
 from dataclasses import dataclass
 from math import cos, pi, isfinite
-from sonoscdplayer.hardware.leds.model import Pattern, LedState, Led
+from sonoscdplayer.hardware.leds.model import Pattern, LedState
 
 @dataclass(frozen=True)
 class PatternConfig:

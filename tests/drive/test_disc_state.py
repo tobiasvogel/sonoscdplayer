@@ -1,5 +1,4 @@
 """Disc detection: startup without disc, disc monitor and state transitions (offline)."""
-import contextlib
 import pathlib
 import sys
 import tempfile
