@@ -84,13 +84,12 @@ class WakeValidationTests(unittest.TestCase):
         )
         self.assertFalse(verify_woken_disc(monitor, "/dev/sr0"))
 
-    def test_different_toc_rejected(self):
-        monitor = self.make_monitor(
-            read_toc=lambda device: SimpleNamespace(
-                tracks=(1, 2, 3, 4)
-            )
-        )
-        self.assertFalse(verify_woken_disc(monitor, "/dev/sr0"))
+    def test_different_disc_is_a_disc_change_not_a_fault(self):
+        # A CD swapped with the drive's own eject button while it slept.
+        new = SimpleNamespace(tracks=(1, 2, 3, 4))
+        monitor = self.make_monitor(read_toc=lambda device: new)
+        self.assertTrue(verify_woken_disc(monitor, "/dev/sr0"))
+        self.assertIs(monitor.changed_disc, new)
 
     def test_unreadable_disc_rejected(self):
         def fail(device):
@@ -200,14 +199,14 @@ class WakeWaitTests(unittest.TestCase):
             clock=clock, sleep=sleep
         ))
 
-    def test_changed_toc_never_accepted(self):
+    def test_changed_toc_is_handed_to_the_monitor(self):
         _, clock, sleep = self.make_clock()
         monitor = self.make_monitor()
         monitor.read_toc = lambda dev: SimpleNamespace(
             tracks=(9, 10)
         )
 
-        self.assertFalse(wait_for_woken_disc(
+        self.assertTrue(wait_for_woken_disc(
             monitor, "/dev/sr0",
             timeout_seconds=1,
             clock=clock,
@@ -275,13 +274,13 @@ class USBWakeRaceTests(unittest.TestCase):
             verify_woken_disc(monitor, "/dev/sr0")
         )
 
-    def test_changed_disc_is_never_accepted(self):
+    def test_changed_disc_in_the_same_drive_is_handed_over(self):
         monitor = self.make_monitor(
             lambda dev: "original-usb",
             lambda dev: SimpleNamespace(tracks=(9, 10)),
         )
 
-        self.assertFalse(
+        self.assertTrue(
             wait_for_woken_disc(
                 monitor, "/dev/sr0",
                 timeout_seconds=0.5,
@@ -351,7 +350,7 @@ class WakeDiagnosticTests(unittest.TestCase):
                 read_toc=lambda device:
                     SimpleNamespace(tracks=(1, 2))
             ),
-            "toc_changed", False,
+            "disc_changed", True,
         )
         self.assertEqual(details["expected_tracks"], 3)
         self.assertEqual(details["observed_tracks"], 2)

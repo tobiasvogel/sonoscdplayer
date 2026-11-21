@@ -54,6 +54,8 @@ class DiscMonitor:
         # here, under the drive lock right after the TOC, never during playback.
         self.read_cdtext = cdtext
         self.loaded_cdtext = None
+        # TOC of another CD found by a wake verification (see wake_validation).
+        self.changed_disc = None
 
     def poll(self, controller) -> bool:
         """Apply a verified idle observation; return whether status changed.
@@ -99,9 +101,11 @@ class DiscMonitor:
                 return self._apply(controller, DiscStatus(
                     DiscMode.UNREADABLE, device=self.device, error='unknown CDROM drive status'))
 
-            # No repeated cdparanoia scans for an already verified disc.
+            # No repeated cdparanoia scans for an already verified disc,
+            # unless a wake found that another CD was put in meanwhile.
             current = controller.disc_status
-            if current is not None and current.mode == DiscMode.READY:
+            changed, self.changed_disc = self.changed_disc, None
+            if changed is None and current is not None and current.mode == DiscMode.READY:
                 return False
             try:
                 disc = self.read_toc(self.device)
@@ -156,6 +160,7 @@ class DiscMonitor:
                     DiscMode.UNREADABLE, self.device,
                     error='PLAY revalidation: empty TOC'))
                 return False
+            self.changed_disc = None
             if self.loaded_toc is None or disc != self.loaded_toc:
                 # Play the newly inserted disc only with its freshly validated
                 # TOC and a reset selection (track 1), never the old selection.

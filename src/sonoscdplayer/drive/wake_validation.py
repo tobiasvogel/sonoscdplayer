@@ -14,7 +14,11 @@ def _record(diagnostics, stage, **details):
 
 
 def verify_woken_disc(monitor, device, *, diagnostics=None):
-    """Verify the original USB drive and CD, with optional passive trace."""
+    """Verify the original USB drive and a readable CD, with optional passive trace.
+
+    A different audio CD also verifies the wake; it is left in
+    ``monitor.changed_disc`` for the disc monitor to load.
+    """
     if monitor is None or not isinstance(device, str):
         _record(diagnostics, "invalid_monitor_or_device")
         return False
@@ -63,10 +67,14 @@ def verify_woken_disc(monitor, device, *, diagnostics=None):
 
         stage = "toc_comparison"
         if toc != monitor.loaded_toc:
-            _record(diagnostics, "toc_changed",
+            # Another CD was put in while the drive slept (its own eject
+            # button). The drive woke and reads it: that is a disc change for
+            # the monitor to take over, not a drive fault.
+            monitor.changed_disc = toc
+            _record(diagnostics, "disc_changed",
                     observed_tracks=len(toc.tracks),
                     expected_tracks=len(monitor.loaded_toc.tracks))
-            return False
+            return True
 
         _record(diagnostics, "verified",
                 observed_tracks=len(toc.tracks))

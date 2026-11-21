@@ -6,6 +6,9 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- A CD swapped with the drive's own eject button while the drive slept no
+  longer ends in "drive error" at the next button press: the wake accepts
+  the new disc and the player loads it (track 1, CD-TEXT, metadata).
 - Stereo pairs and home-theatre sets (soundbar with Sub or surrounds) count
   as one speaker: their hidden bonded speakers no longer make them look
   grouped, which refused them for playback.
