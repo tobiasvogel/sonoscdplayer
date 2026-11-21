@@ -6,6 +6,8 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- CDs whose first track does not start at the very beginning of the disc
+  (for example 33 sectors later) are no longer rejected as unreadable.
 - A CD taken out with the drive's own eject button is noticed at once: during
   playback the player stops (and releases the group) instead of playing on
   from its buffer into an error; while the drive sleeps, the display shows

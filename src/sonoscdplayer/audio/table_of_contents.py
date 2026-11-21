@@ -86,8 +86,10 @@ def parse_cdparanoia_query(output: str) -> DiscTOC:
         raise TOCError('No CD-DA tracks found in cdparanoia TOC output')
     if len(total_values) != 1:
         raise TOCError('Exactly one TOTAL / lead-out entry required')
-    if parsed[0][0] != 1 or parsed[0][1] != 0:
-        raise TOCError('Expected first audio track number 1 at LSN 0')
+    # Track 1 usually starts at LSN 0, but some CDs start it a few sectors
+    # (or a hidden track's length) later; only its number is fixed.
+    if parsed[0][0] != 1 or parsed[0][1] < 0:
+        raise TOCError('Expected first audio track number 1 at a valid LSN')
     tracks = []
     for i, (num, start, length, channels, pre) in enumerate(parsed):
         if num != i + 1:
@@ -100,9 +102,12 @@ def parse_cdparanoia_query(output: str) -> DiscTOC:
         if i and start != tracks[-1].end_lsn_exclusive:
             raise TOCError(f'Gap or overlap before track {num}')
         tracks.append(Track(num, start, end, channels, pre))
-    leadout = total_values[0]
-    if tracks[-1].end_lsn_exclusive != leadout:
-        raise TOCError(f'Lead-out mismatch: last end={tracks[-1].end_lsn_exclusive}, TOTAL={leadout}')
+    # cdparanoia's TOTAL is the sum of the track lengths: the lead-out LSN
+    # when track 1 starts at 0, otherwise that much less than it.
+    leadout = tracks[-1].end_lsn_exclusive
+    total = total_values[0]
+    if total not in (leadout, leadout - tracks[0].start_lsn):
+        raise TOCError(f'Lead-out mismatch: last end={leadout}, TOTAL={total}')
     return DiscTOC(tuple(tracks), leadout)
 
 
