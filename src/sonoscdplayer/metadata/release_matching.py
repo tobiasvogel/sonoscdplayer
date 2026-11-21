@@ -84,12 +84,15 @@ class ScoredRelease:
 @dataclass(frozen=True)
 class MatchDecision:
     """The chosen release (if any), the reason and all scored candidates."""
-    status: str  # unique | confidence | consensus | manual | disabled | not_found
+    status: str  # unique | confidence | consensus | majority | manual | disabled | not_found
     selected_release_id: str | None
     score: int | None
     margin: int | None
     candidates: tuple[ScoredRelease, ...]
     reason: str
+    # For "majority": the names most editions use (None where there is no
+    # majority); used instead of the selected release's own names.
+    chosen: ReleaseCandidate | None = None
 
 
 def _normalize(text: str | None, rules: LanguageRules = LanguageRules()) -> str:
@@ -212,7 +215,56 @@ def decide_release(local: LocalDiscMetadata, lookup: LookupResult,
         # the artist and every track the same: those names are safe to use.
         return MatchDecision('consensus', best.release.release_id, best.score, margin,
                              ranked, 'all releases agree on album, artist and titles')
+    if not _has_protected_conflict(local, best.release, policy):
+        majority = majority_release(ranked, len(local.tracks), policy)
+        if majority is not None:
+            return MatchDecision('majority', majority.release_id, best.score, margin, ranked,
+                                 'most editions agree on the names', chosen=majority)
     return MatchDecision('manual', None, best.score, margin, ranked, reason)
+
+
+def majority_release(ranked, track_count, policy: MatchingPolicy = MatchingPolicy()):
+    """Names that more than half of the fitting editions use, field by field.
+
+    Only editions that fit the disc structure count, and at least three of
+    them. Each name (album, artist, every track title and track artist) is
+    taken only if more than half use it (compared like in matching); the
+    spelling used most often wins. A field without a majority stays None.
+    Returns a ReleaseCandidate with these names and the id of the first
+    edition with the majority album name, or None if not even the album or
+    one title has a majority.
+    """
+    key = policy.language_rules.normalize
+    fitting = [item.release for item in ranked
+               if item.structure_score == 10 and len(item.release.track_titles) == track_count]
+    if len(fitting) < 3:
+        return None
+
+    def pick(values):
+        counts, spellings = {}, {}
+        for value in values:
+            k = key(value) if value else ''
+            if not k:
+                continue
+            counts[k] = counts.get(k, 0) + 1
+            spellings.setdefault(k, {})
+            spellings[k][value] = spellings[k].get(value, 0) + 1
+        for k, n in counts.items():
+            if 2 * n > len(fitting):
+                return max(spellings[k].items(), key=lambda item: item[1])[0]
+        return None
+
+    album = pick(r.title for r in fitting)
+    artist = pick(r.artist for r in fitting)
+    titles = tuple(pick(r.track_titles[i] for r in fitting) for i in range(track_count))
+    artists = tuple(pick((r.track_artists[i] if len(r.track_artists) == track_count else None)
+                         for r in fitting) for i in range(track_count))
+    if album is None and not any(titles):
+        return None
+    representative = next((r for r in fitting if album and key(r.title) == key(album)),
+                          fitting[0])
+    return ReleaseCandidate(representative.release_id, album, artist, representative.country,
+                            representative.date, titles, artists)
 
 
 def releases_agree(ranked, track_count, policy: MatchingPolicy = MatchingPolicy()):
@@ -240,8 +292,9 @@ def merged_metadata(local: LocalDiscMetadata, decision: MatchDecision) -> LocalD
     """Supplement only missing local fields. Do not alter CD-TEXT or ISRC."""
     if not decision.selected_release_id:
         return local
-    chosen = next((item.release for item in decision.candidates
-                   if item.release.release_id == decision.selected_release_id), None)
+    chosen = decision.chosen or next((item.release for item in decision.candidates
+                                      if item.release.release_id == decision.selected_release_id),
+                                     None)
     if chosen is None:
         return local
     updated_tracks = local.tracks

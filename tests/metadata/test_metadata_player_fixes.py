@@ -167,8 +167,10 @@ class MonitorCdtextTests(unittest.TestCase):
         reads = []
         monitor.read_cdtext = lambda device: reads.append(device) or CDTEXT
         controller = FakeController()
-        self.assertTrue(monitor.poll(controller))
+        self.assertTrue(monitor.poll(controller))       # READY before CD-TEXT
+        monitor._cdtext_thread.join(2)
         self.assertEqual(monitor.loaded_cdtext, CDTEXT)
+        self.assertFalse(monitor.cdtext_pending)
         monitor.poll(controller)
         self.assertEqual(reads, ['/dev/sr0'])
         codes[0] = CDS_TRAY_OPEN
@@ -181,8 +183,39 @@ class MonitorCdtextTests(unittest.TestCase):
         monitor.read_cdtext = Mock(side_effect=OSError('busy'))
         controller = FakeController()
         self.assertTrue(monitor.poll(controller))
+        monitor._cdtext_thread.join(2)
         self.assertIsNone(monitor.loaded_cdtext)
         self.assertEqual(controller.disc_status.track_count, 1)
+
+    def test_play_cancels_a_hanging_cdtext_read(self):
+        import threading
+        disc = SimpleNamespace(tracks=[SimpleNamespace(number=1)])
+        monitor, _calls = make_monitor([CDS_DISC_OK], disc)
+        started, release = threading.Event(), threading.Event()
+        def hanging(device):
+            started.set()
+            release.wait(5)
+            return CDTEXT
+        monitor.read_cdtext = hanging
+        controller = FakeController()
+        self.assertTrue(monitor.poll(controller))        # READY at once
+        self.assertTrue(started.wait(2))
+        self.assertTrue(monitor.cdtext_pending)
+        release.set()
+        monitor.cancel_cdtext()
+        self.assertFalse(monitor.cdtext_pending)
+        self.assertEqual(monitor.loaded_cdtext[0], 'failed')
+
+    def test_disc_on_which_cd_info_timed_out_is_not_read_again(self):
+        disc = SimpleNamespace(tracks=[SimpleNamespace(number=1)])
+        monitor, _calls = make_monitor([CDS_DISC_OK], disc)
+        calls = []
+        monitor.read_cdtext = lambda device: calls.append(1) or ('failed', {}, {}, 'cd-info timed out')
+        monitor.start_cdtext(disc)
+        monitor._cdtext_thread.join(2)
+        monitor.start_cdtext(disc)
+        self.assertEqual(len(calls), 1)
+        self.assertIn('skipped', monitor.loaded_cdtext[3])
 
 
 if __name__ == '__main__':
@@ -224,4 +257,35 @@ class ConsensusTests(unittest.TestCase):
     def test_wrong_track_count_stays_manual(self):
         _, decision = self.decide(self.releases(
             ('Album', ('One', 'Two', 'Three')), ('Album', ('One', 'Two', 'Three'))), track_count=2)
+        self.assertEqual(decision.status, 'manual')
+
+
+class MajorityTests(ConsensusTests):
+    """Editions that differ: names more than half of them use are taken."""
+
+    def test_majority_per_field(self):
+        local, decision = self.decide(self.releases(
+            ('The Moon Side', ('Intro / Breathe', 'Time')),
+            ('The Moon Side', ('Intro / Breathe in the Air', 'Time')),
+            ('The Moon Side', ('Intro / Breathe', 'Time')),
+            ('月の側', ('Intro / Breathe', 'Time')),
+            ('Moon Side', ('Intro / Breathe in the Air', 'Time'))))
+        self.assertEqual(decision.status, 'majority')
+        from sonoscdplayer.metadata.release_matching import merged_metadata
+        merged = merged_metadata(local, decision)
+        self.assertEqual((merged.album, merged.artist), ('The Moon Side', 'The Band'))
+        self.assertEqual([t.title for t in merged.tracks], ['Intro / Breathe', 'Time'])
+
+    def test_field_without_majority_stays_empty(self):
+        local, decision = self.decide(self.releases(
+            ('A', ('One', 'Two')), ('B', ('One', 'Two')), ('C', ('One', 'Two')), ('A', ('One', 'Two'))))
+        # Album: 2 of 4 is no majority; titles: all agree.
+        self.assertEqual(decision.status, 'majority')
+        from sonoscdplayer.metadata.release_matching import merged_metadata
+        merged = merged_metadata(local, decision)
+        self.assertIsNone(merged.album)
+        self.assertEqual([t.title for t in merged.tracks], ['One', 'Two'])
+
+    def test_two_editions_that_differ_stay_manual(self):
+        _, decision = self.decide(self.releases(('Album', ('One', 'Two')), ('Other', ('Un', 'Deux'))))
         self.assertEqual(decision.status, 'manual')

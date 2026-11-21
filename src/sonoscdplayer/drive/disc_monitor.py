@@ -12,6 +12,9 @@ No Sonos commands are sent from here.
 """
 from __future__ import annotations
 
+import subprocess
+import threading
+import time
 from pathlib import Path
 
 from sonoscdplayer.drive.disc_startup import (drive_media_status, CDS_NO_DISC, CDS_TRAY_OPEN,
@@ -31,6 +34,15 @@ def idle_for_disc_io(controller) -> bool:
             and not controller.server.reader_active()
             and not controller._joined
             and not controller._group_uncertain)
+
+
+def _toc_key(disc):
+    """Hashable identity of a TOC (DiscTOC is hashable; test doubles may not be)."""
+    try:
+        hash(disc)
+        return disc
+    except TypeError:
+        return repr(disc)
 
 
 class DiscMonitor:
@@ -57,6 +69,13 @@ class DiscMonitor:
         # here, under the drive lock right after the TOC, never during playback.
         self.read_cdtext = cdtext
         self.loaded_cdtext = None
+        # CD-TEXT is read in the background after READY (cd-info can take
+        # up to its timeout, or hang on some discs); PLAY cancels it.
+        self.cdtext_pending = False
+        self._cdtext_thread = None
+        self._cdtext_proc = None
+        self._cdtext_cancel = threading.Event()
+        self._cdtext_hangs = set()      # TOCs on which cd-info timed out
         # TOC of another CD found by a wake verification (see wake_validation).
         self.changed_disc = None
 
@@ -119,7 +138,7 @@ class DiscMonitor:
                     DiscMode.UNREADABLE, device=self.device,
                     error=f'audio TOC: {type(exc).__name__}: {exc}'))
             self.loaded_toc = disc
-            self.loaded_cdtext = self._read_cdtext()
+            self.start_cdtext(disc)
             controller.state = controller.state.disc_loaded(
                 tuple(track.number for track in disc.tracks))
             return self._set_status(controller,
@@ -200,13 +219,77 @@ class DiscMonitor:
                 return True
             return True
 
-    def _read_cdtext(self):
+    def start_cdtext(self, disc):
+        """Read CD-TEXT of ``disc`` in the background; READY does not wait for it."""
+        self.cancel_cdtext(result=None)
+        self.loaded_cdtext = None
         if self.read_cdtext is None:
-            return None
+            return
+        if _toc_key(disc) in self._cdtext_hangs:
+            self.loaded_cdtext = ('failed', {}, {}, 'cd-info timed out before on this disc; skipped')
+            return
+        self._cdtext_cancel = threading.Event()
+        self.cdtext_pending = True
+        self._cdtext_thread = threading.Thread(target=self._cdtext_job, args=(disc, self._cdtext_cancel),
+                                               name='cdtext', daemon=True)
+        self._cdtext_thread.start()
+
+    def cancel_cdtext(self, *, result=('failed', {}, {}, 'skipped: PLAY or EJECT came first')):
+        """Stop a running CD-TEXT read (PLAY or EJECT needs the drive now)."""
+        thread = self._cdtext_thread
+        if thread is None or not thread.is_alive():
+            return
+        self._cdtext_cancel.set()
+        proc = self._cdtext_proc
+        if proc is not None and proc.poll() is None:
+            proc.kill()
+        thread.join(timeout=5)
+        if result is not None:
+            self.loaded_cdtext = result
+        self.cdtext_pending = False
+        print('[disc] CD-TEXT read cancelled', flush=True)
+
+    def _cdtext_job(self, disc, cancel):
+        value = None
         try:
-            return self.read_cdtext(self.device)
+            deadline = time.monotonic() + 5
+            while not cancel.is_set():
+                with self.lock(self.device, blocking=False) as acquired:
+                    if acquired:
+                        value = self._call_cdtext_reader(cancel)
+                        break
+                if time.monotonic() >= deadline:
+                    break                   # drive stays busy: no CD-TEXT this time
+                time.sleep(0.1)
         except Exception:
-            return None   # CD-TEXT is optional; never blocks READY
+            value = None                    # CD-TEXT is optional; never blocks READY
+        if cancel.is_set():
+            return
+        if isinstance(value, tuple) and value and value[-1] == 'cd-info timed out':
+            self._cdtext_hangs.add(_toc_key(disc))
+        self.loaded_cdtext = value
+        self.cdtext_pending = False
+
+    def _call_cdtext_reader(self, cancel):
+        def run(args, **options):
+            timeout = options.get('timeout')
+            proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self._cdtext_proc = proc
+            try:
+                out, err = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+                raise
+            finally:
+                self._cdtext_proc = None
+            if cancel.is_set():
+                raise OSError('cancelled')
+            return subprocess.CompletedProcess(args, proc.returncode, out, err)
+        try:
+            return self.read_cdtext(self.device, runner=run)
+        except TypeError:
+            return self.read_cdtext(self.device)   # a reader without a runner (tests)
 
     def _recover_or_hold(self, controller):
         # Never guess a drive by /dev/srN or adopt a missing/duplicate serial.

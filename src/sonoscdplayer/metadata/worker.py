@@ -142,8 +142,12 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                     release_id = decision.selected_release_id
                     match, score = decision.status, decision.score
                     effective = merged
-                    alternatives = tuple(item.release.release_id for item in decision.candidates
-                                         if item.release.release_id != release_id)
+                    same_album = (decision.chosen.title if decision.chosen is not None else None)
+                    alternatives = tuple(
+                        item.release.release_id for item in decision.candidates
+                        if item.release.release_id != release_id
+                        and (same_album is None or policy.language_rules.normalize(
+                            item.release.title) == policy.language_rules.normalize(same_album)))
                     if release_id:
                         try:
                             cache.put(identity, effective, release_id=release_id,
@@ -153,8 +157,9 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                             pass
     # Cover mode off suppresses even cached files in the UI.
     cover, cover_status = _cover_file(cover_cache, release_id, cover_policy)
-    if match == 'consensus' and cover_status == 'unavailable':
-        # Same names on every release: take the cover of the first one that has one.
+    if match in ('consensus', 'majority') and cover_status == 'unavailable':
+        # Same names (on all or most editions): take the cover of the first
+        # such edition that has one.
         for other in alternatives:
             path, status = _cover_file(cover_cache, other, cover_policy)
             if path is not None:

@@ -1,46 +1,35 @@
 #!/usr/bin/env python3
 """Find the drive that holds an audio CD.
 
-Each optical drive is checked with cd-info. Run as a program it prints the
+Each optical drive is checked with a cdparanoia TOC query. Run as a program it prints the
 result per drive and ``SELECTED_DEVICE=/dev/srN`` for the one audio-CD drive.
 """
 import glob
 import os
-import re
-import subprocess
 import sys
 
 
 def probe_drive(path):
-    """(True, description) if the drive at ``path`` holds an audio CD."""
+    """(True, description) if the drive at ``path`` holds an audio CD.
+
+    Uses the same cdparanoia TOC query as the player. cd-info was used
+    before, but it hangs on some discs after printing the track list.
+    """
+    from sonoscdplayer.audio.table_of_contents import TOCError, read_toc
     try:
-        result = subprocess.run(
-            ["cd-info", "--no-analyze", "--no-device-info", path],
-            capture_output=True, text=True, timeout=20, check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return False, "cd-info timed out"
-    except FileNotFoundError:
-        return False, "cd-info missing (install libcdio-utils)"
+        toc = read_toc(path, timeout=20)
+    except TOCError as exc:
+        return False, str(exc)[-250:]
     except OSError as exc:
         return False, str(exc)
-
-    output = result.stdout + "\n" + result.stderr
-    if result.returncode != 0:
-        return False, f"cd-info exit={result.returncode}: {output.strip()[-250:]}"
-    if not re.search(r"Disc mode is listed as:\s*CD-DA\b", output):
-        return False, "media is not recognized as CD-DA"
-    tracks = re.findall(r"^\s*\d+:\s+\d\d:\d\d:\d\d\s+\d+\s+audio\b", output, re.M)
-    if not tracks:
-        return False, "CD-DA reported, but no audio tracks found"
-    return True, f"CD-DA, {len(tracks)} audio tracks"
+    return True, f"CD-DA, {len(toc.tracks)} audio tracks"
 
 
 def find_audio_cd_drive(*, report=print, probe_drive=probe_drive,
                         block_root="/sys/class/block") -> str:
     """Return the one drive (``/dev/srN``) that holds a readable audio CD.
 
-    Every optical drive is probed with cd-info; ``report`` receives one line
+    Every optical drive is probed (cdparanoia TOC); ``report`` receives one line
     per drive.
 
     Raises:

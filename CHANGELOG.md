@@ -6,6 +6,15 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- A CD is ready as soon as its table of contents is read; CD-TEXT follows in
+  the background, and PLAY or EJECT no longer wait for it (they cancel the
+  read). On a disc where cd-info hangs this saved 45 s at insertion and up to
+  65 s at service start; such a disc is not tried again until it is
+  re-inserted after a restart. The drive is detected with the cdparanoia
+  TOC query instead of cd-info.
+- Editions on MusicBrainz that differ: a name that more than half of them use
+  (album, artist, each title) is taken; a field without a majority stays
+  empty. The cover comes from an edition with the majority album name.
 - CDs whose first track does not start at the very beginning of the disc
   (for example 33 sectors later) are no longer rejected as unreadable.
 - A CD taken out with the drive's own eject button is noticed at once: during

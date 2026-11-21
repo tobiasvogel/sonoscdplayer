@@ -8,7 +8,6 @@ from unittest.mock import Mock, patch
 
 from sonoscdplayer.metadata.musicbrainz import DiscIdentity, LookupResult, ReleaseCandidate
 from sonoscdplayer.metadata.worker import MetadataWorker
-from sonoscdplayer.player.service import read_startup_cdtext_locked
 from test_metadata_worker import FakeToc, ManualExecutor
 
 RELEASE = '12345678-1234-1234-1234-123456789abc'
@@ -87,7 +86,20 @@ class FailureIsolationTests(unittest.TestCase):
         self.assertEqual(result['lookup_status'], 'error')
 
 
-class StartupCdtextLockTests(unittest.TestCase):
+class BackgroundCdtextLockTests(unittest.TestCase):
+    """The monitor reads CD-TEXT in the background, only with the drive lock."""
+
+    def monitor(self, reader, lock):
+        from sonoscdplayer.drive.disc_monitor import DiscMonitor
+        monitor = DiscMonitor('/dev/sr0', None, lock=lock, cdtext=reader,
+                              path_exists=lambda _: True, identity_reader=lambda _: None)
+        return monitor
+
+    def run_job(self, monitor):
+        monitor.start_cdtext(SimpleNamespace(tracks=(1,)))
+        monitor._cdtext_thread.join(7)
+        return monitor.loaded_cdtext
+
     def test_reader_runs_only_with_drive_lock(self):
         events = []
         @contextmanager
@@ -100,7 +112,7 @@ class StartupCdtextLockTests(unittest.TestCase):
         def reader(device):
             events.append('reader')
             return CDTEXT
-        self.assertEqual(read_startup_cdtext_locked('/dev/sr0', reader=reader, lock=lock), CDTEXT)
+        self.assertEqual(self.run_job(self.monitor(reader, lock)), CDTEXT)
         self.assertEqual(events, ['locked', 'reader', 'released'])
 
     def test_busy_lock_never_reads_cdtext(self):
@@ -109,15 +121,18 @@ class StartupCdtextLockTests(unittest.TestCase):
             self.assertFalse(blocking)
             yield False
         reader = Mock(side_effect=AssertionError('drive touched while busy'))
-        self.assertIsNone(read_startup_cdtext_locked('/dev/sr0', reader=reader, lock=busy))
+        with patch('sonoscdplayer.drive.disc_monitor.time.sleep'), \
+                patch('sonoscdplayer.drive.disc_monitor.time.monotonic',
+                      side_effect=[0.0] + [10.0] * 10):
+            self.assertIsNone(self.run_job(self.monitor(reader, busy)))
         reader.assert_not_called()
 
-    def test_reader_error_does_not_prevent_startup(self):
+    def test_reader_error_does_not_prevent_ready(self):
         @contextmanager
         def acquired(_device, *, blocking):
             yield True
-        self.assertIsNone(read_startup_cdtext_locked(
-            '/dev/sr0', reader=Mock(side_effect=OSError('drive error')), lock=acquired))
+        self.assertIsNone(self.run_job(self.monitor(Mock(side_effect=OSError('drive error')),
+                                                     acquired)))
 
 
 if __name__ == '__main__':

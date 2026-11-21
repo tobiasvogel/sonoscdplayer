@@ -37,7 +37,6 @@ from sonoscdplayer.drive.disc_monitor import DiscMonitor
 from sonoscdplayer.metadata.worker import MetadataWorker, matching_policy_from_config
 from sonoscdplayer.metadata.worker import describe as describe_metadata
 from sonoscdplayer.metadata.local_metadata import read_cdtext
-from sonoscdplayer.drive.drive_lock import drive_lock
 from sonoscdplayer.sonos.track_metadata import album_prefix_from_config, use_queue_from_config
 from sonoscdplayer.drive.eject import eject_verified_idle
 from sonoscdplayer.player.state import Mode, PlayerState, state_for_disc
@@ -458,25 +457,15 @@ def eject_and_recover(controller, monitor, power):
 
 
 def _current_disc(disc_monitor, drive_toc, drive_cdtext):
-    """Verified TOC and the CD-TEXT read with it (None when unknown)."""
+    """Verified TOC and the CD-TEXT read with it (None when unknown).
+
+    While CD-TEXT is still being read, the metadata lookup waits for it.
+    """
     if disc_monitor is not None:
+        if getattr(disc_monitor, 'cdtext_pending', False):
+            return None, None
         return disc_monitor.loaded_toc, disc_monitor.loaded_cdtext
     return drive_toc, drive_cdtext
-
-
-def read_startup_cdtext_locked(device, *, reader=read_cdtext, lock=drive_lock):
-    """Optional startup CD-TEXT; never wait for a busy drive or block READY.
-
-    The TOC has already been verified by inspect_initial_disc(). The lock
-    protects the follow-up cd-info operation; no read runs when lock is busy.
-    """
-    try:
-        with lock(device, blocking=False) as acquired:
-            if not acquired:
-                return None
-            return reader(device)
-    except Exception:
-        return None
 
 
 def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, target_store=None, metadata_worker=None, drive_cdtext=None):
@@ -632,8 +621,12 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
             unrecorded = operate
 
             def operate(request):
-                reply = unrecorded(request)
                 command = request.get('command') if isinstance(request, dict) else None
+                if (disc_monitor is not None and getattr(disc_monitor, 'cdtext_pending', False)
+                        and isinstance(command, str)
+                        and command.strip().lower() in PLAY_COMMANDS | {'eject'}):
+                    disc_monitor.cancel_cdtext()     # the drive is needed now
+                reply = unrecorded(request)
                 if (reply.get('ok') is False and isinstance(command, str)
                         and command.strip().lower() in PLAY_COMMANDS):
                     controller.note_rejection(command.strip().lower(), reply.get('error'))
@@ -863,8 +856,8 @@ def run(argv=None):
                           and musicbrainz.get('enabled', True) is True)
                 if meta.get('read_cd_text', True) is True:
                     cdtext_reader = read_cdtext
-                    if toc is not None:
-                        startup_cdtext = read_startup_cdtext_locked(device)
+                    # The startup CD-TEXT is read in the background by the
+                    # disc monitor (below), so the service is ready at once.
                 metadata_worker = MetadataWorker(
                     cache_path=Path(ns.state_dir) / 'metadata.sqlite3',
                     cover_dir=Path(ns.state_dir) / 'covers',
@@ -872,7 +865,8 @@ def run(argv=None):
                     matching_policy=matching_policy_from_config(meta),
                     # The OLED shows no covers yet; Sonos shows album art.
                     display_supports_cover=False, sonos_uses_cover=True)
-                metadata_worker.observe(toc, startup_cdtext)
+                # With CD-TEXT the lookup starts once the monitor has read it.
+                metadata_worker.observe(toc if cdtext_reader is None else None, None)
         except (OSError, ValueError) as exc:
             print(f'[metadata] disabled: {type(exc).__name__}', flush=True)
 
@@ -896,7 +890,8 @@ def run(argv=None):
                    if disc_status.device is not None else None)
         if monitor is not None:
             monitor.loaded_toc = toc  # verified startup TOC, never stale
-            monitor.loaded_cdtext = startup_cdtext
+            if toc is not None:
+                monitor.start_cdtext(toc)
         ctrl.group_store = PlaybackGroupStore(ns.state_dir)
         serve(ctrl, ns.socket, power=power, drive_id=identity,
               drive_toc=toc, disc_monitor=monitor,
