@@ -64,6 +64,9 @@ FIELDS = (
     ('metadata.matching', 'confidence_threshold', 'Matching confidence threshold (0..100)', 'int'),
     ('metadata.matching', 'minimum_margin', 'Minimum score margin (0..100)', 'int'),
     ('metadata.matching', 'minimum_track_titles', 'Minimum comparable titles (1..99)', 'int'),
+    ('metadata.matching', 'rule_languages', 'Metadata language packs (JSON list)', 'string_list'),
+    ('metadata.matching', 'soft_suffixes', 'Soft edition suffixes (JSON list)', 'string_list'),
+    ('metadata.matching', 'protected_suffixes', 'Protected edition suffixes (JSON list)', 'string_list'),
     ('sonos', 'use_queue', 'Use the Sonos queue', 'bool'),
     ('playback', 'continue', 'Continue to the next track', 'bool'),
     ('audio_startup', 'prebuffer_before_sonos', 'Prebuffer audio before Sonos starts', 'bool'),
@@ -135,6 +138,8 @@ def existing_values(parsed: dict, reference: dict) -> dict[tuple[str, str], obje
                 or (kind == 'album_prefix' and not valid_album_prefix(value))
                 or (kind == 'float01' and (type(value) not in (int, float) or
                     not math.isfinite(value) or not 0 <= value <= 1))
+                or (kind == 'string_list' and (type(value) is not list or
+                    len(value) > 100 or any(type(item) is not str for item in value)))
                 or (kind == 'bool' and type(value) is not bool)):
             raise ValueError(f'invalid {section}.{key}')
         current[(section, key)] = value
@@ -184,6 +189,10 @@ def render_value(value: object) -> str:
     if type(value) is bool:
         return 'true' if value else 'false'
     if type(value) is str:
+        return json.dumps(value, ensure_ascii=False)
+    if type(value) is list:
+        if any(type(item) is not str for item in value):
+            raise ValueError('only string lists can be edited')
         return json.dumps(value, ensure_ascii=False)
     return str(value)
 
@@ -297,6 +306,9 @@ FIELD_HELP = {
     ('led_outputs', 'active_high'): 'Only change if the installed LED circuit requires it.',
     ('led_outputs', 'error_hold_ms'): 'Keep LED fault indication for 0..60000 ms.',
     ('led_outputs.ambient', 'enabled'): 'Use the configured ambient sensor daemon when available.',
+    ('metadata.matching', 'rule_languages'): 'JSON list of installed pack codes, e.g. ["de", "fr"].',
+    ('metadata.matching', 'soft_suffixes'): 'JSON list of qualifiers that may differ.',
+    ('metadata.matching', 'protected_suffixes'): 'JSON list of qualifiers that block wrong editions.',
 }
 MENU_GROUPS = (
     ('Streaming and playback', (('streaming', 'max_buffer_mib'), ('playback', 'continue'))),
@@ -322,6 +334,9 @@ UI_LANGUAGE_GROUP = ('Interface language and text input (ui.toml)',
                      tuple((s, k) for s, k, _, _ in UI_FIELDS if s != 'ui.cover'))
 LED_MENU_GROUP = ('LED outputs and ambient brightness (player.toml)',
                   tuple((s, k) for s, k, _, _ in FIELDS if s.startswith('led_outputs')))
+MATCHING_MENU_GROUP = ('Matching language packs and edition descriptors (player.toml)',
+                       tuple((s, k) for s, k, _, kind in FIELDS
+                             if s == 'metadata.matching' and kind == 'string_list'))
 # Letter shortcut preserves all existing numeric menu selections.
 PLAYER_ADVANCED_GROUP = ('Additional player settings (player.toml)',
                          (('sonos', 'album_prefix'), ('service', 'shutdown_policy')))
@@ -371,6 +386,15 @@ def ask(label: str, current: object, suggestion: object, kind: str,
             if re.fullmatch(r'(?:0(?:\.\d+)?|1(?:\.0+)?)', value):
                 return float(value)
             out('Enter a finite decimal brightness between 0 and 1.')
+        elif kind == 'string_list':
+            try:
+                values = json.loads(value)
+                if type(values) is list and len(values) <= 100 and all(
+                        type(item) is str for item in values):
+                    return values
+            except (ValueError, TypeError):
+                pass
+            out('Enter a JSON list of strings, e.g. ["de", "fr"] or [].')
         elif kind == 'shutdown_policy':
             if value in ('stop_owned', 'leave_playing'):
                 return value
@@ -442,6 +466,7 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
         out('  a. Additional player settings (player.toml)')
         out('  l. LED outputs and ambient brightness (player.toml)')
         out('  i. Button/encoder settings (separate interface.toml assistant)')
+        out('  m. Matching language packs and suffix lists (player.toml)')
         out('  0. Exit without applying changes')
         choice = read(f'Select a section [{finish}]: ').strip() or str(finish)
         if choice.lower() == 'd':
@@ -491,8 +516,10 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
             out('For installation: sudo python3 tools/configure_inputs.py --set ... --apply')
             out('See tools/configure_inputs.py --help; no input pins were changed.')
             continue
+        elif choice.lower() == 'm':
+            heading, group_fields = MATCHING_MENU_GROUP
         elif not choice.isdigit() or not 1 <= int(choice) <= len(groups):
-            out(f'Select a number from 0 to {finish}, or a/d/i/l/p.')
+            out(f'Select a number from 0 to {finish}, or a/d/i/l/m/p.')
             continue
         else:
             heading, group_fields = groups[int(choice) - 1]
@@ -536,6 +563,12 @@ def plan_update(changes, current, ui_current, *, player_path, ui_path, raw, ui_r
             raise ValueError('invalid LED configuration table')
         OutputConfig(**{key: value for key, value in led.items() if key != 'ambient'},
                      ambient=AmbientConfig(**ambient))
+    if not ui and any(section == 'metadata.matching' and key in
+                      ('rule_languages', 'soft_suffixes', 'protected_suffixes')
+                      for section, key in player_changes):
+        sys.path.insert(0, str(ROOT / 'src'))
+        from sonoscdplayer.metadata.worker import matching_policy_from_config
+        matching_policy_from_config(updated_values.get('metadata', {}))
     led_changed = any(section.startswith('led_outputs') for section, _ in player_changes)
     player_changed = any(not section.startswith('led_outputs') for section, _ in player_changes)
     services = (list(UI_SERVICES) if ui else
