@@ -272,6 +272,8 @@ class SetupSession:
     def _connect(self, generation, ssid, password, hidden=False):
         snap = self.snapshot()
         self._sleep(HANDOVER_SECONDS)  # let the answer page reach the phone first
+        if not self._current(generation):
+            return                     # cancelled meanwhile: change nothing
         self._stop_web()
         try:
             self._nm.stop_hotspot()
@@ -333,6 +335,8 @@ class SetupSession:
             self._stop_web()
 
     def _connect_manual(self, generation, ssid, password, hidden):
+        if not self._current(generation):
+            return                     # cancelled before the worker ran
         try:
             if password is None:
                 self._nm.connect_saved(self._device, ssid)

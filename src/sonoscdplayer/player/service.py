@@ -742,8 +742,13 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     # No synchronous controller read and no new Sonos checks.
                     if isinstance(request, dict) and request == {'command': 'status'}:
                         send_reply(conn, publisher.read())
+                    elif sum(1 for _, f in pending if not f.done()) >= MAX_WAITING_COMMANDS:
+                        # While a long PLAY runs, do not collect button presses
+                        # that would all run late.
+                        send_reply(conn, {'ok': False, 'error': 'busy: try again'})
                     else:
-                        pending.append((conn, executor.submit(operate, request)))
+                        pending.append((conn, executor.submit(run_if_still_wanted,
+                                                              operate, conn, request)))
                 except (ValueError, UnicodeError, socket.timeout, OSError) as exc:
                     send_reply(conn, {'ok': False, 'error': f'bad request: {type(exc).__name__}'})
     finally:
@@ -758,6 +763,35 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 path.unlink()
         except FileNotFoundError:
             pass
+
+
+#: Commands that may wait for the single worker; more are answered "busy".
+MAX_WAITING_COMMANDS = 4
+
+
+def client_gone(conn):
+    """True if the client closed its connection (it gave up waiting)."""
+    timeout = conn.gettimeout()
+    try:
+        conn.setblocking(False)
+        return conn.recv(1, socket.MSG_PEEK) == b''
+    except (BlockingIOError, InterruptedError):
+        return False
+    except OSError:
+        return True
+    finally:
+        conn.settimeout(timeout)
+
+
+def run_if_still_wanted(operate, conn, request):
+    """Run a queued command only if its client still waits for the answer.
+
+    A command whose client already timed out is not executed late (for
+    example a volume press that waited behind a slow PLAY).
+    """
+    if client_gone(conn):
+        return {'ok': False, 'error': 'not executed: the client stopped waiting'}
+    return operate(request)
 
 
 def refuse_existing_control_socket(socket_path):

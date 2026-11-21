@@ -219,7 +219,7 @@ if [[ ! -x "$VENV/bin/python" ]]; then
   info 'Creating Python environment'; python3 -m venv --system-site-packages "$VENV"
 fi
 info 'Installing Python runtime dependencies'
-"$VENV/bin/python" -m pip install soco Pillow
+"$VENV/bin/python" -m pip install -r "$ROOT/requirements.txt"
 
 if [[ "$CONFIG" == yes ]]; then
   info 'Creating only missing configuration files'

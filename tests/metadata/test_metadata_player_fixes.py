@@ -86,6 +86,23 @@ class WorkerTests(unittest.TestCase):
                          ('consensus', 'MB Album', 'MB Track'))
         self.assertEqual((snap['release_id'], snap['cover_file']), (other, str(cover)))
 
+    def test_majority_without_album_name_takes_no_cover(self):
+        """Audit META-002: titles agree, album names do not: no cover."""
+        ids = [f'3333333{i}-3333-3333-3333-333333333333' for i in range(4)]
+        albums = ('A', 'A', 'B', 'C')
+        self.lookup.return_value = LookupResult('ambiguous', tuple(
+            ReleaseCandidate(rid, album, 'MB Artist', None, None, ('Same',))
+            for rid, album in zip(ids, albums)))
+        worker = self.worker(sonos_uses_cover=True)
+        worker._cover_policy = CoverPreferences('on').download_policy(display_supports_cover=False)
+        fetch = Mock(return_value=Path(self.tmp.name) / 'cover.jpg')
+        worker._cover = SimpleNamespace(get_or_download=fetch)
+        snap = self.run_job(worker, FakeToc('a'))
+        self.assertEqual((snap['match_status'], snap['album'], snap['tracks'][0]['title']),
+                         ('majority', None, 'Same'))
+        fetch.assert_not_called()
+        self.assertIsNone(snap['cover_file'])
+
     def test_later_lookups_when_unavailable_then_stop(self):
         self.lookup.return_value = LookupResult('unavailable', error='MusicBrainz temporarily unavailable (HTTP 503)')
         worker = self.worker(retry_delays=(120, 600))

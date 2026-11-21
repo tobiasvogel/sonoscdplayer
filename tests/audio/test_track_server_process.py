@@ -56,3 +56,17 @@ def test_an_exited_server_is_an_error():
 def test_silence_times_out():
     with pytest.raises(TimeoutError):
         wait_for_reader_start(*server_output(LISTENING), timeout=0.05)
+
+
+def test_output_after_the_start_is_logged_but_not_queued(capsys):
+    import queue
+    import threading
+    from types import SimpleNamespace
+    from sonoscdplayer.audio.track_server_process import forward_server_output
+    lines = queue.Queue()
+    done = threading.Event()
+    done.set()                                   # startup already finished
+    process = SimpleNamespace(stdout=iter(f'DIAG {i}\n' for i in range(10000)))
+    forward_server_output(process, lines, 0.0, startup_done=done)
+    assert lines.qsize() == 1                    # only the end marker
+    assert 'DIAG 9999' in capsys.readouterr().out

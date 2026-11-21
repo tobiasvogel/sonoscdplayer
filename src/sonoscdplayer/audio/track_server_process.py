@@ -40,12 +40,15 @@ def track_stream_url(host: str, port: int, track: int) -> str:
 
 
 def forward_server_output(process: subprocess.Popen, lines: queue.Queue,
-                          started_at: float, observer=None) -> None:
+                          started_at: float, observer=None, startup_done=None) -> None:
     """Copy the server's output to the log and into ``lines``.
 
     Runs in a background thread until the process closes stdout. Every line
     goes into the queue as ``(monotonic time, text)``; ``(time, None)`` marks
-    the end. ``observer`` is called with each line, if given.
+    the end. ``observer`` is called with each line, if given. Once
+    ``startup_done`` (a threading.Event) is set, nobody reads the queue any
+    more, so lines are only logged (the queue would otherwise grow for the
+    whole playback).
     """
     try:
         for line in process.stdout:
@@ -53,7 +56,8 @@ def forward_server_output(process: subprocess.Popen, lines: queue.Queue,
             print(f'[server +{time.monotonic() - started_at:7.3f}s] {text}', flush=True)
             if observer is not None:
                 observer(text)
-            lines.put((time.monotonic(), text))
+            if startup_done is None or not startup_done.is_set():
+                lines.put((time.monotonic(), text))
     finally:
         lines.put((time.monotonic(), None))
 

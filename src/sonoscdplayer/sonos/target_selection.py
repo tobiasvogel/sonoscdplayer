@@ -87,12 +87,11 @@ class SelectedTarget:
         if controller.state.mode != Mode.STOPPED or controller.owned_url:
             raise ValueError('speaker change not possible while playback is starting')
         # Reuse the same live verification performed before existing PLAY.
-        # A leftover group of the old or new selection is split (and only
-        # such a group); see groups.release_leftover().
-        own = {uid, *selected_members, *self.speakers()}
+        # Only a group the player remembers forming (or taking over) counts
+        # as its own; matching UIDs of a selection are no proof. Any other
+        # idle group only loses the chosen speakers (make_alone).
         remembered = getattr(controller, 'remembered_group', None)
-        if callable(remembered):
-            own |= remembered()
+        own = set(remembered()) if callable(remembered) else set()
         try:
             self._verify(uid)
         except SpeakerGrouped as exc:

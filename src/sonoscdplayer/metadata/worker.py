@@ -112,6 +112,7 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
     lookup_status = None
     lookup_error = None
     alternatives = ()
+    album_confirmed = True          # False: majority names without an album name
     if cached is not None:
         effective = _prefer_cdtext(local, cached.local)
         release_id = cached.release_id
@@ -143,6 +144,7 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                     match, score = decision.status, decision.score
                     effective = merged
                     same_album = (decision.chosen.title if decision.chosen is not None else None)
+                    album_confirmed = decision.chosen is None or bool(same_album)
                     alternatives = tuple(
                         item.release.release_id for item in decision.candidates
                         if item.release.release_id != release_id
@@ -156,8 +158,11 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                             # Metadata remains available even with read-only DB.
                             pass
     # Cover mode off suppresses even cached files in the UI.
-    cover, cover_status = _cover_file(cover_cache, release_id, cover_policy)
-    if match in ('consensus', 'majority') and cover_status == 'unavailable':
+    cover_release = release_id
+    if match == 'majority' and not album_confirmed:
+        cover_release = None        # no edition is confirmed by an album name: no cover
+    cover, cover_status = _cover_file(cover_cache, cover_release, cover_policy)
+    if match in ('consensus', 'majority') and cover_release and cover_status == 'unavailable':
         # Same names (on all or most editions): take the cover of the first
         # such edition that has one.
         for other in alternatives:

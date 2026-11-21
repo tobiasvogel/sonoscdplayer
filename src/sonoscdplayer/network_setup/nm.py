@@ -155,8 +155,11 @@ class Nm:
         if not valid_ssid(ssid) or not valid_password(password):
             raise NmError('invalid network name or password')
         name = profile_name(ssid)
-        self._run('connection', 'delete', 'id', name, check=False)
-        args = ['connection', 'add', 'type', 'wifi', 'ifname', device, 'con-name', name,
+        # Try the new settings under a temporary name: a wrong password must
+        # not cost the profile that worked so far for this network.
+        trial = name + '-new'
+        self._run('connection', 'delete', 'id', trial, check=False)
+        args = ['connection', 'add', 'type', 'wifi', 'ifname', device, 'con-name', trial,
                 'ssid', ssid, 'connection.autoconnect', 'yes',
                 'connection.autoconnect-priority', str(NEW_PRIORITY)]
         if hidden:
@@ -164,11 +167,14 @@ class Nm:
         if password:
             args += ['wifi-sec.key-mgmt', 'wpa-psk', 'wifi-sec.psk', password]
         self._run(*args)
-        result = self._run('--wait', str(CONNECT_WAIT_SECONDS), 'connection', 'up', 'id', name,
+        result = self._run('--wait', str(CONNECT_WAIT_SECONDS), 'connection', 'up', 'id', trial,
                            timeout=CONNECT_WAIT_SECONDS + 10, check=False)
         if result.returncode != 0:
-            self._run('connection', 'delete', 'id', name, check=False)
+            self._run('connection', 'delete', 'id', trial, check=False)
             raise NmError('could not connect to the network')
+        # It works: replace the old profile of this network by the new one.
+        self._run('connection', 'delete', 'id', name, check=False)
+        self._run('connection', 'modify', 'id', trial, 'connection.id', name, check=False)
         self._demote_older(name)
         return name
 

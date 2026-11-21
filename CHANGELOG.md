@@ -6,6 +6,18 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- Fixes from a second code audit: the track server's log lines no longer
+  pile up in memory during playback; a wrong password for an already saved
+  WLAN no longer deletes the working profile; cancelling the WLAN setup in
+  the seconds after the phone submitted no longer switches the network; an
+  idle group is only split completely if the player remembers it as its own
+  playback group (matching speaker names are no proof), otherwise only the
+  chosen speakers leave it; the stored playback group is updated after a
+  group recovery; a name majority without an album name takes no cover;
+  commands that waited behind a slow PLAY are not run late once their
+  sender gave up, and at most four may wait.
+- Python packages are installed from `requirements.txt` with the tested
+  version ranges (SoCo 0.32, Pillow 11).
 - A CD is ready as soon as its table of contents is read; CD-TEXT follows in
   the background, and PLAY or EJECT no longer wait for it (they cancel the
   read). On a disc where cd-info hangs this saved 45 s at insertion and up to

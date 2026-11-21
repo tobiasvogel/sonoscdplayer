@@ -1,0 +1,4 @@
+# Python packages installed by scripts/setup.sh into the player's virtual
+# environment. The ranges are the versions 0.9.0 was tested with.
+soco>=0.32.1,<0.33
+Pillow>=11.1,<12

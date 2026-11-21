@@ -1,6 +1,6 @@
 """M4b.9 offline projection of the existing manual WLAN controller."""
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from sonoscdplayer.network_setup.session import SetupSnapshot
 from sonoscdplayer.ui.displays.wifi_entry_screens import wifi_entry_screen

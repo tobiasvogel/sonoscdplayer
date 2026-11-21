@@ -77,8 +77,10 @@ class TrackServerProcess:
         self.proc = p
         with self._reader_lock:
             self._reader_active = True  # conservative until reader reports completion
+        startup_done = threading.Event()
         threading.Thread(target=forward_server_output,
-                         args=(p, events, time.monotonic(), self._observe_line), daemon=True).start()
+                         args=(p, events, time.monotonic(), self._observe_line, startup_done),
+                         daemon=True).start()
         try:
             wait_for_reader_start(events, p, timeout=30)
             if self.startup_prebuffer:
@@ -88,6 +90,8 @@ class TrackServerProcess:
         except BaseException:
             self.close()
             raise
+        finally:
+            startup_done.set()          # nobody reads the event queue after the start
 
     def alive(self):
         """True while the server process runs."""
@@ -346,7 +350,7 @@ class Controller:
         try:
             return self.verify(uid)
         except SpeakerGrouped as exc:
-            if not groups.make_alone(exc.speaker, {uid, *members, *self.remembered_group()}):
+            if not groups.make_alone(exc.speaker, self.remembered_group()):
                 raise
             self.forget_leftover_group()
         return self.verify(uid)
@@ -387,6 +391,7 @@ class Controller:
             self._group_coord = None
             self._group_members = frozenset()
             self._recovery_url = None
+            self._store_group()
             return self.inspect_group_recovery()
         if not self._recovery_url:
             raise RuntimeError('recovery has no verified owned stream')
@@ -401,6 +406,7 @@ class Controller:
             self._group_coord = None
             self._group_members = frozenset()
             self._recovery_url = None
+        self._store_group()
         return self.inspect_group_recovery()
 
     def _verify_retained_group(self, uid):
@@ -763,7 +769,7 @@ class Controller:
                 raise RuntimeError('member discovery incomplete')
             for member_uid, member in member_players.items():
                 groups.require_member_ready_releasing(
-                    member, member_uid, {candidate, *wanted, *self.remembered_group()})
+                    member, member_uid, self.remembered_group())
         host = self.route(target.ip_address) if self.route is not None else self.host
         url = track_stream_url(host, self.port, self.state.selected_track)
         self.server.close()

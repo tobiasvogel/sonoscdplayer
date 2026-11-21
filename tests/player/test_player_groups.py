@@ -235,6 +235,18 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(self.player.resolve_idle_group())
         self.assertFalse(self.player._group_uncertain)
 
+    def test_recovery_updates_the_stored_playback_group(self):
+        """Audit SON-002: after recovery the store must not keep old members."""
+        saved = []
+        self.player.group_store = SimpleNamespace(save=saved.append, load=lambda: frozenset())
+        self.start()
+        self.player._release_group(owned_url='http://other.invalid/x')   # kept
+        self.player.state = self.player.state.natural_end()
+        self.player.owned_url = None
+        self.topo.leaders['B'] = 'B'                      # left on its own
+        self.player.resolve_group_recovery()
+        self.assertEqual(saved[-1], set())
+
     def test_speaker_removed_in_app_is_no_longer_released(self):
         self.start()
         self.topo.leaders['B'] = 'B'                # taken out in the Sonos app

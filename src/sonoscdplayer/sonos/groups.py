@@ -126,7 +126,7 @@ def release_leftover(speaker, own_uids, *, sleep=time.sleep, clock=time.monotoni
     After an interrupted playback a group of the selection can stay behind
     (for example when the player was restarted before releasing it). The
     group of ``speaker`` is split only if every speaker in it is in
-    ``own_uids`` (the old or new selection) and its coordinator is stopped;
+    ``own_uids`` (the playback group the player remembers) and its coordinator is idle;
     any other group is left alone.
 
     Returns:

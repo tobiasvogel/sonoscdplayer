@@ -198,3 +198,13 @@ def test_playback_group_store_round_trip(tmp_path):
     assert store.load() == {'RINCON_A1', 'RINCON_B1'}
     store.save(set())
     assert store.load() == frozenset() and not store.path.exists()
+
+
+def test_group_made_in_the_app_is_not_split_because_it_matches_the_selection(topo):
+    """Audit SON-001: an idle app group A+B+C, old selection A+B+C, new
+    selection A alone. Matching UIDs are no proof of a leftover: only A leaves."""
+    topo.leaders.update({'B': 'A', 'C': 'A'})
+    selection, controller = selection_with_verify(topo)     # remembers no group
+    selection.set(controller, 'A')
+    assert topo.leaders['A'] == 'A'
+    assert topo.leaders['C'] == topo.leaders['B']             # B and C stay together

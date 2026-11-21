@@ -88,12 +88,26 @@ class NmTests(unittest.TestCase):
                             f'{OLDER_PRIORITY}' in c for c in calls))
         self.assertFalse(any('User profile' in c for c in calls if 'modify' in c))
 
-    def test_failed_connect_removes_profile_and_hides_password(self):
+    def test_failed_connect_removes_only_the_trial_and_hides_password(self):
         runner = FakeRunner({'connection up': (4, '')})
         with self.assertRaises(NmError) as caught:
             Nm(runner=runner).connect('wlan0', 'Home', 'secret123')
         self.assertNotIn('secret123', str(caught.exception))
-        self.assertIn(f'connection delete id {profile_name("Home")}', runner.joined()[-1])
+        name = profile_name('Home')
+        self.assertIn(f'connection delete id {name}-new', runner.joined()[-1])
+        # The profile that worked before (wrong password typed now) is kept.
+        self.assertFalse(any(c.endswith(f'delete id {name}') for c in runner.joined()))
+
+    def test_successful_connect_replaces_the_old_profile(self):
+        runner = FakeRunner()
+        Nm(runner=runner).connect('wlan0', 'Home', 'secret123')
+        name = profile_name('Home')
+        calls = runner.joined()
+        up = next(i for i, c in enumerate(calls) if 'connection up' in c)
+        self.assertIn(f'id {name}-new', calls[up])
+        rest = calls[up + 1:]
+        self.assertTrue(any(c.endswith(f'delete id {name}') for c in rest))
+        self.assertTrue(any(f'modify id {name}-new connection.id {name}' in c for c in rest))
 
     def test_open_network_has_no_security_settings(self):
         runner = FakeRunner()
@@ -228,6 +242,22 @@ class SessionTests(unittest.TestCase):
         self.assertFalse(session.active)
         self.assertTrue(webs[0].stopped)
         self.assertFalse(session.cancel())
+
+    def test_cancel_during_the_handover_changes_no_network(self):
+        """Cancel after the phone submitted, while the player waits to switch."""
+        nm = FakeNm()
+        holder = {}
+        def sleep(_seconds):
+            holder['session'].cancel()              # user cancels in these 2 s
+        session, _clock, _webs = make_session(nm)
+        session._sleep = sleep
+        holder['session'] = session
+        session.start()
+        session.join()
+        self.assertEqual(session.submit('Home', 'secret123'), '')
+        session.join()
+        self.assertNotIn(('connect', 'Home', 'secret123'), nm.log)
+        self.assertEqual(session.snapshot().state, 'idle')
 
     def test_submit_validates_and_connects(self):
         nm = FakeNm()
