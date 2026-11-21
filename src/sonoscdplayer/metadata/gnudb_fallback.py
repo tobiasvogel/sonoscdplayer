@@ -32,7 +32,7 @@ def _compatible(local: LocalDiscMetadata, entry: CDDBEntry) -> bool:
 
 
 def resolve_fallback(toc, local: LocalDiscMetadata, *, timeout_seconds=5,
-                     query=query_disc, read=read_entry):
+                     query=query_disc, read=read_entry, endpoint=None):
     """Return (metadata, status) or (None, sanitized status).
 
     The status is informative only; no CDDB ID is ever used as a MusicBrainz
@@ -44,14 +44,17 @@ def resolve_fallback(toc, local: LocalDiscMetadata, *, timeout_seconds=5,
         raise ValueError('invalid GnuDB timeout')
     try:
         identity = identity_from_toc(toc)
-        found = query(identity, timeout_seconds=timeout_seconds)
+        kwargs = {'timeout_seconds': timeout_seconds}
+        if endpoint is not None:
+            kwargs['endpoint'] = endpoint
+        found = query(identity, **kwargs)
         if found.status != 'unique' or len(found.matches) != 1:
             return None, found.status
         hit = found.matches[0]
         # Even a unique CDDB query can be based on an inexact/colliding ID.
         if hit.disc_id != identity.disc_id:
             return None, 'unverified'
-        entry = read(identity, hit, timeout_seconds=timeout_seconds)
+        entry = read(identity, hit, **kwargs)
         if (entry.disc_id != identity.disc_id or entry.category != hit.category or
                 not _compatible(local, entry)):
             return None, 'unverified'

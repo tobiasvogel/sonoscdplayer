@@ -892,11 +892,15 @@ def run(argv=None):
                     cdtext_reader = read_cdtext
                     # The startup CD-TEXT is read in the background by the
                     # disc monitor (below), so the service is ready at once.
+                from sonoscdplayer.metadata.worker import gnudb_settings_from_config
+                gnudb_enabled, gnudb_timeout, gnudb_endpoint = gnudb_settings_from_config(meta)
                 metadata_worker = MetadataWorker(
                     cache_path=Path(ns.state_dir) / 'metadata.sqlite3',
                     cover_dir=Path(ns.state_dir) / 'covers',
                     online=online, timeout=timeout,
                     matching_policy=matching_policy_from_config(meta),
+                    gnudb_enabled=gnudb_enabled, gnudb_timeout=gnudb_timeout,
+                    gnudb_endpoint=gnudb_endpoint,
                     # The OLED shows no covers yet; Sonos shows album art.
                     display_supports_cover=False, sonos_uses_cover=True)
                 # With CD-TEXT the lookup starts once the monitor has read it.

@@ -29,6 +29,7 @@ FIELD_RANGES = {
     ('drive_power', 'keepalive_interval_seconds'): (3, 3600),
     ('drive_power', 'idle_spin_down_seconds'): (30, 86400),
     ('metadata.musicbrainz', 'timeout_seconds'): (1, 30),
+    ('metadata.gnudb', 'timeout_seconds'): (1, 30),
     ('metadata.matching', 'confidence_threshold'): (0, 100),
     ('metadata.matching', 'minimum_margin'): (0, 100),
     ('metadata.matching', 'minimum_track_titles'): (1, 99),
@@ -64,6 +65,9 @@ FIELDS = (
     ('metadata', 'online_lookup', 'Look up metadata online', 'bool'),
     ('metadata.musicbrainz', 'enabled', 'Enable MusicBrainz provider', 'bool'),
     ('metadata.musicbrainz', 'timeout_seconds', 'MusicBrainz request timeout (seconds)', 'int'),
+    ('metadata.gnudb', 'enabled', 'Use GnuDB if MusicBrainz is unavailable/not found', 'bool'),
+    ('metadata.gnudb', 'timeout_seconds', 'GnuDB request timeout (seconds)', 'int'),
+    ('metadata.gnudb', 'endpoint', 'GnuDB HTTPS CGI endpoint', 'https_url'),
     ('metadata', 'auto_match', 'Automatically select matched releases', 'bool'),
     ('metadata.matching', 'confidence_threshold', 'Matching confidence threshold (0..100)', 'int'),
     ('metadata.matching', 'minimum_margin', 'Minimum score margin (0..100)', 'int'),
@@ -149,6 +153,7 @@ def existing_values(parsed: dict, reference: dict) -> dict[tuple[str, str], obje
                 or (kind == 'shutdown_policy' and (type(value) is not str or value not in
                                                    ('stop_owned', 'leave_playing')))
                 or (kind == 'album_prefix' and not valid_album_prefix(value))
+                or (kind == 'https_url' and not valid_gnudb_endpoint(value))
                 or (kind == 'float01' and (type(value) not in (int, float) or
                     not math.isfinite(value) or not 0 <= value <= 1))
                 or (kind == 'float_lux' and (type(value) not in (int, float) or
@@ -159,6 +164,22 @@ def existing_values(parsed: dict, reference: dict) -> dict[tuple[str, str], obje
             raise ValueError(f'invalid {section}.{key}')
         current[(section, key)] = value
     return current
+
+
+def valid_gnudb_endpoint(value):
+    """Permit HTTPS CGI endpoints only; no credentials or query parameters."""
+    from urllib.parse import urlsplit
+    if type(value) is not str or not 1 <= len(value) <= 2048 or any(
+            not c.isprintable() or c.isspace() for c in value):
+        return False
+    try:
+        parsed = urlsplit(value)
+        return (parsed.scheme == 'https' and bool(parsed.hostname) and
+                parsed.username is None and parsed.password is None and
+                parsed.port in (None, 443) and parsed.hostname not in ('localhost',) and bool(parsed.path) and
+                not parsed.query and not parsed.fragment)
+    except ValueError:
+        return False
 
 
 def valid_album_prefix(value):
@@ -330,6 +351,9 @@ FIELD_HELP = {
     ('led_outputs.ambient', 'fallback_brightness'): 'Brightness if the sensor is unavailable: 0..1.',
     ('led_outputs.ambient', 'lux_dark'): 'Illuminance at the dark end: nonnegative finite lux.',
     ('led_outputs.ambient', 'lux_bright'): 'Illuminance at the bright end: greater than lux_dark.',
+    ('metadata.gnudb', 'enabled'): 'Use GnuDB only if MusicBrainz fails or has no release.',
+    ('metadata.gnudb', 'timeout_seconds'): 'Each GnuDB HTTP request: 1..30 seconds.',
+    ('metadata.gnudb', 'endpoint'): 'HTTPS-only CDDB CGI URL; no credentials, query or fragment.',
     ('metadata.matching', 'rule_languages'): 'JSON list of installed pack codes, e.g. ["de", "fr"].',
     ('metadata.matching', 'soft_suffixes'): 'JSON list of qualifiers that may differ.',
     ('metadata.matching', 'protected_suffixes'): 'JSON list of qualifiers that block wrong editions.',
@@ -361,6 +385,8 @@ LED_MENU_GROUP = ('LED outputs and ambient brightness (player.toml)',
 MATCHING_MENU_GROUP = ('Matching language packs and edition descriptors (player.toml)',
                        tuple((s, k) for s, k, _, kind in FIELDS
                              if s == 'metadata.matching' and kind == 'string_list'))
+PROVIDER_MENU_GROUP = ('CD metadata provider fallback (player.toml)',
+                       tuple((s, k) for s, k, _, _ in FIELDS if s == 'metadata.gnudb'))
 # Letter shortcut preserves all existing numeric menu selections.
 PLAYER_ADVANCED_GROUP = ('Additional player settings (player.toml)',
                          (('sonos', 'album_prefix'), ('service', 'shutdown_policy')))
@@ -416,6 +442,10 @@ def ask(label: str, current: object, suggestion: object, kind: str,
                 if math.isfinite(number):
                     return number
             out('Enter a nonnegative finite decimal lux value.')
+        elif kind == 'https_url':
+            if valid_gnudb_endpoint(value):
+                return value
+            out('Enter a valid HTTPS CGI URL without credentials, query or fragment.')
         elif kind == 'string_list':
             try:
                 values = json.loads(value)
@@ -497,6 +527,7 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
         out('  l. LED outputs and ambient brightness (player.toml)')
         out('  i. Button/encoder settings (separate interface.toml assistant)')
         out('  m. Matching language packs and suffix lists (player.toml)')
+        out('  g. GnuDB metadata fallback settings (player.toml)')
         out('  0. Exit without applying changes')
         choice = read(f'Select a section [{finish}]: ').strip() or str(finish)
         if choice.lower() == 'd':
@@ -555,8 +586,10 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
             continue
         elif choice.lower() == 'm':
             heading, group_fields = MATCHING_MENU_GROUP
+        elif choice.lower() == 'g':
+            heading, group_fields = PROVIDER_MENU_GROUP
         elif not choice.isdigit() or not 1 <= int(choice) <= len(groups):
-            out(f'Select a number from 0 to {finish}, or a/d/i/l/m/p.')
+            out(f'Select a number from 0 to {finish}, or a/d/g/i/l/m/p.')
             continue
         else:
             heading, group_fields = groups[int(choice) - 1]
@@ -606,6 +639,10 @@ def plan_update(changes, current, ui_current, *, player_path, ui_path, raw, ui_r
         sys.path.insert(0, str(ROOT / 'src'))
         from sonoscdplayer.metadata.worker import matching_policy_from_config
         matching_policy_from_config(updated_values.get('metadata', {}))
+    if not ui and any(section == 'metadata.gnudb' for section, _ in player_changes):
+        sys.path.insert(0, str(ROOT / 'src'))
+        from sonoscdplayer.metadata.worker import gnudb_settings_from_config
+        gnudb_settings_from_config(updated_values.get('metadata', {}))
     led_changed = any(section.startswith('led_outputs') for section, _ in player_changes)
     player_changed = any(not section.startswith('led_outputs') for section, _ in player_changes)
     services = (list(UI_SERVICES) if ui else

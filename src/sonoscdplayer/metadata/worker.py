@@ -21,8 +21,40 @@ from sonoscdplayer.metadata.release_matching import MatchingPolicy, decide_relea
 from sonoscdplayer.metadata.language_rules import load_language_rules
 from sonoscdplayer.metadata.musicbrainz import identity_from_toc, lookup_disc
 from sonoscdplayer.metadata.cover_preferences import read_cover_preferences
-from sonoscdplayer.metadata.gnudb import query_disc as query_gnudb, read_entry as read_gnudb
+from sonoscdplayer.metadata.gnudb import (ENDPOINT as GNUDB_ENDPOINT,
+    query_disc as query_gnudb, read_entry as read_gnudb)
 from sonoscdplayer.metadata.gnudb_fallback import resolve_fallback
+
+
+def gnudb_settings_from_config(metadata):
+    """Validate optional GnuDB preferences; existing configs keep safe defaults."""
+    from urllib.parse import urlsplit
+    if not isinstance(metadata, dict):
+        raise ValueError('metadata must be a table')
+    section = metadata.get('gnudb', {})
+    if not isinstance(section, dict):
+        raise ValueError('metadata.gnudb must be a table')
+    if set(section) - {'enabled', 'timeout_seconds', 'endpoint'}:
+        raise ValueError('unknown metadata.gnudb setting')
+    enabled = section.get('enabled', True)
+    timeout = section.get('timeout_seconds', 5)
+    endpoint = section.get('endpoint', GNUDB_ENDPOINT)
+    if type(enabled) is not bool or type(timeout) is not int or not 1 <= timeout <= 30:
+        raise ValueError('invalid metadata.gnudb settings')
+    if type(endpoint) is not str or not 1 <= len(endpoint) <= 2048 or any(
+            not char.isprintable() or char.isspace() for char in endpoint):
+        raise ValueError('invalid metadata.gnudb.endpoint')
+    try:
+        url = urlsplit(endpoint)
+        valid = (url.scheme == 'https' and bool(url.hostname) and
+                 url.username is None and url.password is None and
+                 url.port in (None, 443) and url.hostname not in ('localhost',) and bool(url.path) and
+                 not url.query and not url.fragment)
+    except ValueError:
+        valid = False
+    if not valid:
+        raise ValueError('metadata.gnudb.endpoint must be an HTTPS CGI URL')
+    return enabled, timeout, endpoint
 
 
 def matching_policy_from_config(metadata):
@@ -115,7 +147,8 @@ def _compatible_cached_gnudb(local, cached):
 
 def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, timeout,
                  policy, identify, lookup, gnudb_enabled=False, gnudb_timeout=5,
-                 gnudb_query=query_gnudb, gnudb_read=read_gnudb):
+                 gnudb_query=query_gnudb, gnudb_read=read_gnudb,
+                 gnudb_endpoint=GNUDB_ENDPOINT):
     identity = identify(toc)
     local = local_metadata_from_cdtext(toc, cdtext)
     # Database corruption and permissions must not hide already-read CD-TEXT.
@@ -188,7 +221,8 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
             # from silently replacing known metadata. CDDB has no MB release ID.
             fallback, _fallback_status = resolve_fallback(
                 toc, local, timeout_seconds=gnudb_timeout,
-                query=gnudb_query, read=gnudb_read)
+                query=gnudb_query, read=gnudb_read,
+                endpoint=gnudb_endpoint if gnudb_endpoint != GNUDB_ENDPOINT else None)
             if fallback is not None:
                 effective, match, score = fallback, 'gnudb', None
                 try:
@@ -244,7 +278,8 @@ class MetadataWorker:
                  identify=identity_from_toc, lookup=lookup_disc,
                  executor=None, clock=time.monotonic, retry_delays=RETRY_DELAYS,
                  gnudb_enabled=False, gnudb_timeout=5,
-                 gnudb_query=query_gnudb, gnudb_read=read_gnudb):
+                 gnudb_query=query_gnudb, gnudb_read=read_gnudb,
+                 gnudb_endpoint=GNUDB_ENDPOINT):
         self._cache = DiscCache(cache_path)
         self._cover = CoverStore(cover_dir)
         self._policy = matching_policy or MatchingPolicy()
@@ -255,7 +290,11 @@ class MetadataWorker:
             raise ValueError('invalid GnuDB fallback settings')
         self._online, self._timeout = online, timeout
         self._identify, self._lookup = identify, lookup
+        # Validate the URL even when the fallback is disabled.
+        gnudb_settings_from_config({'gnudb': {'enabled': gnudb_enabled,
+            'timeout_seconds': gnudb_timeout, 'endpoint': gnudb_endpoint}})
         self._gnudb_enabled, self._gnudb_timeout = gnudb_enabled, gnudb_timeout
+        self._gnudb_endpoint = gnudb_endpoint
         self._gnudb_query, self._gnudb_read = gnudb_query, gnudb_read
         self._executor = executor or ThreadPoolExecutor(max_workers=1, thread_name_prefix='disc-metadata')
         self._owns_executor = executor is None
@@ -300,7 +339,8 @@ class MetadataWorker:
                 timeout=self._timeout, policy=self._policy,
                 identify=self._identify, lookup=self._lookup,
                 gnudb_enabled=self._gnudb_enabled, gnudb_timeout=self._gnudb_timeout,
-                gnudb_query=self._gnudb_query, gnudb_read=self._gnudb_read)
+                gnudb_query=self._gnudb_query, gnudb_read=self._gnudb_read,
+                gnudb_endpoint=self._gnudb_endpoint)
         except Exception:
             # Even corrupt caches or inaccessible services must not block PLAY.
             return None
