@@ -118,9 +118,16 @@ class DisplayFrameRouter:
                 snapshot_fn = getattr(menu, 'netsetup_snapshot', None)
                 if callable(snapshot_fn):
                     from sonoscdplayer.ui.displays.special_screens import wifi_setup_screen
-                    screen = wifi_setup_screen(snapshot_fn(), language=language)
-            # Manual Wi-Fi chooser/password entry remains externally owned.
-            # Never fall through to player status or drive warnings.
+                    snapshot = snapshot_fn()
+                    screen = wifi_setup_screen(snapshot, language=language)
+                    if screen is None:
+                        # The same WifiEntryController owns focus and text input.
+                        # Projection only: never invoke sync(), event() or session APIs.
+                        from sonoscdplayer.ui.displays.wifi_entry_screens import wifi_entry_screen
+                        screen = wifi_entry_screen(getattr(menu, 'wifi_entry', None), snapshot,
+                                                   language=language)
+            # Unknown manual setup stays externally owned; never fall through
+            # to player status or drive warnings.
             return (None if screen is None else
                     self._st_bridge.from_screen(screen, elapsed=elapsed))
 
