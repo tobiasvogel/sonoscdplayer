@@ -68,6 +68,8 @@ FIELDS = (
     ('drive_power', 'strategy', 'CD drive power strategy', 'strategy'),
     ('drive_power', 'keepalive_interval_seconds', 'Drive keepalive interval (seconds)', 'int'),
     ('drive_power', 'idle_spin_down_seconds', 'Idle spin-down after (seconds; off disables)', 'optional_int'),
+    ('sonos', 'album_prefix', 'Album prefix shown in Sonos', 'album_prefix'),
+    ('service', 'shutdown_policy', 'Playback behavior on shutdown', 'shutdown_policy'),
 )
 SECTION = re.compile(r'^\s*\[([^\]]+)\]\s*(?:#.*)?$')
 ASSIGN = re.compile(r"^(\s*)([A-Za-z0-9_-]+)(\s*=\s*)(\"(?:\\.|[^\"\\])*\"|'[^']*'|[^#\r\n]*?)(\s*(?:#.*)?)$")
@@ -118,10 +120,19 @@ def existing_values(parsed: dict, reference: dict) -> dict[tuple[str, str], obje
                 or (kind == 'optional_int' and value is not None
                     and (type(value) is not int or not bounds[0] <= value <= bounds[1]))
                 or (kind == 'strategy' and (type(value) is not str or value not in DRIVE_STRATEGIES))
+                or (kind == 'shutdown_policy' and (type(value) is not str or value not in
+                                                   ('stop_owned', 'leave_playing')))
+                or (kind == 'album_prefix' and not valid_album_prefix(value))
                 or (kind == 'bool' and type(value) is not bool)):
             raise ValueError(f'invalid {section}.{key}')
         current[(section, key)] = value
     return current
+
+
+def valid_album_prefix(value):
+    """Validate only printable, single-line Sonos album prefixes (max 64 chars)."""
+    return (type(value) is str and len(value) <= 64 and
+            all(ch.isprintable() for ch in value))
 
 
 def valid_extra_characters(value):
@@ -264,6 +275,10 @@ FIELD_HELP = {
         'After this much safe inactivity the drive may spin down: 30..86400 seconds. '
         'Type off to disable. Requires enabled drive management with auto or '
         'keepalive strategy; cannot combine with mode-page overrides.'),
+    ('sonos', 'album_prefix'): ('Text prefixed to CD albums in Sonos. Up to 64 printable '
+                               'characters; trailing spaces are preserved. Type - to clear.'),
+    ('service', 'shutdown_policy'): ('stop_owned stops playback started by this player on '
+                                    'shutdown; leave_playing leaves it playing.'),
 }
 MENU_GROUPS = (
     ('Streaming and playback', (('streaming', 'max_buffer_mib'), ('playback', 'continue'))),
@@ -287,14 +302,18 @@ MENU_GROUPS = (
 UI_MENU_GROUP = ('Cover art and cache (ui.toml)', tuple((s, k) for s, k, _, _ in UI_FIELDS if s == 'ui.cover'))
 UI_LANGUAGE_GROUP = ('Interface language and text input (ui.toml)',
                      tuple((s, k) for s, k, _, _ in UI_FIELDS if s != 'ui.cover'))
+# Letter shortcut preserves all existing numeric menu selections.
+PLAYER_ADVANCED_GROUP = ('Additional player settings (player.toml)',
+                         (('sonos', 'album_prefix'), ('service', 'shutdown_policy')))
 
 def ask(label: str, current: object, suggestion: object, kind: str,
         *, help_text: str = '', bounds=None, choices=(), read=input, out=print) -> object:
     """Enter explicitly accepts the suggestion; k leaves current untouched."""
     while True:
-        value = read(f'{label} (current: {render_value(current)}; '
-                     f'recommended: {render_value(suggestion)}) '
-                     f'[{render_value(suggestion)}] (k=keep, ?=help): ').strip()
+        answer = read(f'{label} (current: {render_value(current)}; '
+                      f'recommended: {render_value(suggestion)}) '
+                      f'[{render_value(suggestion)}] (k=keep, ?=help): ')
+        value = answer.strip()
         if value == '?':
             out(help_text or 'Enter a value or k to keep the existing setting.')
             continue
@@ -328,6 +347,17 @@ def ask(label: str, current: object, suggestion: object, kind: str,
             if value.lower() in choices:
                 return value.lower()
             out('Choose one of: ' + ', '.join(choices))
+        elif kind == 'shutdown_policy':
+            if value in ('stop_owned', 'leave_playing'):
+                return value
+            out('Choose stop_owned or leave_playing.')
+        elif kind == 'album_prefix':
+            if value == '-':
+                return ''
+            # Unlike other wizard inputs, a prefix may end in spaces.
+            if valid_album_prefix(answer):
+                return answer
+            out('Enter up to 64 printable characters on one line, or - to clear.')
         elif value.lower() in ('y', 'yes', 'true', '1'):
             return True
         elif value.lower() in ('n', 'no', 'false', '0'):
@@ -385,6 +415,7 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
         out(f'  {finish}. Review pending changes and finish')
         out('  d. Display hardware inventory (read-only)')
         out('  p. Display change preflight (read-only; switching blocked)')
+        out('  a. Additional player settings (player.toml)')
         out('  0. Exit without applying changes')
         choice = read(f'Select a section [{finish}]: ').strip() or str(finish)
         if choice.lower() == 'd':
@@ -424,10 +455,13 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
             if answer in ('y', 'yes'):
                 return changes
             continue
-        if not choice.isdigit() or not 1 <= int(choice) <= len(groups):
-            out(f'Select a number from 0 to {finish}.')
+        if choice.lower() == 'a':
+            heading, group_fields = PLAYER_ADVANCED_GROUP
+        elif not choice.isdigit() or not 1 <= int(choice) <= len(groups):
+            out(f'Select a number from 0 to {finish}, or a/d/p.')
             continue
-        heading, group_fields = groups[int(choice) - 1]
+        else:
+            heading, group_fields = groups[int(choice) - 1]
         out(f'\n{heading} (press k to keep the original value)')
         for field in group_fields:
             label, kind = fields[field]
