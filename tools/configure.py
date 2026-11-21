@@ -384,10 +384,27 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
         finish = len(groups) + 1
         out(f'  {finish}. Review pending changes and finish')
         out('  d. Display hardware inventory (read-only)')
+        out('  p. Display change preflight (read-only; switching blocked)')
         out('  0. Exit without applying changes')
         choice = read(f'Select a section [{finish}]: ').strip() or str(finish)
         if choice.lower() == 'd':
             show_display_inventory(parsed or {}, interface_path=interface_path, out=out)
+            continue
+        if choice.lower() == 'p':
+            candidate = read('Display candidate [ssd1327/st7735s/sh1107]: ').strip().lower()
+            if candidate not in ('ssd1327', 'st7735s', 'sh1107'):
+                out('Unknown display candidate; no action taken.')
+                continue
+            bl = None
+            if candidate == 'st7735s':
+                value = read('Optional backlight BCM pin (blank=unknown): ').strip()
+                if value:
+                    if not value.isdecimal():
+                        out('Invalid BCM pin; no action taken.')
+                        continue
+                    bl = int(value)
+            show_display_preflight(parsed or {}, candidate, interface_path=interface_path,
+                                   backlight_pin=bl, out=out)
             continue
         if choice == '0':
             return None
@@ -460,6 +477,26 @@ def show_display_inventory(parsed, *, interface_path=None, out=print):
         out(line)
 
 
+def show_display_preflight(parsed, target, *, interface_path=None, backlight_pin=None, out=print):
+    """Show display-switch prerequisites without staging or changing hardware."""
+    spec = importlib.util.spec_from_file_location(
+        'sonos_display_preflight', ROOT / 'tools' / 'display_preflight.py')
+    if spec is None or spec.loader is None:
+        raise RuntimeError('display_preflight.py unavailable')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    if interface_path is None:
+        interface = None
+        out('UNKNOWN: no interface.toml path supplied; pin audit incomplete.')
+    else:
+        interface, warning = module.read_interface(Path(interface_path))
+        if warning:
+            out(warning)
+    for line in module.preflight_lines(parsed, interface, target,
+                                       backlight_pin=backlight_pin):
+        out(line)
+
+
 def load_swap():
     spec = importlib.util.spec_from_file_location('sonos_config_swap', SWAP_PATH)
     if not spec or not spec.loader:
@@ -475,6 +512,10 @@ def main(argv=None) -> int:
     p.add_argument('--ui-config', type=Path, help='ui.toml (default: same directory as player.toml)')
     p.add_argument('--display-report', action='store_true',
                    help='print read-only display inventory and exit (no wizard or writes)')
+    p.add_argument('--display-preflight', choices=('ssd1327', 'st7735s', 'sh1107'),
+                   help='read-only prerequisites for a display candidate; switching remains blocked')
+    p.add_argument('--backlight-pin', type=int,
+                   help='proposed ST7735S backlight BCM pin, for read-only conflict checking')
     p.add_argument('--interface-config', type=Path,
                    help='interface.toml for read-only display pin audit (default: same config directory)')
     p.add_argument('--apply', action='store_true', help='apply after preview and explicit confirmation')
@@ -483,6 +524,11 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     if args.display_report and (args.apply or args.yes or args.buffer_mib is not None):
         p.error('--display-report cannot be combined with --apply, --yes or --buffer-mib')
+    if args.display_preflight and (args.display_report or args.apply or args.yes
+                                   or args.buffer_mib is not None):
+        p.error('--display-preflight is read-only; cannot combine with apply/report/buffer options')
+    if args.backlight_pin is not None and args.display_preflight != 'st7735s':
+        p.error('--backlight-pin requires --display-preflight st7735s')
     if args.yes and not args.apply:
         p.error('--yes requires --apply')
     if args.config is None:
@@ -497,6 +543,11 @@ def main(argv=None) -> int:
         interface_path = args.interface_config or args.config.with_name('interface.toml')
         if args.display_report:
             show_display_inventory(parsed, interface_path=interface_path)
+            return 0
+        if args.display_preflight:
+            show_display_preflight(parsed, args.display_preflight,
+                                   interface_path=interface_path,
+                                   backlight_pin=args.backlight_pin)
             return 0
         reference = tomllib.loads(REFERENCE.read_text(encoding='utf-8'))
         current = existing_values(parsed, reference)
