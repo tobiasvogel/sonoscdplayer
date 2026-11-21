@@ -75,6 +75,80 @@ def validate(candidate: str):
         return load_config(path)
 
 
+
+def interactive_preview(path, *, read=input, out=print):
+    """Guide through input settings without ever applying configuration.
+
+    Called from the main wizard's ``i`` menu. Edits are kept in memory only;
+    a separate, explicitly confirmed CLI transaction is required to install.
+    This separation prevents mixing interface.toml with staged player/ui edits.
+    """
+    import shlex
+
+    if path is None:
+        out('Input configuration location unknown; nothing changed.')
+        return None
+    path = Path(path)
+    try:
+        original = path.read_text(encoding='utf-8')
+        installed = tomllib.loads(original)
+        validate(original)  # refuse to tune a pre-existing invalid configuration
+    except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
+        out(f'Input configuration unavailable or invalid: {exc}')
+        return None
+    staged = {}
+    names = tuple(FIELDS)
+    while True:
+        out('\nButton / encoder configuration (PREVIEW ONLY)')
+        for n, name in enumerate(names, 1):
+            section, key = name.split('.', 1)
+            current = installed.get(section, {}).get(key, '(runtime default)')
+            proposed = staged.get(name, current)
+            out(f'  {n}. {name}: {proposed!r}')
+        out('  r. Review and finish (never applies changes)')
+        out('  0. Cancel and discard selections')
+        choice = read('Select input option [r]: ').strip().lower() or 'r'
+        if choice == '0':
+            out('Input changes discarded; no file was modified.')
+            return None
+        if choice == 'r':
+            if not staged:
+                out('No changes selected; interface.toml unchanged.')
+                return {}
+            out('Validated preview; interface.toml has NOT been changed:')
+            for name, value in staged.items():
+                out(f'  {name} = {value!r}')
+            args = [f'--set {shlex.quote(name + "=" + str(value).lower() if type(value) is bool else name + "=" + str(value))}'
+                    for name, value in staged.items()]
+            command = (f'python3 tools/configure_inputs.py --config {shlex.quote(str(path))} '
+                       + ' '.join(args))
+            out('To preview independently: ' + command)
+            out('To apply explicitly after review: sudo ' + command + ' --apply')
+            return dict(staged)
+        if not choice.isdecimal() or not 1 <= int(choice) <= len(names):
+            out('Unknown option; no changes made.')
+            continue
+        name = names[int(choice) - 1]
+        section, key = name.split('.', 1)
+        current = installed.get(section, {}).get(key, '(runtime default)')
+        value = read(f'{name} (installed: {current!r}; blank=keep): ').strip()
+        if not value or value.lower() == 'k':
+            staged.pop(name, None)
+            continue
+        try:
+            parsed = parse_value(name, value)
+            proposal = {**staged, name: parsed}
+            candidate = prepare(original, proposal)
+            validate(candidate)  # complete runtime parser, before accepting a field
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            out(f'Rejected: {exc}; previous selections preserved.')
+            continue
+        if parsed == current:
+            staged.pop(name, None)
+        else:
+            staged[name] = parsed
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--config', type=Path, default=None)

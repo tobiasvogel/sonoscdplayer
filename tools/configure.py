@@ -511,10 +511,17 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
         elif choice.lower() == 'l':
             heading, group_fields = LED_MENU_GROUP
         elif choice.lower() == 'i':
-            out('Input changes use a separate interface.toml transaction.')
-            out('Example: python3 tools/configure_inputs.py --set encoder_input.invert_direction=true')
-            out('For installation: sudo python3 tools/configure_inputs.py --set ... --apply')
-            out('See tools/configure_inputs.py --help; no input pins were changed.')
+            if pending_changes(current, staged):
+                out('Finish or revert staged player/ui changes before opening the input assistant.')
+                continue
+            spec = importlib.util.spec_from_file_location(
+                'sonos_input_configuration', ROOT / 'tools' / 'configure_inputs.py')
+            if spec is None or spec.loader is None:
+                out('Input assistant unavailable; no changes made.')
+                continue
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            module.interactive_preview(interface_path, read=read, out=out)
             continue
         elif choice.lower() == 'm':
             heading, group_fields = MATCHING_MENU_GROUP
