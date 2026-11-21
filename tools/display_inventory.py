@@ -136,7 +136,7 @@ def full_inventory_lines(config: dict, interface_path: Path) -> tuple[str, ...]:
     report = list(inventory_lines(config, interface))
     report.insert(2, source_line)
     report.extend((
-        'Display switching: BLOCKED. Only SSD1327 is integrated with the player.',
+        'Display switching: BLOCKED. Only SSD1327 is currently integrated with the player.',
         'Do not change [display] controller, rotation or pin mapping using this report.',
     ))
     return tuple(report)
