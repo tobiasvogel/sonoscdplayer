@@ -28,6 +28,7 @@ UNITS = (
     'sonoscdplayer-led.service',
     'sonoscdplayer-oled.service',
     'sonoscdplayer-buttons.service',
+    'sonoscdplayer-web.service',
 )
 EARLY_UNIT = 'sonoscdplayer-early-power-led.service'
 POLKIT_RULE = '50-sonoscdplayer-power.rules'
@@ -120,6 +121,10 @@ def render(source_dir, *, checkout, python_venv, user, power_actions=True,
             '--socket /run/sonoscdplayer/control.sock '
             '--ui-events-socket /run/sonoscdplayer-ui/events.sock '
             f'--execute --selected-target-execute{buttons_extra}'
+        ),
+        UNITS[4]: (
+            f'{python_venv} -u -m sonoscdplayer.web.server '
+            '--host 0.0.0.0 --port 8081 --socket /run/sonoscdplayer/control.sock'
         ),
     }
     for name in UNITS:

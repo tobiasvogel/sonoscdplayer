@@ -1,0 +1,21 @@
+#@ Template only: render user/python/source path as for the other units.
+[Unit]
+Description=SonosCDPlayer local web interface
+After=sonoscdplayer-player.service
+PartOf=sonoscdplayer.target
+
+[Service]
+Type=simple
+User=@SONOSCDPLAYER_USER@
+WorkingDirectory=@SONOSCDPLAYER_SRC@
+StateDirectory=sonoscdplayer
+StateDirectoryMode=0700
+UMask=0077
+ExecStart=@SONOSCDPLAYER_PYTHON@ -u -m sonoscdplayer.web.server --host 0.0.0.0 --port 8081 --socket /run/sonoscdplayer/control.sock
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+TimeoutStopSec=5
+
+[Install]
+WantedBy=sonoscdplayer.target

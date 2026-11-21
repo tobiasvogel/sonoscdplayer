@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>SonosCDPlayer – Web-Client</title>
+
+
+
+<style>
+:root{--bg:#f3f3ed;--surface:#fffefa;--surface2:#f8f8f3;--ink:#182c2d;--muted:#728080;--line:#e4e8e1;--accent:#0d7774;--accent-hover:#075b59;--accent-soft:#dbefeb;--gold:#d7ad65;--shadow:0 15px 50px rgba(32,49,44,.065);--radius:23px;}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:-.015em;}button,input,select{font:inherit}button{cursor:pointer}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #66bbb2;outline-offset:2px}button:disabled{cursor:not-allowed;opacity:.4}.shell{display:grid;grid-template-columns:228px minmax(0,1fr);min-height:100vh;max-width:1650px;margin:0 auto}.rail{background:#1c3435;color:#ecf7f5;display:flex;flex-direction:column;padding:34px 20px 22px;min-height:100vh}.brand{display:flex;gap:12px;align-items:center;margin:0 9px 55px;line-height:1.1;font-weight:740;font-size:17px;letter-spacing:-.045em}.brand-mark{display:flex;align-items:center;justify-content:center;width:38px;height:38px;border:1px solid #5f8886;border-radius:13px;color:#b0e1db;font-size:25px}.brand small{display:block;font-weight:500;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:#91b9b4;margin-top:6px}.railnav{display:flex;flex-direction:column;gap:8px}.navbtn{border:0;background:transparent;color:#b4cecb;display:flex;align-items:center;gap:12px;padding:14px 15px;width:100%;border-radius:12px;text-align:left;font-size:14px;font-weight:550}.navbtn:hover{background:#294747;color:white}.navbtn.active{background:#335a58;color:white}.navbtn .ico{font-size:18px;width:22px;text-align:center;font-weight:400}.railfoot{margin-top:auto;font-size:12px;color:#93b3af;padding:14px 12px;border-top:1px solid #355352}.railfoot strong{color:#e9f1ef;font-weight:600}.dot{display:inline-block;border-radius:50%;width:7px;height:7px;background:#70c5a2;margin-right:5px}.main{min-width:0;padding:38px clamp(22px,4.5vw,78px) 64px}.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:37px}.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--accent);font-weight:800}.page-title{font-size:clamp(27px,3vw,42px);font-weight:710;letter-spacing:-.052em;margin:7px 0 0;line-height:1.12}.topright{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.chip{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:22px;background:#fffdfa;padding:9px 12px;font-size:12px;color:#466563;white-space:nowrap}.avatar{width:38px;height:38px;border-radius:50%;background:#d7eae4;color:#2a6766;display:grid;place-items:center;font-weight:760}.preview-banner{padding:12px 17px;border-radius:14px;color:#64706b;background:#e8ebdf;margin:-16px 0 28px;font-size:12px;line-height:1.55}.screen{display:none}.screen.active{display:block}.player-grid{display:grid;grid-template-columns:minmax(265px,.95fr) minmax(330px,1.05fr);gap:clamp(23px,3vw,56px);align-items:stretch}.art-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}.art{position:relative;aspect-ratio:1;background:radial-gradient(circle at 24% 24%,#ecbf7e 0 5%,transparent 30%),radial-gradient(circle at 83% 87%,#274c55 0 14%,transparent 45%),linear-gradient(135deg,#a9c5b9 0%,#628c88 48%,#244a54 100%);border-radius:13px;overflow:hidden}.art:before{content:"";position:absolute;border:50px solid rgba(246,232,189,.32);border-radius:50%;width:67%;aspect-ratio:1;top:-13%;left:-30%;filter:blur(3px)}.art:after{content:"";position:absolute;border:1px solid rgba(255,255,255,.53);border-radius:50%;width:54%;aspect-ratio:1;top:23%;left:26%;box-shadow:0 0 0 30px rgba(232,244,220,.07),0 0 0 62px rgba(232,244,220,.075),0 0 0 95px rgba(232,244,220,.05)}.art-title{position:absolute;left:8%;bottom:8%;color:#f1f5e6;font-size:clamp(34px,4vw,66px);letter-spacing:-.085em;line-height:.88;font-weight:740;z-index:1}.art-title small{display:block;font-size:11px;letter-spacing:.27em;margin:0 0 15px 3px;font-weight:600}.art-bottom{padding:17px 4px 6px;display:flex;align-items:center;justify-content:space-between;gap:8px}.art-bottom small{color:var(--muted);font-size:12px}.format{font-size:10px;letter-spacing:.12em;font-weight:850;color:#5c7773;background:#e7f0e9;padding:7px 9px;border-radius:6px}.player-right{display:flex;flex-direction:column;justify-content:center;min-width:0;padding:9px 0}.playing-label{font-size:12px;font-weight:740;color:var(--accent);display:flex;gap:9px;align-items:center;margin-bottom:20px}.bars{display:inline-flex;gap:3px;align-items:center;height:16px}.bars i{display:block;width:3px;height:8px;background:var(--accent);border-radius:3px}.bars i:nth-child(2){height:15px}.bars i:nth-child(3){height:11px}.track-title{font-size:clamp(31px,3.7vw,59px);font-weight:725;line-height:1.03;letter-spacing:-.063em;margin:0 0 12px;max-width:700px}.track-artist{color:#647573;font-size:17px;margin:0 0 30px}.smallmeta{color:#83928e;font-size:13px;margin-bottom:15px}.progress{accent-color:var(--accent);width:100%;height:5px;margin:4px 0 9px}.times{display:flex;justify-content:space-between;color:#8a9a95;font-size:12px;font-variant-numeric:tabular-nums}.controls{display:flex;align-items:center;gap:16px;margin:30px 0 33px}.ctrl{background:transparent;border:1px solid transparent;border-radius:50%;min-width:44px;height:44px;color:#234340;font-size:23px;display:grid;place-items:center}.ctrl:hover{background:#e9efea}.ctrl.primary{background:var(--ink);color:white;width:63px;height:63px;font-size:24px}.ctrl.primary:hover{background:#2d5551}.destination{padding:19px 21px;border:1px solid var(--line);border-radius:16px;background:#fcfdfa;display:flex;align-items:center;justify-content:space-between;gap:14px}.destination .speaker-icon{font-size:19px;background:#edf4ee;color:var(--accent);padding:10px;border-radius:10px}.destination .dest-details{flex:1}.destination small{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);margin-bottom:5px}.destination strong{font-size:14px}.textbtn{background:none;border:0;color:var(--accent);font-size:13px;font-weight:730;padding:6px}.section-heading{display:flex;align-items:center;justify-content:space-between;margin:45px 0 17px}.section-heading h2{font-size:19px;margin:0;letter-spacing:-.04em}.tracklist{background:var(--surface);border-radius:17px;border:1px solid var(--line);overflow:hidden}.trackrow{display:grid;grid-template-columns:35px minmax(0,1fr) 65px;gap:15px;align-items:center;padding:15px 22px;border-bottom:1px solid var(--line);font-size:14px}.trackrow:last-child{border:0}.trackrow .num{color:#91a09c;font-variant-numeric:tabular-nums}.trackrow.active{background:#eaf3ed;color:#17625d;font-weight:700}.trackrow .duration{text-align:right;color:#879590;font-variant-numeric:tabular-nums;font-size:12px}.settings-layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:30px}.settings-nav{background:#f9faf5;border:1px solid var(--line);padding:12px;border-radius:17px;display:flex;flex-direction:column;gap:3px;align-self:start}.settings-nav button{background:transparent;border:0;border-radius:10px;text-align:left;padding:12px 13px;font-size:13px;color:#627571}.settings-nav button.active{color:#146b66;background:#e2f1eb;font-weight:750}.settings-nav button:hover:not(.active){background:#edf0e9}.panel{background:#fffefa;border:1px solid var(--line);border-radius:20px;padding:26px clamp(20px,3vw,36px);box-shadow:var(--shadow);min-height:430px}.panel h2{font-size:23px;letter-spacing:-.05em;margin:0 0 8px}.panel p{font-size:14px;color:#748480;line-height:1.6;margin:0 0 28px}.panel h3{font-size:14px;margin:28px 0 14px;color:#315a56}.fieldgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}.field{display:flex;flex-direction:column;gap:8px;min-width:0}.field label{font-size:12px;font-weight:700;color:#47615c}.field input,.field select{width:100%;border:1px solid #d8e2da;border-radius:10px;padding:12px;color:var(--ink);background:white;font-size:14px;min-width:0}.field.span{grid-column:span 2}.help{color:#8c9995;font-size:11px;line-height:1.4}.panel-footer{display:flex;align-items:center;gap:12px;justify-content:space-between;border-top:1px solid var(--line);padding-top:20px;margin-top:28px;font-size:12px;color:#82928a}.btn{border:0;border-radius:11px;background:var(--accent);color:white;padding:12px 18px;font-size:13px;font-weight:740}.btn:hover{background:var(--accent-hover)}.btn.secondary{background:#e7efeb;color:#275e59}.btn.secondary:hover{background:#d5e7df}.btn.danger{background:#a7423f}.pill-note{background:#eef4e9;color:#536e58;padding:10px 12px;border-radius:10px;font-size:12px;margin:12px 0}.subpanel{display:none}.subpanel.active{display:block}.record{padding:14px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:14px}.record small{color:var(--muted);display:block;font-size:12px;margin-top:5px}.record strong{font-size:14px}.tag{font-size:10px;color:#448278;background:#edf4ee;padding:5px 7px;border-radius:6px}.twoactions{display:flex;gap:10px;flex-wrap:wrap}.modal-backdrop{display:none;position:fixed;inset:0;background:rgba(10,31,32,.53);z-index:100;align-items:center;justify-content:center;padding:20px}.modal-backdrop.open{display:flex}.modal{max-width:410px;width:100%;border-radius:17px;padding:25px;background:white;box-shadow:0 30px 90px #1227}.modal h3{margin:0 0 9px}.modal p{font-size:14px;color:#73847e;line-height:1.5}.modalfooter{display:flex;justify-content:end;gap:10px;margin-top:24px}.toast{position:fixed;bottom:20px;right:20px;z-index:150;padding:13px 18px;background:#1e4140;color:white;border-radius:12px;box-shadow:0 20px 45px #1223;display:none;font-size:13px}.toast.show{display:block}
+@media(max-width:1000px){.shell{grid-template-columns:78px 1fr}.rail{padding:25px 12px}.brand{margin:0 0 45px;justify-content:center}.brand-word,.navbtn .nav-text,.railfoot{display:none}.navbtn{justify-content:center}.player-grid{gap:25px}.settings-layout{grid-template-columns:175px 1fr;gap:17px}.main{padding:28px 26px 55px}}
+@media(max-width:750px){.shell{display:block}.rail{min-height:unset;padding:11px 16px;flex-direction:row;align-items:center;justify-content:space-between}.brand{margin:0}.brand-mark{height:37px;width:37px}.brand-word{display:block;font-size:14px}.brand small{display:none}.railnav{flex-direction:row}.navbtn{width:auto;padding:10px}.navbtn .nav-text{display:none}.navbtn .ico{font-size:20px}.main{padding:25px 17px 58px}.topbar{align-items:flex-start;margin-bottom:28px}.topright .chip{display:none}.page-title{font-size:30px}.player-grid{grid-template-columns:1fr;max-width:570px;margin:auto}.player-right{padding:8px 5px}.track-title{font-size:35px}.art{max-height:570px}.section-heading{margin-top:33px}.settings-layout{display:block}.settings-nav{flex-direction:row;overflow:auto;white-space:nowrap;gap:4px;margin-bottom:17px}.settings-nav button{padding:11px 12px;flex-shrink:0}.panel{padding:22px}.fieldgrid{grid-template-columns:1fr}.field.span{grid-column:span 1}.panel-footer{align-items:flex-start;flex-direction:column}.destination{padding:15px}}
+
+/* --- SonosCDPlayer dual appearance system (prototype only) --- */
+:root { color-scheme: light; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:#15120f;
+  --surface:#261e18;
+  --surface2:#2e251f;
+  --ink:#f7ecdf;
+  --muted:#b8a597;
+  --line:#493b31;
+  --accent:#f6ac42;
+  --accent-hover:#ffca77;
+  --accent-soft:#39291d;
+  --gold:#dda15c;
+  --shadow:0 18px 58px rgba(0,0,0,.25);
+}
+:root[data-theme="dark"] body {
+  background:radial-gradient(circle at 76% 8%,#281d16 0%,#15120f 45%);
+}
+:root[data-theme="dark"] .rail {background:#100e0c;color:#f6eade}
+:root[data-theme="dark"] .brand-mark {border-color:#90633b;color:#f6b452}
+:root[data-theme="dark"] .brand small {color:#ba9b7d}
+:root[data-theme="dark"] .navbtn {color:#bdafa3}
+:root[data-theme="dark"] .navbtn:hover {background:#32271f;color:#fff5e8}
+:root[data-theme="dark"] .navbtn.active {background:#403026;color:#fff4e2;box-shadow:inset 3px 0 #f6ac42}
+:root[data-theme="dark"] .railfoot {color:#b19c8a;border-color:#392c23}
+:root[data-theme="dark"] .railfoot strong {color:#f6ebdb}
+:root[data-theme="dark"] .dot {background:#76c5a6}
+:root[data-theme="dark"] .chip {background:#2b231d;color:#e1cdb7}
+:root[data-theme="dark"] .avatar {background:#42301f;color:#ffcd80}
+:root[data-theme="dark"] .preview-banner {background:#2c241e;color:#cab9ab;border:1px solid #44372c}
+:root[data-theme="dark"] .art-card {background:#241d18}
+:root[data-theme="dark"] .art {
+  background:
+  radial-gradient(circle at 24% 24%,#d5a260 0 5%,transparent 30%),
+  radial-gradient(circle at 83% 87%,#21373a 0 14%,transparent 45%),
+  linear-gradient(135deg,#687c6e 0%,#3c625e 48%,#213e46 100%);
+}
+:root[data-theme="dark"] .art-title {color:#fffbef}
+:root[data-theme="dark"] .format {color:#f6c892;background:#413429}
+:root[data-theme="dark"] .track-artist {color:#d2bdae}
+:root[data-theme="dark"] .smallmeta,
+:root[data-theme="dark"] .times {color:#a99a8d}
+:root[data-theme="dark"] .progress {accent-color:#f6ac42}
+:root[data-theme="dark"] .ctrl {color:#f5e8d8}
+:root[data-theme="dark"] .ctrl:hover {background:#3a2d24}
+:root[data-theme="dark"] .ctrl.primary {background:#f6ad45;color:#211810}
+:root[data-theme="dark"] .ctrl.primary:hover {background:#ffc26b}
+:root[data-theme="dark"] .destination {background:#2b231d}
+:root[data-theme="dark"] .destination .speaker-icon {background:#423124;color:#ffc575}
+:root[data-theme="dark"] .trackrow .num,
+:root[data-theme="dark"] .trackrow .duration {color:#b7a496}
+:root[data-theme="dark"] .trackrow.active {background:#3a2b20;color:#ffca81}
+:root[data-theme="dark"] .settings-nav {background:#231c17}
+:root[data-theme="dark"] .settings-nav button {color:#c2aea1}
+:root[data-theme="dark"] .settings-nav button.active {background:#433022;color:#ffbe64}
+:root[data-theme="dark"] .settings-nav button:hover:not(.active) {background:#382c23}
+:root[data-theme="dark"] .panel {background:#261e18}
+:root[data-theme="dark"] .panel p,
+:root[data-theme="dark"] .modal p {color:#bba99b}
+:root[data-theme="dark"] .panel h3 {color:#e9c298}
+:root[data-theme="dark"] .field label {color:#d9c2b0}
+:root[data-theme="dark"] .field input,
+:root[data-theme="dark"] .field select {background:#1c1713;border-color:#584538;color:#f5e8da}
+:root[data-theme="dark"] .field input:focus-visible,
+:root[data-theme="dark"] .field select:focus-visible {outline:2px solid #f4ac46}
+:root[data-theme="dark"] .help,
+:root[data-theme="dark"] .panel-footer {color:#b8a597}
+:root[data-theme="dark"] .btn {background:#eaa03a;color:#21170e}
+:root[data-theme="dark"] .btn:hover {background:#ffc36b}
+:root[data-theme="dark"] .btn.secondary {background:#3c2d22;color:#ffd5a1}
+:root[data-theme="dark"] .btn.secondary:hover {background:#553c2a}
+:root[data-theme="dark"] .btn.danger {background:#a54840;color:#fff8f4}
+:root[data-theme="dark"] .pill-note {background:#352b20;color:#e2caa4}
+:root[data-theme="dark"] .tag {background:#443226;color:#f5bb72}
+:root[data-theme="dark"] .modal-backdrop {background:rgba(6,5,3,.74)}
+:root[data-theme="dark"] .modal {background:#2a211b}
+:root[data-theme="dark"] .toast {background:#563820;color:#fff4e5}
+:root[data-theme="dark"] button:focus-visible,
+:root[data-theme="dark"] a:focus-visible,
+:root[data-theme="dark"] input:focus-visible,
+:root[data-theme="dark"] select:focus-visible {outline-color:#f7b553}
+/* Identical navigation and component geometry in both themes. */
+.theme-switcher {
+  display:inline-flex;gap:3px;align-items:center;
+  border:1px solid var(--line);background:var(--surface);
+  padding:3px;border-radius:999px;flex-shrink:0;
+}
+.theme-switcher button {
+  background:transparent;border:0;color:var(--muted);border-radius:999px;
+  padding:8px 11px;font-size:12px;font-weight:700;white-space:nowrap;
+}
+.theme-switcher button:hover:not(.active) {background:var(--surface2);color:var(--ink)}
+.theme-switcher button.active {background:var(--ink);color:var(--surface)}
+:root[data-theme="dark"] .theme-switcher button.active {background:#f6ac42;color:#22180e}
+.theme-detail {font-size:12px;color:var(--muted);margin-top:9px;line-height:1.5}
+.theme-example {
+  display:flex;gap:9px;align-items:center;padding:14px 16px;
+  background:var(--surface2);border:1px solid var(--line);
+  border-radius:12px;margin:20px 0 4px;
+}
+.theme-example .swatch {height:26px;width:26px;border-radius:8px;background:var(--accent);flex-shrink:0}
+.theme-example .theme-example-label {font-size:13px;font-weight:600}
+@media(max-width:1100px){ .topright .avatar {display:none} }
+@media(max-width:750px){
+  .topbar {flex-wrap:wrap;gap:16px}
+  .topright {width:100%;justify-content:flex-start}
+  .theme-switcher button {padding:8px 13px}
+  .topright .chip,.topright .avatar {display:none}
+}
+@media(max-width:375px){
+  .theme-switcher button {padding:8px 10px;font-size:11px}
+}
+
+
+.cover-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:2;border-radius:13px}
+.cover-image[hidden]{display:none}
+.chip .dot.offline,.railfoot .dot.offline{background:#bc6058}
+input[readonly],select:disabled,input:disabled{opacity:.7;cursor:not-allowed}
+.art-title{overflow-wrap:anywhere}
+@media(max-width:750px){.art-title{font-size:clamp(30px,9vw,56px)}}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="rail"><div class="brand"><div class="brand-mark" aria-hidden="true">◉</div><div class="brand-word">SonosCDPlayer<small>Local music, beautifully simple</small></div></div><nav class="railnav" aria-label="Hauptnavigation"><button class="navbtn active" data-page="playback"><span class="ico" aria-hidden="true">♫</span><span class="nav-text">Wiedergabe</span></button><button class="navbtn" data-page="settings"><span class="ico" aria-hidden="true">⚙</span><span class="nav-text">Einstellungen</span></button></nav><div class="railfoot"><span class="dot"></span><strong id="device-reachable">Verbinde …</strong><p>Lokaler Web-Client<br>Lokaler Web-Client · Port 8081</p></div></aside>
+<main class="main"><div class="topbar"><div><div class="eyebrow" id="eyebrow">Musik hören</div><h1 class="page-title" id="pagetitle">Jetzt wiedergeben</h1></div><div class="topright">
+  <div class="theme-switcher" role="group" aria-label="Farbschema wählen">
+    <button type="button" data-theme-choice="auto" aria-pressed="true" class="active" title="Geräteeinstellung folgen">◐ Auto</button>
+    <button type="button" data-theme-choice="light" aria-pressed="false" title="Helles Petrol-Theme">☀ Hell</button>
+    <button type="button" data-theme-choice="dark" aria-pressed="false" title="Dunkles warmes Theme">☾ Dunkel</button>
+  </div>
+  <div class="chip"><span class="dot"></span><span id="connection-label">Verbinde …</span></div><div class="avatar" aria-hidden="true">CD</div></div></div>
+<div class="preview-banner"><strong>SonosCDPlayer Web-Client (erste Entwicklungsstufe).</strong> Wiedergabe und Web-Farbschema sind verbunden; Metadatenkorrekturen und dienstübergreifende Einstellungen sind noch in Vorbereitung.</div>
+<section class="screen active" id="playback"><div class="player-grid"><div class="art-card"><div class="art" id="cover-art" role="img" aria-label="Cover oder gestalterischer Platzhalter"><div class="art-title" id="art-placeholder"><small>SONOS CD PLAYER</small>CD<br> AUDIO</div><img id="cover-image" class="cover-image" alt="Albumcover" hidden></div><div class="art-bottom"><small><span id="art-album">Keine CD erkannt</span></small><span class="format">CD AUDIO</span></div></div><div class="player-right"><div class="playing-label"><span class="bars" aria-hidden="true"><i></i><i></i><i></i></span><span id="player-status">NICHT VERBUNDEN</span></div><h2 class="track-title" id="track-title">Keine Wiedergabe</h2><p class="track-artist" id="track-artist">—</p><div class="smallmeta" id="track-info">Noch keine CD-Informationen</div><input class="progress" type="range" value="36" min="0" max="100" aria-label="Wiedergabeposition (nur Anzeige)" disabled><div class="times"><span id="elapsed">—</span><span id="duration">—</span></div><div class="controls" aria-label="Wiedergabesteuerung"><button class="ctrl" id="prev" aria-label="Vorheriger Titel">⏮</button><button class="ctrl primary" id="toggle" aria-label="Pause">Ⅱ</button><button class="ctrl" id="next" aria-label="Nächster Titel">⏭</button><button class="ctrl" id="stop" aria-label="Stoppen">■</button><button class="ctrl" id="eject" aria-label="CD auswerfen">⏏</button></div><div class="destination"><div class="speaker-icon" aria-hidden="true">◖))</div><div class="dest-details"><small>Wiedergabe auf</small><strong><span id="target-name">Keine Auswahl geladen</span></strong></div><button class="textbtn" id="change-target">Ändern</button></div></div></div><div class="section-heading"><h2>Titelliste</h2><button class="textbtn" id="edit-metadata">Metadaten bearbeiten ↗</button></div><div class="tracklist" id="tracks" aria-live="polite"><div class="trackrow">Keine Titelliste verfügbar</div></div></section>
+<section class="screen" id="settings"><div class="settings-layout"><nav class="settings-nav" aria-label="Einstellungsbereiche"><button data-panel="metadata" class="active">Metadaten</button><button data-panel="library">CD-Verwaltung</button><button data-panel="audio">Wiedergabe</button><button data-panel="display">Anzeige</button><button data-panel="network">Netzwerk</button><button data-panel="system">Gerät</button></nav><div class="panel">
+<div class="subpanel active" id="metadata"><h2>CD-Metadaten</h2><p>Angaben zur eingelegten CD überprüfen und korrigieren. Manuelle Änderungen sollen vor automatischer Überschreibung geschützt sein.</p><div class="fieldgrid"><div class="field"><label for="album">Albumtitel <span class="tag" id="meta-source">Herkunft offen</span></label><input id="album" value="" readonly></div><div class="field"><label for="artist">Albuminterpret</label><input id="artist" value="" readonly></div><div class="field span"><label for="title2">Aktueller Tracktitel</label><input id="title2" value="" readonly><span class="help">Nur lesend: Manuelle Feldkorrekturen, geschützte Felder und Release-Auswahl folgen mit eigenen Player-Befehlen.</span></div></div><h3>Release-Zuordnung</h3><div class="record"><div><strong>Vorgeschlagene Veröffentlichung</strong><small>Release-Kandidaten vom Player sind noch nicht abrufbar</small></div><button class="btn secondary" disabled>Vergleichen</button></div><div class="panel-footer"><span>Metadatenbearbeitung folgt in einem separaten Patch.</span><button class="btn" disabled>Änderungen speichern</button></div></div>
+<div class="subpanel" id="library"><h2>CD-Verwaltung</h2><p>Gespeicherte CDs anzeigen, bearbeiten und bei Bedarf entfernen.</p><div class="record"><div><strong id="library-current">Eingelegte CD</strong><small>Der Player kann den Cache-Eintrag dieser CD zurücksetzen.</small></div><button class="btn secondary" id="delete-disc">CD-Eintrag zurücksetzen</button></div><div class="panel-footer"><span>Weitere gespeicherte CDs lassen sich erst nach Erweiterung der Player-API verwalten.</span><button class="btn secondary" id="delete-all" disabled>Alle Einträge löschen</button></div></div>
+<div class="subpanel" id="audio"><h2>Wiedergabe</h2><p>Grundeinstellungen zum Lesen und Abspielen der CD.</p><div class="fieldgrid"><div class="field"><label for="queue">Sonos-Warteschlange</label><select id="queue" disabled><option>Verwenden</option><option>Nicht verwenden</option></select></div><div class="field"><label for="continue">Nach dem Titel weiterspielen</label><select id="continue" disabled><option>Aktiviert</option><option>Deaktiviert</option></select></div><div class="field"><label for="buffer">Audiopuffer (MiB)</label><input id="buffer" type="number" value="16" min="16" max="512" disabled></div></div><div class="panel-footer"><span>Nur lesend; Konfigurations-Overlays und Dienstneustarts folgen später.</span><button class="btn" disabled>Speichern</button></div></div>
+<div class="subpanel" id="display"><h2>Anzeige</h2><p>Darstellung auf dem Gerät und im Web-Client. Die Menüsprache kann unabhängig von Linux gewählt werden.</p><div class="fieldgrid"><div class="field"><label for="lang">Sprache</label><select id="lang" disabled><option>Deutsch</option><option>English</option></select></div><div class="field"><label for="cover">Cover auf dem Display</label><select id="cover" disabled><option>Automatisch</option><option>Aus</option><option>Ein</option></select></div><div class="field span">
+<label for="theme-setting">Web-Client-Farbschema</label>
+<select id="theme-setting">
+<option value="auto">Automatisch · Geräteeinstellung</option>
+<option value="light">Hell · Petrol</option>
+<option value="dark">Dunkel · Espresso / Bernstein</option>
+</select>
+<span class="help">Automatisch folgt der Hell-/Dunkel-Einstellung dieses Browsers. Die Auswahl wird als Web-Zustand unter /var/lib/sonoscdplayer/web.json gespeichert, niemals unter /etc.</span>
+</div></div>
+<div class="theme-example" aria-live="polite"><span class="swatch" aria-hidden="true"></span><span class="theme-example-label" id="theme-example-label">Aktives Farbschema: Hell / Petrol</span></div>
+<div class="panel-footer"><span>Web-Farbschema: web.json (aktiv). Geräteeinstellungen folgen.</span><button class="btn" id="save-theme">Farbschema speichern</button></div></div>
+<div class="subpanel" id="network"><h2>Netzwerk</h2><p>Informationen zur Verbindung. Die bestehende WLAN-Einrichtung bleibt ein eigenständiger Teil des Geräts.</p><div class="record"><div><strong>Netzwerkstatus</strong><small>Netzwerkstatus wird noch nicht separat abgefragt</small></div><span class="tag">Unbekannt</span></div><div class="pill-note">Keine Passwörter oder anderen geheimen Zugangsdaten werden hier angezeigt.</div></div>
+<div class="subpanel" id="system"><h2>Gerät</h2><p>Lokale Geräteinformationen und spätere Verwaltungsfunktionen.</p><div class="record"><div><strong>SonosCDPlayer</strong><small>Web-Dienst · Port 8081</small></div><span class="tag">Vorschau</span></div><div class="record"><div><strong>Konfiguration</strong><small>/etc/sonoscdplayer/ = Grundeinstellungen (schreibgeschützt für Dienste)<br>/var/lib/sonoscdplayer/ = gespeicherte Änderungen durch Menü/Web</small></div></div><div class="pill-note">Neustart, Diagnose, Gerätename und umfassende Einstellungen folgen in weiteren Entwicklungsabschnitten.</div></div>
+</div></div></section>
+</main></div>
+<div class="modal-backdrop" id="modal" role="presentation"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><h3 id="modal-title">Eintrag löschen?</h3><p id="modal-text">Den Cache-Eintrag der eingelegten CD zurücksetzen und die Metadaten neu suchen?</p><div class="modalfooter"><button class="btn secondary" id="modal-cancel">Abbrechen</button><button class="btn danger" id="modal-confirm">Löschen</button></div></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/app.js" defer></script>
+</body>
+</html>
