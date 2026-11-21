@@ -93,13 +93,24 @@ def describe(snapshot):
         return '[metadata] none'
     titles = sum(1 for t in snapshot.get('tracks') or () if t.get('title'))
     release = snapshot.get('release_id') or '-'
-    return ('[metadata] disc={disc} match={match} cdtext={cdtext} lookup={lookup} '
+    return ('[metadata] disc={disc} match={match} source={source} cdtext={cdtext} lookup={lookup} '
             'release={release} titles={titles}/{count} cover={cover}{error}').format(
         disc=snapshot.get('disc_id') or '-', match=snapshot.get('match_status'),
+        source=snapshot.get('metadata_source') or 'unknown',
         cdtext=snapshot.get('cdtext_status'), lookup=snapshot.get('lookup_status') or '-',
         error=f" ({snapshot['lookup_error']})" if snapshot.get('lookup_error') else '',
         release=release, titles=titles, count=len(snapshot.get('tracks') or ()),
         cover=snapshot.get('cover_status'))
+
+
+def _compatible_cached_gnudb(local, cached):
+    """Refuse stored CDDB names that conflict with current CD-TEXT."""
+    def same(a, b):
+        return not a or ' '.join(a.casefold().split()) == ' '.join((b or '').casefold().split())
+    return (len(local.tracks) == len(cached.tracks) and
+            same(local.album, cached.album) and same(local.artist, cached.artist) and
+            all(same(left.title, right.title) for left, right in
+                zip(local.tracks, cached.tracks)))
 
 
 def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, timeout,
@@ -112,17 +123,28 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
         cached = cache.get(identity)
     except Exception:
         cached = None
+    # A CDDB record has no MusicBrainz release ID. It remains a fallback,
+    # never a reason to skip MusicBrainz on the next disc insertion.
+    if cached is not None and cached.match_method == 'gnudb' and not gnudb_enabled:
+        cached = None
+    cached_gnudb = cached if cached is not None and cached.match_method == 'gnudb' else None
+    if cached_gnudb is not None and not _compatible_cached_gnudb(local, cached_gnudb.local):
+        cached_gnudb = None
+        cached = None
     lookup_status = None
     lookup_error = None
     alternatives = ()
     album_confirmed = True          # False: majority names without an album name
-    if cached is not None:
+    if cached is not None and cached_gnudb is None:
         effective = _prefer_cdtext(local, cached.local)
         release_id = cached.release_id
         match = 'cached'
         score = cached.confidence_score
     else:
         effective, release_id, match, score = local, None, 'toc', None
+        if cached_gnudb is not None:
+            effective = _prefer_cdtext(local, cached_gnudb.local)
+            match = 'gnudb'
         if online:
             # The remote provider is optional. Its exceptions have the same
             # retry semantics as a structured 'error' result.
@@ -160,7 +182,7 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                         except Exception:
                             # Metadata remains available even with read-only DB.
                             pass
-        if (online and gnudb_enabled and release_id is None and
+        if (online and gnudb_enabled and cached_gnudb is None and release_id is None and
                 lookup_status in ('not_found', 'unavailable', 'offline', 'error')):
             # Full TOC validation and CD-TEXT priority prevent CDDB collisions
             # from silently replacing known metadata. CDDB has no MB release ID.
@@ -169,6 +191,11 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                 query=gnudb_query, read=gnudb_read)
             if fallback is not None:
                 effective, match, score = fallback, 'gnudb', None
+                try:
+                    cache.put(identity, effective, match_method='gnudb')
+                except Exception:
+                    # A read-only or corrupt cache must not block metadata.
+                    pass
     # Cover mode off suppresses even cached files in the UI.
     cover_release = release_id
     if match == 'majority' and not album_confirmed:
@@ -196,6 +223,9 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                    for t in effective.tracks],
         'release_id': release_id,
         'match_status': match,
+        'metadata_source': ('gnudb' if match == 'gnudb' else
+                            'musicbrainz' if release_id is not None else
+                            'cdtext' if local.cdtext_status == 'available' else 'toc'),
         'match_score': score,
         'cover_file': str(cover) if cover is not None else None,
         'cover_status': cover_status,

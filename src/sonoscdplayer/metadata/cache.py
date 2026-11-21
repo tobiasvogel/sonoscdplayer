@@ -100,11 +100,13 @@ class DiscCache:
             release_id=None, match_method=None, confidence_score=None,
             confirmed_by_user=False) -> bool:
         """Never replace a manually confirmed release with another release."""
-        if match_method not in (None, 'unique', 'confidence', 'consensus', 'majority', 'manual'):
+        if match_method not in (None, 'unique', 'confidence', 'consensus', 'majority', 'manual', 'gnudb'):
             raise ValueError('invalid match method')
-        if release_id is None and (match_method is not None or confidence_score is not None
+        if release_id is None and (match_method not in (None, 'gnudb') or confidence_score is not None
                                    or confirmed_by_user):
             raise ValueError('binding fields without release ID')
+        if match_method == 'gnudb' and release_id is not None:
+            raise ValueError('GnuDB has no MusicBrainz release ID')
         if confirmed_by_user and match_method != 'manual':
             raise ValueError('manual confirmation must use manual method')
         if confidence_score is not None and (type(confidence_score) is not int
@@ -119,6 +121,11 @@ class DiscCache:
             old = db.execute('''SELECT release_id,match_method,confidence_score,
                 confirmed_by_user FROM discs WHERE disc_id=? AND toc=?''',
                 (identity.disc_id, identity.toc)).fetchone()
+            # A lower-trust CDDB match must never replace an established
+            # MusicBrainz binding, including an automatically selected one.
+            if match_method == 'gnudb' and old and (old[0] is not None or old[3]):
+                db.rollback()
+                return False
             if old and old[3] and release_id != old[0]:
                 db.rollback()
                 return False
