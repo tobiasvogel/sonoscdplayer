@@ -6,6 +6,11 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- A CD taken out with the drive's own eject button is noticed at once: during
+  playback the player stops (and releases the group) instead of playing on
+  from its buffer into an error; while the drive sleeps, the display shows
+  the open tray and the new CD is loaded without a button press. Only the
+  drive status is asked for this, which does not spin the drive up.
 - A CD swapped with the drive's own eject button while the drive slept no
   longer ends in "drive error" at the next button press: the wake accepts
   the new disc and the player loads it (track 1, CD-TEXT, metadata).

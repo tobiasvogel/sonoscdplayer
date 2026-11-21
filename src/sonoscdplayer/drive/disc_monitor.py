@@ -2,7 +2,10 @@
 
 The player service calls DiscMonitor.poll() regularly. It looks at the drive
 only while nothing plays (no reader, stream or unresolved Sonos group), and
-reads the table of contents and CD-TEXT when a new disc appears. If the USB
+reads the table of contents and CD-TEXT when a new disc appears. While the
+player plays or the drive sleeps, only media_removed() asks the drive status
+(tray open / no disc), so a CD taken out with the drive's own button is
+noticed at once. If the USB
 drive reappears under another /dev/srN, it is used again only if exactly one
 drive with the same USB identity (vendor, product, serial) is found.
 No Sonos commands are sent from here.
@@ -121,6 +124,28 @@ class DiscMonitor:
                 tuple(track.number for track in disc.tracks))
             return self._set_status(controller,
                                     DiscStatus.ready(self.device, len(disc.tracks)))
+
+    def media_removed(self) -> bool:
+        """True if the CD was taken out (tray open or no disc), checked passively.
+
+        Used while the player plays or the drive sleeps, when the normal
+        poll() must not run. Only the drive status is asked (no TOC, no
+        audio); the tested drives answer it without spinning up. Skipped
+        (False) while the reader holds the drive or the drive is not the
+        verified one.
+        """
+        if self._disconnected or not self.path_exists(self.device):
+            return False
+        if self.identity is not None and self.identity_reader(self.device) != self.identity:
+            return False
+        with self.lock(self.device, blocking=False) as acquired:
+            if not acquired:
+                return False
+            try:
+                code = self.media(self.device)
+            except (OSError, ValueError):
+                return False
+        return code in (CDS_NO_DISC, CDS_TRAY_OPEN)
 
     def validate_before_play(self, controller) -> bool:
         """Revalidate physical disc identity at the explicit PLAY boundary.

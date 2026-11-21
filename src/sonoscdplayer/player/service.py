@@ -389,6 +389,39 @@ def disc_poll_allowed(power):
 
 
 
+def handle_disc_removal(controller, monitor, power, now):
+    """The CD was taken out with the drive's own button while playing or asleep.
+
+    Checked only in these two states, where the normal disc poll does not
+    run. During own playback the playback is stopped at once (group
+    released); while the drive sleeps the idle state is reset, the disc is
+    gone. Returns None (not checked), 'present', 'stopped' or 'woke'.
+    """
+    playing = (bool(controller.owned_url)
+               and controller.state.mode in (Mode.PLAYING, Mode.PAUSED))
+    asleep = not disc_poll_allowed(power)
+    if not (playing or asleep):
+        return None
+    try:
+        removed = monitor.media_removed()
+    except (OSError, RuntimeError, ValueError):
+        return 'present'
+    if not removed:
+        return 'present'
+    action = 'woke'
+    if playing:
+        print('[disc] CD taken out during playback; stopping', flush=True)
+        try:
+            controller.stop()
+        except Exception as exc:
+            print(f'[disc] stop after removal failed: {type(exc).__name__}: {exc}', flush=True)
+        action = 'stopped'
+    if asleep and power is not None and power.idle_policy is not None:
+        power.idle_policy.reset_after_eject(now)
+        print('[disc] tray opened while the drive slept', flush=True)
+    return action
+
+
 def eject_blocked_by_idle_policy(power):
     """Fail closed if the motor state has not been safely restored.
 
@@ -613,6 +646,17 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
             next_drive_recovery = 0.0
 
             next_disc_check = 0.0
+            next_removal_check = 0.0
+
+            def check_removal(now):
+                nonlocal next_removal_check, next_disc_check
+                if disc_monitor is None or now < next_removal_check:
+                    return
+                action = handle_disc_removal(controller, disc_monitor, power, now)
+                if action is not None:
+                    next_removal_check = now + 2.0
+                if action in ('stopped', 'woke'):
+                    next_disc_check = 0.0          # let the normal poll report it now
 
             def refresh():
                 nonlocal next_drive_recovery, next_disc_check, drive_toc
@@ -639,6 +683,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                                   flush=True)
                 controller.refresh()
                 now = time.monotonic()
+                check_removal(now)
                 # Safe status inspection only. NEVER touch optical media while
                 # reader/stream/group ownership is attached.
                 idle_drive_poll_blocked = not disc_poll_allowed(power)
