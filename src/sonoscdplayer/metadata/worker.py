@@ -21,6 +21,8 @@ from sonoscdplayer.metadata.release_matching import MatchingPolicy, decide_relea
 from sonoscdplayer.metadata.language_rules import load_language_rules
 from sonoscdplayer.metadata.musicbrainz import identity_from_toc, lookup_disc
 from sonoscdplayer.metadata.cover_preferences import read_cover_preferences
+from sonoscdplayer.metadata.gnudb import query_disc as query_gnudb, read_entry as read_gnudb
+from sonoscdplayer.metadata.gnudb_fallback import resolve_fallback
 
 
 def matching_policy_from_config(metadata):
@@ -101,7 +103,8 @@ def describe(snapshot):
 
 
 def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, timeout,
-                 policy, identify, lookup):
+                 policy, identify, lookup, gnudb_enabled=False, gnudb_timeout=5,
+                 gnudb_query=query_gnudb, gnudb_read=read_gnudb):
     identity = identify(toc)
     local = local_metadata_from_cdtext(toc, cdtext)
     # Database corruption and permissions must not hide already-read CD-TEXT.
@@ -157,6 +160,15 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                         except Exception:
                             # Metadata remains available even with read-only DB.
                             pass
+        if (online and gnudb_enabled and release_id is None and
+                lookup_status in ('not_found', 'unavailable', 'offline', 'error')):
+            # Full TOC validation and CD-TEXT priority prevent CDDB collisions
+            # from silently replacing known metadata. CDDB has no MB release ID.
+            fallback, _fallback_status = resolve_fallback(
+                toc, local, timeout_seconds=gnudb_timeout,
+                query=gnudb_query, read=gnudb_read)
+            if fallback is not None:
+                effective, match, score = fallback, 'gnudb', None
     # Cover mode off suppresses even cached files in the UI.
     cover_release = release_id
     if match == 'majority' and not album_confirmed:
@@ -200,15 +212,21 @@ class MetadataWorker:
                  online=True, timeout=8, matching_policy=None,
                  ui_path=None, display_supports_cover=False, sonos_uses_cover=False,
                  identify=identity_from_toc, lookup=lookup_disc,
-                 executor=None, clock=time.monotonic, retry_delays=RETRY_DELAYS):
+                 executor=None, clock=time.monotonic, retry_delays=RETRY_DELAYS,
+                 gnudb_enabled=False, gnudb_timeout=5,
+                 gnudb_query=query_gnudb, gnudb_read=read_gnudb):
         self._cache = DiscCache(cache_path)
         self._cover = CoverStore(cover_dir)
         self._policy = matching_policy or MatchingPolicy()
         self._cover_policy = read_cover_preferences(ui_path).download_policy(
             display_supports_cover=display_supports_cover,
             sonos_uses_cover=sonos_uses_cover)
+        if type(gnudb_enabled) is not bool or type(gnudb_timeout) is not int or not 1 <= gnudb_timeout <= 30:
+            raise ValueError('invalid GnuDB fallback settings')
         self._online, self._timeout = online, timeout
         self._identify, self._lookup = identify, lookup
+        self._gnudb_enabled, self._gnudb_timeout = gnudb_enabled, gnudb_timeout
+        self._gnudb_query, self._gnudb_read = gnudb_query, gnudb_read
         self._executor = executor or ThreadPoolExecutor(max_workers=1, thread_name_prefix='disc-metadata')
         self._owns_executor = executor is None
         self._pending = None
@@ -250,7 +268,9 @@ class MetadataWorker:
                 toc, cdtext, cache=self._cache, cover_cache=self._cover,
                 cover_policy=self._cover_policy, online=self._online,
                 timeout=self._timeout, policy=self._policy,
-                identify=self._identify, lookup=self._lookup)
+                identify=self._identify, lookup=self._lookup,
+                gnudb_enabled=self._gnudb_enabled, gnudb_timeout=self._gnudb_timeout,
+                gnudb_query=self._gnudb_query, gnudb_read=self._gnudb_read)
         except Exception:
             # Even corrupt caches or inaccessible services must not block PLAY.
             return None
