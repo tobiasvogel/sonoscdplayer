@@ -38,6 +38,10 @@ FIELD_RANGES = {
     ('led_outputs', 'pwm_hz'): (50, 1000),
     ('led_outputs', 'tick_ms'): (10, 250),
     ('led_outputs', 'error_hold_ms'): (0, 60000),
+    ('led_outputs.ambient', 'timeout_ms'): (10, 1000),
+    ('led_outputs.ambient', 'poll_ms'): (100, 60000),
+    ('led_outputs.ambient', 'stale_ms'): (100, 120000),
+    ('led_outputs.ambient', 'smoothing_ms'): (0, 60000),
 }
 DRIVE_STRATEGIES = ('off', 'start', 'keepalive', 'power_condition', 'auto')
 # Optional values are taken from the shipped reference configuration.
@@ -83,6 +87,15 @@ FIELDS = (
     ('led_outputs', 'active_high', 'LED outputs active-high', 'bool'),
     ('led_outputs', 'error_hold_ms', 'LED error hold (ms)', 'int'),
     ('led_outputs.ambient', 'enabled', 'Enable ambient LED brightness', 'bool'),
+    ('led_outputs.ambient', 'timeout_ms', 'Ambient sensor timeout (ms)', 'int'),
+    ('led_outputs.ambient', 'poll_ms', 'Ambient sensor poll interval (ms)', 'int'),
+    ('led_outputs.ambient', 'stale_ms', 'Ambient sensor stale threshold (ms)', 'int'),
+    ('led_outputs.ambient', 'smoothing_ms', 'Ambient brightness smoothing (ms)', 'int'),
+    ('led_outputs.ambient', 'min_brightness', 'Minimum ambient brightness (0..1)', 'float01'),
+    ('led_outputs.ambient', 'max_brightness', 'Maximum ambient brightness (0..1)', 'float01'),
+    ('led_outputs.ambient', 'fallback_brightness', 'Fallback ambient brightness (0..1)', 'float01'),
+    ('led_outputs.ambient', 'lux_dark', 'Dark calibration (lux)', 'float_lux'),
+    ('led_outputs.ambient', 'lux_bright', 'Bright calibration (lux)', 'float_lux'),
 )
 SECTION = re.compile(r'^\s*\[([^\]]+)\]\s*(?:#.*)?$')
 ASSIGN = re.compile(r"^(\s*)([A-Za-z0-9_-]+)(\s*=\s*)(\"(?:\\.|[^\"\\])*\"|'[^']*'|[^#\r\n]*?)(\s*(?:#.*)?)$")
@@ -138,6 +151,8 @@ def existing_values(parsed: dict, reference: dict) -> dict[tuple[str, str], obje
                 or (kind == 'album_prefix' and not valid_album_prefix(value))
                 or (kind == 'float01' and (type(value) not in (int, float) or
                     not math.isfinite(value) or not 0 <= value <= 1))
+                or (kind == 'float_lux' and (type(value) not in (int, float) or
+                    not math.isfinite(value) or value < 0))
                 or (kind == 'string_list' and (type(value) is not list or
                     len(value) > 100 or any(type(item) is not str for item in value)))
                 or (kind == 'bool' and type(value) is not bool)):
@@ -306,6 +321,15 @@ FIELD_HELP = {
     ('led_outputs', 'active_high'): 'Only change if the installed LED circuit requires it.',
     ('led_outputs', 'error_hold_ms'): 'Keep LED fault indication for 0..60000 ms.',
     ('led_outputs.ambient', 'enabled'): 'Use the configured ambient sensor daemon when available.',
+    ('led_outputs.ambient', 'timeout_ms'): 'Sensor response timeout: 10..1000 ms.',
+    ('led_outputs.ambient', 'poll_ms'): 'Sensor polling interval: 100..60000 ms.',
+    ('led_outputs.ambient', 'stale_ms'): 'Maximum sensor age: 100..120000 ms; cannot be below poll_ms.',
+    ('led_outputs.ambient', 'smoothing_ms'): 'Brightness transition smoothing: 0..60000 ms.',
+    ('led_outputs.ambient', 'min_brightness'): 'Minimum LED brightness: 0..1; cannot exceed maximum.',
+    ('led_outputs.ambient', 'max_brightness'): 'Maximum LED brightness: 0..1; cannot be below minimum.',
+    ('led_outputs.ambient', 'fallback_brightness'): 'Brightness if the sensor is unavailable: 0..1.',
+    ('led_outputs.ambient', 'lux_dark'): 'Illuminance at the dark end: nonnegative finite lux.',
+    ('led_outputs.ambient', 'lux_bright'): 'Illuminance at the bright end: greater than lux_dark.',
     ('metadata.matching', 'rule_languages'): 'JSON list of installed pack codes, e.g. ["de", "fr"].',
     ('metadata.matching', 'soft_suffixes'): 'JSON list of qualifiers that may differ.',
     ('metadata.matching', 'protected_suffixes'): 'JSON list of qualifiers that block wrong editions.',
@@ -386,6 +410,12 @@ def ask(label: str, current: object, suggestion: object, kind: str,
             if re.fullmatch(r'(?:0(?:\.\d+)?|1(?:\.0+)?)', value):
                 return float(value)
             out('Enter a finite decimal brightness between 0 and 1.')
+        elif kind == 'float_lux':
+            if re.fullmatch(r'(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)', value):
+                number = float(value)
+                if math.isfinite(number):
+                    return number
+            out('Enter a nonnegative finite decimal lux value.')
         elif kind == 'string_list':
             try:
                 values = json.loads(value)

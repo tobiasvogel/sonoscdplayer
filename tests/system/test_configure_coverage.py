@@ -42,14 +42,15 @@ class CoverageTests(unittest.TestCase):
             with self.subTest(config=name):
                 self.assertEqual(groups['unreferenced'], ())
 
-    def test_led_ambient_enabled_is_editable_but_calibration_is_not(self):
+    def test_led_ambient_calibration_is_editable_but_sensor_transport_guarded(self):
         player = self.result['player.toml']
         self.assertIn('led_outputs.ambient.enabled', player['editable'])
         for field in ('poll_ms', 'stale_ms', 'smoothing_ms', 'timeout_ms',
                       'min_brightness', 'max_brightness',
                       'fallback_brightness', 'lux_dark', 'lux_bright'):
             self.assertIn('led_outputs.ambient.' + field,
-                          player['not_covered'])
+                          player['editable'])
+        self.assertIn('led_outputs.ambient.socket_path', player['guarded'])
 
     def test_led_pins_are_deliberately_guarded(self):
         player = self.result['player.toml']

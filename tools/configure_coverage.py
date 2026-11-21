@@ -104,7 +104,7 @@ def report_lines(data=None) -> tuple[str, ...]:
                 lines.append(f'  {label}: {field}')
     lines.extend((
         '\nDisplay switching: BLOCKED; SSD1327 alone is player-integrated.',
-        'APDS9306 calibration and timing remain separate future wizard work.',
+        'APDS9306 calibration and timing are editable; socket transport remains guarded.',
         'This report is an inventory, NOT permission to change live hardware.',
     ))
     return tuple(lines)

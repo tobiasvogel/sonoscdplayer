@@ -18,7 +18,7 @@ class LEDWizardTests(unittest.TestCase):
         self.current = config.existing_values(self.parsed, self.reference)
 
     def test_led_group_and_ranges(self):
-        self.assertEqual(len(config.LED_MENU_GROUP[1]), 6)
+        self.assertEqual(len(config.LED_MENU_GROUP[1]), 15)
         self.assertEqual(self.current[('led_outputs', 'brightness')], 0.7)
         self.assertEqual(config.ask('brightness', 0.7, 0.7, 'float01',
                                     read=lambda _: '0.25'), 0.25)
