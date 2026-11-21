@@ -39,6 +39,18 @@ class FakePlayer(socketserver.StreamRequestHandler):
                     'last_rejection': {'seq': 2, 'reason': 'speaker RINCON_FAKE123 at 192.0.2.11'}
                 },
             }
+        elif request['command'] == 'dashboard':
+            reply = {'ok': True, 'dashboard': {
+                'track_count': 5,
+                'tracks': [
+                    {'number': number, 'title': f'Song {number}', 'artist': 'Artist'}
+                    for number in range(1, 6)],
+                'speaker_names': ['Music room', 'Study'],
+                'speaker_count': 2,
+                'target_rev': 1,
+                'playing_on_selection': True,
+                'private_uid': 'RINCON_HIDDEN',
+            }}
         elif request['command'] == 'get-target':
             reply = {'ok': True, 'target_selection': {
                 'selected': True, 'speakers': ['RINCON_FAKE123']}}
@@ -121,6 +133,12 @@ def test_api_reads_status_and_updates_theme(tmp_path):
         assert state['metadata']['track_title'] == 'Song'
         assert state['has_cover'] is True
         assert requests == [{'command': 'status'}]
+        dashboard = get_json(url + '/api/dashboard')
+        assert len(dashboard['tracks']) == 5
+        assert dashboard['tracks'][2]['title'] == 'Song 3'
+        assert dashboard['speaker_names'] == ['Music room', 'Study']
+        assert 'RINCON' not in json.dumps(dashboard)
+        assert requests[-1] == {'command': 'dashboard'}
         targets = get_json(url + '/api/targets')
         assert targets['target_selection'] == {'selected': True, 'speakers_count': 1}
         assert 'RINCON' not in json.dumps(targets)
@@ -128,7 +146,7 @@ def test_api_reads_status_and_updates_theme(tmp_path):
             page = response.read().decode('utf-8')
             assert 'theme-switcher' in page and 'Jetzt wiedergeben' in page
         with urlopen(url + '/app.js') as response:
-            assert 'play-selected' in response.read().decode('utf-8')
+            assert "'/api/dashboard'" in response.read().decode('utf-8')
 
 
 def test_control_commands_are_forwarded_exactly_once(tmp_path):
@@ -180,3 +198,19 @@ def test_no_player_does_not_fabricate_success(tmp_path):
         assert error.value.code == 503
     finally:
         server.shutdown(); server.server_close()
+
+
+def test_playback_page_is_read_only_but_rest_control_remains(tmp_path):
+    with running_server(tmp_path) as (url, requests):
+        with urlopen(url + '/') as response:
+            html = response.read().decode('utf-8')
+        with urlopen(url + '/app.js') as response:
+            js = response.read().decode('utf-8')
+        assert 'read-only-note' in html
+        for control in ('id="toggle"', 'id="stop"', 'id="prev"',
+                        'id="next"', 'id="eject"', 'id="change-target"'):
+            assert control not in html
+        assert "'/api/dashboard'" in js
+        assert "$('#toggle')" not in js
+        assert post_json(url + '/api/command', {'command': 'play-selected'})['ok']
+        assert requests == [{'command': 'play-selected'}]

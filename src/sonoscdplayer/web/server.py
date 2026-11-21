@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 from .player_client import PlayerClient, PlayerUnavailable, command_payload
 from .state import WebPreferences
+from .dashboard_projection import public_dashboard
 
 
 STATIC = Path(__file__).resolve().parent / 'static'
@@ -104,6 +105,12 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                     return self._json(200, public_status(player.request({'command': 'status'}, timeout=3)))
                 except PlayerUnavailable:
                     return self._json(503, {'ok': False, 'error': 'Player nicht erreichbar'})
+            if path == '/api/dashboard':
+                try:
+                    return self._json(200, public_dashboard(
+                        player.request({'command': 'dashboard'}, timeout=3)))
+                except (PlayerUnavailable, ValueError):
+                    return self._json(503, {'ok': False, 'error': 'Dashboard nicht erreichbar'})
             if path == '/api/targets':
                 try:
                     result = player.request({'command': 'get-target'}, timeout=8)

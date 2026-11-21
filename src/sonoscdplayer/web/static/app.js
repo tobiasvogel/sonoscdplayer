@@ -2,9 +2,7 @@
 (() => {
   'use strict';
   const $ = selector => document.querySelector(selector);
-  let snapshot = null;
   let theme = 'auto';
-  let lastTargetRev = Symbol('initial');
   let coverKey = '';
   let pending = false;
   const darkMedia = window.matchMedia('(prefers-color-scheme: dark)');
@@ -86,7 +84,6 @@
   $('#theme-setting').addEventListener('change', event => saveTheme(event.target.value));
   $('#save-theme').addEventListener('click', () => saveTheme($('#theme-setting').value));
   $('#edit-metadata').addEventListener('click', () => showPanel('metadata'));
-  $('#change-target').addEventListener('click', () => toast('Lautsprecherwahl erfolgt derzeit über das Gerätemenü.'));
 
   function formattedTime(number) {
     if (typeof number !== 'number' || !Number.isFinite(number) || number < 0) return '—';
@@ -95,7 +92,6 @@
   }
 
   function renderStatus(state) {
-    snapshot = state;
     const player = state.player || {};
     const metadata = state.metadata || {};
     const mode = player.mode || 'STOPPED';
@@ -118,12 +114,6 @@
     $('#title2').value = metadata.track_title || '';
     $('#meta-source').textContent = metadata.match_status || 'TOC / keine Angaben';
 
-    const toggle = $('#toggle');
-    toggle.textContent = playing ? 'Ⅱ' : '▶';
-    toggle.setAttribute('aria-label', playing ? 'Pause' : paused ? 'Fortsetzen' : 'Wiedergabe starten');
-    for (const id of ['prev', 'next', 'stop', 'eject', 'toggle']) {
-      $('#' + id).disabled = pending || !count || (id === 'toggle' && mode === 'STARTING');
-    }
     $('#delete-disc').disabled = pending || !count;
 
     const progress = state.progress || {};
@@ -133,29 +123,6 @@
     $('#elapsed').textContent = valid ? formattedTime(elapsed) : '—';
     $('#duration').textContent = valid ? formattedTime(duration) : '—';
     $('.progress').value = valid ? Math.round(Math.min(100, 100 * elapsed / duration)) : 0;
-
-    const tracks = $('#tracks');
-    tracks.replaceChildren();
-    if (!count) {
-      const empty = document.createElement('div');
-      empty.className = 'trackrow';
-      empty.textContent = 'Keine Titelliste verfügbar';
-      tracks.appendChild(empty);
-    } else {
-      // The status intentionally contains one track title only; do not invent others.
-      for (let number = 1; number <= count; number++) {
-        const row = document.createElement('div');
-        row.className = 'trackrow' + (number === current ? ' active' : '');
-        const num = document.createElement('span');
-        num.className = 'num'; num.textContent = String(number).padStart(2, '0');
-        const text = document.createElement('span');
-        text.textContent = number === current && metadata.track_title ? metadata.track_title : `Track ${number}`;
-        const duration = document.createElement('span'); duration.className = 'duration';
-        duration.textContent = '—';
-        row.append(num, text, duration);
-        tracks.appendChild(row);
-      }
-    }
 
     const identity = [album, metadata.artist, state.has_cover].join('|');
     if (coverKey !== identity) {
@@ -173,20 +140,59 @@
     }
   }
 
-  async function refreshTarget(rev) {
-    if (rev === lastTargetRev) return;
-    lastTargetRev = rev;
-    try {
-      const result = await request('/api/targets');
-      const selection = result.target_selection || {};
-      const count = Number(selection.speakers_count) || 0;
-      // Never show installation-specific UIDs in visible text.
-      $('#target-name').textContent = count ? `${count} Lautsprecher ausgewählt` : 'Noch kein Lautsprecher ausgewählt';
-    } catch (_) {
-      $('#target-name').textContent = 'Lautsprecherstatus nicht verfügbar';
-      lastTargetRev = Symbol('retry');
+  function renderDashboard(info, state) {
+    const count = Math.max(0, Math.min(99, Number(state.player?.track_count) || 0));
+    const current = Number(state.player?.track) || 0;
+    const tracks = $('#tracks');
+    const candidateRows = Array.isArray(info?.tracks) && info.track_count === count ? info.tracks : [];
+    // Never show titles from a previous disc while the new disc is being read.
+    const knownTitle = state.metadata?.track_title;
+    const currentEntry = candidateRows[current - 1];
+    const oldDisc = (currentEntry?.title && knownTitle && currentEntry.title !== knownTitle) ||
+      (candidateRows.some(row => row.title) && !state.metadata?.album &&
+       !state.metadata?.artist && !knownTitle);
+    const rows = oldDisc ? [] : candidateRows;
+    const signature = JSON.stringify([count, current, rows]);
+    if (renderDashboard.lastTracks !== signature) {
+      renderDashboard.lastTracks = signature;
+      tracks.replaceChildren();
+      if (!count) {
+        const empty = document.createElement('div');
+        empty.className = 'trackrow';
+        empty.textContent = 'Keine Titelliste verfügbar';
+        tracks.appendChild(empty);
+      } else {
+        for (let number = 1; number <= count; number++) {
+          const entry = rows[number - 1] || {};
+          const row = document.createElement('div');
+          row.className = 'trackrow' + (number === current ? ' active' : '');
+          const num = document.createElement('span');
+          num.className = 'num'; num.textContent = String(number).padStart(2, '0');
+          const title = document.createElement('span');
+          const artist = typeof entry.artist === 'string' ? entry.artist : '';
+          title.textContent = (typeof entry.title === 'string' && entry.title ? entry.title : `Track ${number}`) +
+            (artist ? ` · ${artist}` : '');
+          const duration = document.createElement('span');
+          duration.className = 'duration'; duration.textContent = '—';
+          row.append(num, title, duration);
+          tracks.appendChild(row);
+        }
+      }
     }
+    const freshTarget = !Number.isInteger(info?.target_rev) || !Number.isInteger(state.target_rev) ||
+      info.target_rev === state.target_rev;
+    const countSpeakers = freshTarget && Number.isInteger(info?.speaker_count) ? info.speaker_count : 0;
+    const names = freshTarget && Array.isArray(info?.speaker_names) ?
+      info.speaker_names.filter(name => typeof name === 'string') : [];
+    const missing = Math.max(0, countSpeakers - names.length);
+    const isPlaying = state.sonos?.owned === true && info?.playing_on_selection === true;
+    $('#target-label').textContent = isPlaying ? 'Wiedergabe auf' : 'Ausgewähltes Sonos-Ziel';
+    $('#target-name').textContent = !freshTarget ? 'Ziel wird aktualisiert …' :
+      !countSpeakers ? 'Kein Sonos-Ziel ausgewählt' :
+      names.length ? names.join(' · ') + (missing ? ` · +${missing} weitere` : '') :
+      countSpeakers === 1 ? '1 Lautsprecher ausgewählt' : `${countSpeakers} Lautsprecher ausgewählt`;
   }
+
   async function refresh() {
     try {
       const state = await request('/api/status');
@@ -194,22 +200,43 @@
       $('#device-reachable').textContent = 'Gerät erreichbar';
       document.querySelectorAll('.chip .dot,.railfoot .dot').forEach(dot => dot.classList.remove('offline'));
       renderStatus(state);
-      // get-target requires the worker; do not poll it every 1.5 seconds.
-      if (state.target_rev !== lastTargetRev) await refreshTarget(state.target_rev);
+      // Separate cached read: the compact player status stays unchanged for
+      // OLED/buttons/LED; no disc access or speaker discovery on this request.
+      let details = null;
+      try { details = await request('/api/dashboard'); } catch (_) { /* Old player: placeholders remain. */ }
+      renderDashboard(details, state);
     } catch (_) {
       $('#connection-label').textContent = 'Player nicht erreichbar';
       $('#device-reachable').textContent = 'Keine Verbindung';
       document.querySelectorAll('.chip .dot,.railfoot .dot').forEach(dot => dot.classList.add('offline'));
       $('#player-status').textContent = 'OFFLINE';
-      for (const id of ['prev', 'next', 'stop', 'eject', 'toggle', 'delete-disc']) $('#' + id).disabled = true;
-      snapshot = null;
+      $('#target-name').textContent = 'Nicht verfügbar';
+      $('#track-title').textContent = 'Player nicht erreichbar';
+      $('#track-artist').textContent = '—';
+      $('#track-info').textContent = 'Keine aktuellen Daten';
+      $('#elapsed').textContent = '—';
+      $('#duration').textContent = '—';
+      $('.progress').value = 0;
+      $('#tracks').replaceChildren();
+      renderDashboard.lastTracks = null;
+      const placeholder = document.createElement('div');
+      placeholder.className = 'trackrow';
+      placeholder.textContent = 'Keine aktuellen Titeldaten';
+      $('#tracks').appendChild(placeholder);
+      $('#cover-image').hidden = true;
+      $('#cover-image').removeAttribute('src');
+      $('#art-placeholder').hidden = false;
+      coverKey = '';
+      $('#delete-disc').disabled = true;
     }
   }
 
+  // API transport operations are intentionally not linked to this read-only
+  // page. Existing /api/command endpoints remain for community integrations.
   async function command(name) {
     if (pending) return;
     pending = true;
-    for (const id of ['prev', 'next', 'stop', 'eject', 'toggle', 'delete-disc']) $('#' + id).disabled = true;
+    $('#delete-disc').disabled = true;
     try {
       await request('/api/command', {command: name});
     } catch (error) {
@@ -219,14 +246,6 @@
       await refresh();
     }
   }
-  $('#toggle').addEventListener('click', () => {
-    const mode = snapshot?.player?.mode;
-    command(mode === 'PLAYING' ? 'pause' : mode === 'PAUSED' ? 'resume' : 'play-selected');
-  });
-  $('#prev').addEventListener('click', () => command('previous'));
-  $('#next').addEventListener('click', () => command('next'));
-  $('#stop').addEventListener('click', () => command('stop'));
-  $('#eject').addEventListener('click', () => command('eject'));
 
   const dialog = $('#modal');
   let modalCommand = null;

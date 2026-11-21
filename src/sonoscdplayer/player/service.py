@@ -44,6 +44,7 @@ from sonoscdplayer.drive.power import DrivePowerManager, load_config
 from sonoscdplayer.drive.wake_validation import wait_for_woken_disc
 from sonoscdplayer.drive.usb_identity import usb_identity, recovered_device
 from sonoscdplayer.player.controller import Controller, TrackServerProcess, routed_source_ip
+from sonoscdplayer.player.web_dashboard import DashboardPublisher
 from sonoscdplayer.sonos.target_selection import SelectedTarget
 from sonoscdplayer.sonos.target_store import PlaybackGroupStore, TargetStore, default_state_dir
 from sonoscdplayer.sonos.volume import VolumeControl, parse_volume_command
@@ -495,6 +496,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
     selection = SelectedTarget(store=target_store)
     if selection.restore():
         print('[target] remembered speaker selection restored; no Sonos action until PLAY', flush=True)
+    dashboard = DashboardPublisher(controller, selection)
 
     def follow_app(uid, members):
         selection.follow(uid, members)
@@ -715,6 +717,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                         controller.metadata_snapshot = metadata_worker.snapshot
                         print(describe_metadata(controller.metadata_snapshot), flush=True)
                 publisher.publish(controller, power)
+                dashboard.publish(controller, selection)
 
             busy = None
             next_refresh = time.monotonic()
@@ -742,6 +745,8 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     # No synchronous controller read and no new Sonos checks.
                     if isinstance(request, dict) and request == {'command': 'status'}:
                         send_reply(conn, publisher.read())
+                    elif isinstance(request, dict) and request == {'command': 'dashboard'}:
+                        send_reply(conn, dashboard.read())
                     elif sum(1 for _, f in pending if not f.done()) >= MAX_WAITING_COMMANDS:
                         # While a long PLAY runs, do not collect button presses
                         # that would all run late.
@@ -752,6 +757,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 except (ValueError, UnicodeError, socket.timeout, OSError) as exc:
                     send_reply(conn, {'ok': False, 'error': f'bad request: {type(exc).__name__}'})
     finally:
+        dashboard.close()
         if hasattr(controller, 'status_hook'):
             controller.status_hook = None
         for conn, _ in pending:
