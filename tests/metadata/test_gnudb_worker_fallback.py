@@ -63,7 +63,12 @@ class GnuDBWorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(result['lookup_status'], 'unavailable')
         self.assertIsNone(result['release_id'])
         self.assertEqual(result['cover_status'], 'no_release')
-        self.assertFalse(self.cache.writes)
+        # M4c.3: verified GnuDB metadata is cached, but never as a
+        # MusicBrainz release or cover-art reference.
+        self.assertEqual(len(self.cache.writes), 1)
+        args, kwargs = self.cache.writes[0]
+        self.assertEqual(args[1].album, 'Album')
+        self.assertEqual(kwargs, {'match_method': 'gnudb'})
         self.assertEqual(len(self.gnudb_calls), 2)
 
     def test_musicbrainz_not_found_uses_fallback(self):
