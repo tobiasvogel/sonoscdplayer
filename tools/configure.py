@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -34,6 +35,9 @@ FIELD_RANGES = {
     ('ui.cover', 'max_dimension_px'): (64, 2048),
     ('ui.cover', 'jpeg_quality'): (40, 95),
     ('ui.cover', 'budget_mb'): (1, 10000),
+    ('led_outputs', 'pwm_hz'): (50, 1000),
+    ('led_outputs', 'tick_ms'): (10, 250),
+    ('led_outputs', 'error_hold_ms'): (0, 60000),
 }
 DRIVE_STRATEGIES = ('off', 'start', 'keepalive', 'power_condition', 'auto')
 # Optional values are taken from the shipped reference configuration.
@@ -70,6 +74,12 @@ FIELDS = (
     ('drive_power', 'idle_spin_down_seconds', 'Idle spin-down after (seconds; off disables)', 'optional_int'),
     ('sonos', 'album_prefix', 'Album prefix shown in Sonos', 'album_prefix'),
     ('service', 'shutdown_policy', 'Playback behavior on shutdown', 'shutdown_policy'),
+    ('led_outputs', 'pwm_hz', 'LED PWM frequency (Hz)', 'int'),
+    ('led_outputs', 'tick_ms', 'LED animation tick (ms)', 'int'),
+    ('led_outputs', 'brightness', 'LED base brightness (0.0..1.0)', 'float01'),
+    ('led_outputs', 'active_high', 'LED outputs active-high', 'bool'),
+    ('led_outputs', 'error_hold_ms', 'LED error hold (ms)', 'int'),
+    ('led_outputs.ambient', 'enabled', 'Enable ambient LED brightness', 'bool'),
 )
 SECTION = re.compile(r'^\s*\[([^\]]+)\]\s*(?:#.*)?$')
 ASSIGN = re.compile(r"^(\s*)([A-Za-z0-9_-]+)(\s*=\s*)(\"(?:\\.|[^\"\\])*\"|'[^']*'|[^#\r\n]*?)(\s*(?:#.*)?)$")
@@ -123,6 +133,8 @@ def existing_values(parsed: dict, reference: dict) -> dict[tuple[str, str], obje
                 or (kind == 'shutdown_policy' and (type(value) is not str or value not in
                                                    ('stop_owned', 'leave_playing')))
                 or (kind == 'album_prefix' and not valid_album_prefix(value))
+                or (kind == 'float01' and (type(value) not in (int, float) or
+                    not math.isfinite(value) or not 0 <= value <= 1))
                 or (kind == 'bool' and type(value) is not bool)):
             raise ValueError(f'invalid {section}.{key}')
         current[(section, key)] = value
@@ -279,6 +291,12 @@ FIELD_HELP = {
                                'characters; trailing spaces are preserved. Type - to clear.'),
     ('service', 'shutdown_policy'): ('stop_owned stops playback started by this player on '
                                     'shutdown; leave_playing leaves it playing.'),
+    ('led_outputs', 'pwm_hz'): 'Software PWM frequency, 50..1000 Hz.',
+    ('led_outputs', 'tick_ms'): 'LED animation update interval, 10..250 ms.',
+    ('led_outputs', 'brightness'): 'Base LED brightness, decimal 0.0..1.0.',
+    ('led_outputs', 'active_high'): 'Only change if the installed LED circuit requires it.',
+    ('led_outputs', 'error_hold_ms'): 'Keep LED fault indication for 0..60000 ms.',
+    ('led_outputs.ambient', 'enabled'): 'Use the configured ambient sensor daemon when available.',
 }
 MENU_GROUPS = (
     ('Streaming and playback', (('streaming', 'max_buffer_mib'), ('playback', 'continue'))),
@@ -302,6 +320,8 @@ MENU_GROUPS = (
 UI_MENU_GROUP = ('Cover art and cache (ui.toml)', tuple((s, k) for s, k, _, _ in UI_FIELDS if s == 'ui.cover'))
 UI_LANGUAGE_GROUP = ('Interface language and text input (ui.toml)',
                      tuple((s, k) for s, k, _, _ in UI_FIELDS if s != 'ui.cover'))
+LED_MENU_GROUP = ('LED outputs and ambient brightness (player.toml)',
+                  tuple((s, k) for s, k, _, _ in FIELDS if s.startswith('led_outputs')))
 # Letter shortcut preserves all existing numeric menu selections.
 PLAYER_ADVANCED_GROUP = ('Additional player settings (player.toml)',
                          (('sonos', 'album_prefix'), ('service', 'shutdown_policy')))
@@ -347,6 +367,10 @@ def ask(label: str, current: object, suggestion: object, kind: str,
             if value.lower() in choices:
                 return value.lower()
             out('Choose one of: ' + ', '.join(choices))
+        elif kind == 'float01':
+            if re.fullmatch(r'(?:0(?:\.\d+)?|1(?:\.0+)?)', value):
+                return float(value)
+            out('Enter a finite decimal brightness between 0 and 1.')
         elif kind == 'shutdown_policy':
             if value in ('stop_owned', 'leave_playing'):
                 return value
@@ -416,6 +440,7 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
         out('  d. Display hardware inventory (read-only)')
         out('  p. Display change preflight (read-only; switching blocked)')
         out('  a. Additional player settings (player.toml)')
+        out('  l. LED outputs and ambient brightness (player.toml)')
         out('  0. Exit without applying changes')
         choice = read(f'Select a section [{finish}]: ').strip() or str(finish)
         if choice.lower() == 'd':
@@ -457,8 +482,10 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
             continue
         if choice.lower() == 'a':
             heading, group_fields = PLAYER_ADVANCED_GROUP
+        elif choice.lower() == 'l':
+            heading, group_fields = LED_MENU_GROUP
         elif not choice.isdigit() or not 1 <= int(choice) <= len(groups):
-            out(f'Select a number from 0 to {finish}, or a/d/p.')
+            out(f'Select a number from 0 to {finish}, or a/d/l/p.')
             continue
         else:
             heading, group_fields = groups[int(choice) - 1]
@@ -489,9 +516,25 @@ def plan_update(changes, current, ui_current, *, player_path, ui_path, raw, ui_r
     ui = bool(ui_changes)
     path, original = (ui_path, ui_raw) if ui else (player_path, raw)
     updated = replace_values(original, ui_changes if ui else player_changes)
-    tomllib.loads(updated)
-    return path, updated, UI_REFERENCE if ui else REFERENCE, (
-        list(UI_SERVICES) if ui else ['sonoscdplayer-player.service'])
+    updated_values = tomllib.loads(updated)
+    if not ui and any(section.startswith('led_outputs') for section, _ in player_changes):
+        # Validate the COMPLETE staged LED config, not just individual fields.
+        # Hardware pins are deliberately NOT editable here (BCM12/13 fixed).
+        sys.path.insert(0, str(ROOT / 'src'))
+        from sonoscdplayer.hardware.leds.led_service import OutputConfig
+        from sonoscdplayer.hardware.sensors.ambient_light import AmbientConfig
+        led = updated_values.get('led_outputs', {})
+        ambient = led.get('ambient', {})
+        if not isinstance(led, dict) or not isinstance(ambient, dict):
+            raise ValueError('invalid LED configuration table')
+        OutputConfig(**{key: value for key, value in led.items() if key != 'ambient'},
+                     ambient=AmbientConfig(**ambient))
+    led_changed = any(section.startswith('led_outputs') for section, _ in player_changes)
+    player_changed = any(not section.startswith('led_outputs') for section, _ in player_changes)
+    services = (list(UI_SERVICES) if ui else
+                (['sonoscdplayer-player.service'] if player_changed else []) +
+                (['sonoscdplayer-led.service'] if led_changed else []))
+    return path, updated, UI_REFERENCE if ui else REFERENCE, services
 
 
 def show_display_inventory(parsed, *, interface_path=None, out=print):
