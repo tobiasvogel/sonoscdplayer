@@ -73,6 +73,17 @@ class DisplayFrameRouter:
         self._oled_frame = oled_frame
         self._st_bridge = st_bridge
 
+    def system_frame(self, name, *, language='de', elapsed=0):
+        """Explicit offline-only start/shutdown preview, not a service action."""
+        if self.target != 'st7735s':
+            raise ValueError('system preview is only available for ST7735S')
+        if self._st_bridge is None:
+            from sonoscdplayer.ui.displays.st7735s_bridge import ST7735SFrameBridge
+            self._st_bridge = ST7735SFrameBridge()
+        from sonoscdplayer.ui.displays.special_screens import startup_or_shutdown_screen
+        return self._st_bridge.from_screen(
+            startup_or_shutdown_screen(name, language=language), elapsed=elapsed)
+
     def frame(self, state, *, menu=None, now=None, elapsed=0,
               language='de', cover_mode='auto'):
         """Produce one display frame without opening any display hardware.
@@ -102,6 +113,14 @@ class DisplayFrameRouter:
         # for the frame router to invent WLAN setup content.
         if menu is not None and special_menu_owner(menu):
             screen = menu.semantic_screen(now=now)
+            if screen is None and not getattr(menu, 'power_menu', False) and not isinstance(
+                    getattr(menu, 'shutdown_screen', None), str):
+                snapshot_fn = getattr(menu, 'netsetup_snapshot', None)
+                if callable(snapshot_fn):
+                    from sonoscdplayer.ui.displays.special_screens import wifi_setup_screen
+                    screen = wifi_setup_screen(snapshot_fn(), language=language)
+            # Manual Wi-Fi chooser/password entry remains externally owned.
+            # Never fall through to player status or drive warnings.
             return (None if screen is None else
                     self._st_bridge.from_screen(screen, elapsed=elapsed))
 
