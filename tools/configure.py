@@ -441,6 +441,7 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
         out('  p. Display change preflight (read-only; switching blocked)')
         out('  a. Additional player settings (player.toml)')
         out('  l. LED outputs and ambient brightness (player.toml)')
+        out('  i. Button/encoder settings (separate interface.toml assistant)')
         out('  0. Exit without applying changes')
         choice = read(f'Select a section [{finish}]: ').strip() or str(finish)
         if choice.lower() == 'd':
@@ -484,8 +485,14 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
             heading, group_fields = PLAYER_ADVANCED_GROUP
         elif choice.lower() == 'l':
             heading, group_fields = LED_MENU_GROUP
+        elif choice.lower() == 'i':
+            out('Input changes use a separate interface.toml transaction.')
+            out('Example: python3 tools/configure_inputs.py --set encoder_input.invert_direction=true')
+            out('For installation: sudo python3 tools/configure_inputs.py --set ... --apply')
+            out('See tools/configure_inputs.py --help; no input pins were changed.')
+            continue
         elif not choice.isdigit() or not 1 <= int(choice) <= len(groups):
-            out(f'Select a number from 0 to {finish}, or a/d/l/p.')
+            out(f'Select a number from 0 to {finish}, or a/d/i/l/p.')
             continue
         else:
             heading, group_fields = groups[int(choice) - 1]
