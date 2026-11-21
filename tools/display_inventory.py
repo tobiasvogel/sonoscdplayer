@@ -108,6 +108,39 @@ def inventory_lines(config: dict, interface: dict | None = None) -> tuple[str, .
     return tuple(lines)
 
 
+
+def read_interface_config(path: Path) -> tuple[dict | None, str]:
+    """Read the actual input mapping without guessing missing hardware pins.
+
+    The report remains usable when the interface mapping is missing or invalid.
+    None is explicitly unknown, never proof of a conflict-free installation.
+    """
+    try:
+        with Path(path).open('rb') as stream:
+            value = tomllib.load(stream)
+    except FileNotFoundError:
+        return None, f'WARNING: {path} missing; input pin audit INCOMPLETE.'
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        return None, f'WARNING: cannot read {path}: {exc}; input pin audit INCOMPLETE.'
+    if not isinstance(value, dict):
+        return None, f'WARNING: {path} is not a TOML table; input pin audit INCOMPLETE.'
+    for table in ('buttons', 'encoder'):
+        if table in value and not isinstance(value[table], dict):
+            return None, f'WARNING: invalid [{table}] in {path}; input pin audit INCOMPLETE.'
+    return value, f'Input pin mapping: {path} (read-only).'
+
+
+def full_inventory_lines(config: dict, interface_path: Path) -> tuple[str, ...]:
+    """Create a complete report using the same path as the live button service."""
+    interface, source_line = read_interface_config(interface_path)
+    report = list(inventory_lines(config, interface))
+    report.insert(2, source_line)
+    report.extend((
+        'Display switching: BLOCKED. Only SSD1327 is integrated with the player.',
+        'Do not change [display] controller, rotation or pin mapping using this report.',
+    ))
+    return tuple(report)
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=None,
@@ -122,12 +155,7 @@ def main(argv=None) -> int:
         with args.config.open('rb') as stream:
             config = tomllib.load(stream)
         interface_path = args.interface_config or args.config.with_name('interface.toml')
-        if interface_path.is_file():
-            with interface_path.open('rb') as stream:
-                interface = tomllib.load(stream)
-        else:
-            interface = None
-        for line in inventory_lines(config, interface):
+        for line in full_inventory_lines(config, interface_path):
             print(line)
     except (OSError, ValueError, TypeError, tomllib.TOMLDecodeError) as exc:
         print(f'Display inventory: {exc}', file=sys.stderr)

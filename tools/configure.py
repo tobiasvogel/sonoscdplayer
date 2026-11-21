@@ -366,7 +366,8 @@ def review(current, staged, *, out=print):
     return changes
 
 
-def interactive_choices(current, recommendation, *, parsed=None, ui_current=None, read=input, out=print):
+def interactive_choices(current, recommendation, *, parsed=None, ui_current=None,
+                        interface_path=None, read=input, out=print):
     """Stage independent sections; review is the only way to finish with changes.
 
     Returning None means the user exited without accepting the review.
@@ -386,7 +387,7 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
         out('  0. Exit without applying changes')
         choice = read(f'Select a section [{finish}]: ').strip() or str(finish)
         if choice.lower() == 'd':
-            show_display_inventory(parsed or {}, out=out)
+            show_display_inventory(parsed or {}, interface_path=interface_path, out=out)
             continue
         if choice == '0':
             return None
@@ -442,7 +443,7 @@ def plan_update(changes, current, ui_current, *, player_path, ui_path, raw, ui_r
         list(UI_SERVICES) if ui else ['sonoscdplayer-player.service'])
 
 
-def show_display_inventory(parsed, *, out=print):
+def show_display_inventory(parsed, *, interface_path=None, out=print):
     """Read-only display report; never stages or writes configuration changes."""
     spec = importlib.util.spec_from_file_location(
         'sonos_display_inventory', ROOT / 'tools' / 'display_inventory.py')
@@ -450,7 +451,12 @@ def show_display_inventory(parsed, *, out=print):
         raise RuntimeError('display_inventory.py unavailable')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    for line in module.inventory_lines(parsed):
+    if interface_path is None:
+        out('WARNING: no interface.toml path specified; input pin audit INCOMPLETE.')
+        lines = module.inventory_lines(parsed)
+    else:
+        lines = module.full_inventory_lines(parsed, Path(interface_path))
+    for line in lines:
         out(line)
 
 
@@ -469,6 +475,8 @@ def main(argv=None) -> int:
     p.add_argument('--ui-config', type=Path, help='ui.toml (default: same directory as player.toml)')
     p.add_argument('--display-report', action='store_true',
                    help='print read-only display inventory and exit (no wizard or writes)')
+    p.add_argument('--interface-config', type=Path,
+                   help='interface.toml for read-only display pin audit (default: same config directory)')
     p.add_argument('--apply', action='store_true', help='apply after preview and explicit confirmation')
     p.add_argument('--buffer-mib', type=int, help='explicit 16..512 MiB value for automation')
     p.add_argument('--yes', action='store_true', help='confirm apply without a terminal (requires --apply)')
@@ -486,8 +494,9 @@ def main(argv=None) -> int:
     try:
         raw = args.config.read_text(encoding='utf-8')
         parsed = tomllib.loads(raw)
+        interface_path = args.interface_config or args.config.with_name('interface.toml')
         if args.display_report:
-            show_display_inventory(parsed)
+            show_display_inventory(parsed, interface_path=interface_path)
             return 0
         reference = tomllib.loads(REFERENCE.read_text(encoding='utf-8'))
         current = existing_values(parsed, reference)
@@ -503,7 +512,7 @@ def main(argv=None) -> int:
             if args.buffer_mib is not None:
                 raise ValueError('--buffer-mib is intended for non-interactive use')
             changes = interactive_choices(current, recommendation, parsed=parsed,
-                                          ui_current=ui_current)
+                                          ui_current=ui_current, interface_path=interface_path)
             if changes is None:
                 print('Cancelled; nothing changed.')
                 return 0
