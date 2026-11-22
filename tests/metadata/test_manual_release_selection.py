@@ -6,6 +6,7 @@ import time
 
 import pytest
 
+from sonoscdplayer.audio.table_of_contents import DiscTOC, Track
 from sonoscdplayer.metadata.cache import DiscCache
 from sonoscdplayer.metadata.local_metadata import LocalDiscMetadata, LocalTrackMetadata
 from sonoscdplayer.metadata.manual_edits import ManualEdits, disc_token
@@ -95,7 +96,11 @@ def workflow(tmp_path, *, overrides=()):
     token = disc_token(identity)
     w = ReleaseWorkflow()
     w._init_releases()
-    w._last_toc = SimpleNamespace(tracks=[object(), object()])
+    # Realistic, fully qualified TOC: 120 s + 130 s, consecutive tracks.
+    w._last_toc = DiscTOC((
+        Track(1, 0, 9000, 2, False),
+        Track(2, 9000, 18750, 2, False),
+    ), 18750)
     w._last_cdtext = None
     w._result = {'edit_token': token, 'manual_fields': list(overrides),
                  '_automatic': {'tracks': [{'number':1,'title':'Release 1'}, {'number':2,'title':'Release 2'}]}}
