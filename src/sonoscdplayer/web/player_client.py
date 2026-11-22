@@ -23,8 +23,8 @@ class PlayerClient:
         """Exchange one newline-delimited JSON object with the player."""
         if not isinstance(payload, dict):
             raise ValueError('invalid player payload')
-        raw = (json.dumps(payload, separators=(',', ':')) + '\n').encode('utf-8')
-        if len(raw) > 1024:
+        raw = (json.dumps(payload, ensure_ascii=False, separators=(',', ':')) + '\n').encode('utf-8')
+        if len(raw) > 4096:
             raise ValueError('player request too large')
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
@@ -150,3 +150,18 @@ def library_payload(data: dict, operation: str) -> dict:
     if operation == 'detail' and set(data) == {'token'} and valid_token(data['token']):
         return {'command': 'library-detail', 'token': data['token']}
     raise ValueError('invalid library request')
+
+
+def library_manage_payload(data: dict) -> dict:
+    """Explicit, bounded edits only; never pass SQL keys or file paths."""
+    from sonoscdplayer.metadata.library_manage import validate_manage
+    if type(data) is not dict or set(data) not in ({'token', 'action'},
+                                                    {'token', 'action', 'changes'}):
+        raise ValueError('invalid library manage request')
+    token, action, changes = validate_manage(
+        data['token'], data['action'], data.get('changes'))
+    request = {'command': 'library-manage', 'token': token, 'action': action}
+    if action == 'edit':
+        request['changes'] = [dict(field=field, value=value, **({'track': track} if track else {}))
+                              for field, track, value in changes]
+    return request

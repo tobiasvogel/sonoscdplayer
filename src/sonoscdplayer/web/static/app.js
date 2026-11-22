@@ -626,6 +626,7 @@
     libraryBusy = true;
     libraryQuery = query.trim();
     libraryOffset = offset;
+    libraryDetail = null;
     $('#library-detail').hidden = true;
     setLibraryStatus('Bibliothek wird durchsucht …');
     try {
@@ -638,10 +639,110 @@
     await runLibraryQuery(libraryQuery, libraryOffset);
     pollLibrary();
   }
+  // WEB-04b: the library editor never acts on the currently inserted disc.
+  let libraryDetail = null;
+  let libraryEditTrack = 1;
+  let libraryManageSeq = -1;
+  let libraryPendingAction = null;
+
+  async function changeStoredDisc(token, action, changes) {
+    if (libraryBusy || libraryOutstanding) return;
+    libraryBusy = true;
+    const payload = {token, action};
+    if (action === 'edit') payload.changes = changes;
+    try {
+      await request('/api/library/manage', payload);
+      libraryPendingAction = {token, action};
+      libraryOutstanding = true;
+      setLibraryStatus('Änderung wird gespeichert …');
+    } catch (error) {
+      setLibraryStatus('Änderung abgelehnt: ' + error.message);
+    } finally { libraryBusy = false; }
+  }
+
+  function renderStoredEditor(entry) {
+    const root = $('#library-detail');
+    const active = entry.token === editToken;
+    const panel = document.createElement('div');
+    panel.className = 'library-edit-fields';
+    const intro = libraryNode('p', active ?
+      'Diese CD ist eingelegt. Bitte den Editor unter „Metadaten“ verwenden.' :
+      'Änderungen erst mit „Korrekturen speichern“ übernehmen. Leere Eingaben entfernen einen manuellen Feldschutz; sie speichern keinen absichtlich leeren Wert.', 'help');
+    panel.appendChild(intro);
+    if (active) { root.appendChild(panel); return; }
+    const manual = Array.isArray(entry.manual_fields) ? entry.manual_fields : [];
+    const fields = [];
+    function addField(caption, field, track, oldValue) {
+      const wrap = document.createElement('label');
+      wrap.className = 'library-edit-field';
+      const marker = track ? `${track}:${field}` : field;
+      wrap.appendChild(libraryNode('span', caption + (manual.includes(marker) ? ' · Handkorrektur' : '')));
+      const input = document.createElement('input');
+      input.type = 'text'; input.maxLength = 160; input.value = oldValue || '';
+      input.autocomplete = 'off';
+      wrap.appendChild(input); panel.appendChild(wrap);
+      fields.push({field, track, before: oldValue || '', input});
+    }
+    addField('Albumtitel', 'album', null, entry.album);
+    addField('Albuminterpret', 'artist', null, entry.artist);
+    const tracks = Array.isArray(entry.tracks) ? entry.tracks : [];
+    if (tracks.length) {
+      const picker = document.createElement('label');
+      picker.className = 'library-edit-field';
+      picker.appendChild(libraryNode('span', 'Titel zum Bearbeiten'));
+      const select = document.createElement('select');
+      for (const row of tracks) {
+        const option = document.createElement('option');
+        option.value = String(row.number);
+        option.textContent = `${row.number}. ${row.title || 'Track ' + row.number}`;
+        select.appendChild(option);
+      }
+      if (!tracks.some(row => row.number === libraryEditTrack)) libraryEditTrack = tracks[0].number;
+      select.value = String(libraryEditTrack);
+      select.addEventListener('change', event => {
+        if (fields.some(x => x.input.value !== x.before) &&
+            !window.confirm('Ungespeicherte Korrekturen verwerfen?')) {
+          select.value = String(libraryEditTrack); return;
+        }
+        libraryEditTrack = Number(event.target.value);
+        renderLibraryDetail(entry);
+      });
+      picker.appendChild(select); panel.appendChild(picker);
+      const row = tracks.find(item => item.number === libraryEditTrack) || {};
+      addField('Tracktitel', 'track_title', libraryEditTrack, row.title);
+      addField('Trackinterpret', 'track_artist', libraryEditTrack, row.artist);
+    }
+    const save = document.createElement('button');
+    save.type = 'button'; save.className = 'btn'; save.textContent = 'Korrekturen speichern';
+    save.addEventListener('click', () => {
+      const changes = fields.filter(item => item.input.value.trim() !== item.before)
+        .map(item => ({field: item.field, ...(item.track ? {track: item.track} : {}),
+          value: item.input.value.trim() || null}));
+      if (!changes.length) { toast('Keine Änderungen vorhanden.'); return; }
+      changeStoredDisc(entry.token, 'edit', changes);
+    });
+    panel.appendChild(save);
+    panel.appendChild(libraryNode('p', 'Zurücksetzen entfernt nur den automatischen Cache-Eintrag; eigene Korrekturen und Cover bleiben bestehen. „Textkorrekturen entfernen“ löscht ausschliesslich den manuellen Feldschutz. „CD-Metadaten löschen“ entfernt den Cache-Eintrag und die Textkorrekturen ohne weitere Rückfrage; Coverdateien bleiben erhalten.', 'help'));
+    const tools = document.createElement('div'); tools.className = 'library-manage-actions';
+    const actions = [
+      ['Automatische Zuordnung zurücksetzen', 'reset', 'secondary'],
+      ['Textkorrekturen entfernen', 'clear-manual', 'secondary'],
+      ['CD-Metadaten löschen', 'delete', 'danger'],
+    ];
+    for (const [caption, action, style] of actions) {
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'btn ' + style;
+      button.textContent = caption;
+      button.addEventListener('click', () => changeStoredDisc(entry.token, action));
+      tools.appendChild(button);
+    }
+    panel.appendChild(tools); root.appendChild(panel);
+  }
   function renderLibraryDetail(entry) {
     const root = $('#library-detail');
     root.replaceChildren();
-    if (!entry || typeof entry !== 'object') { root.hidden = true; return; }
+    if (!entry || typeof entry !== 'object') { root.hidden = true; libraryDetail = null; return; }
+    libraryDetail = entry;
     root.hidden = false;
     root.appendChild(libraryNode('h3', entry.album || 'Unbekanntes Album'));
     root.appendChild(libraryNode('div', (entry.artist || 'Unbekannter Interpret') +
@@ -656,6 +757,7 @@
       lines.appendChild(item);
     }
     root.appendChild(lines);
+    renderStoredEditor(entry);
   }
   function renderLibrary(data) {
     const root = $('#library-items');
@@ -692,6 +794,34 @@
     try {
       const reply = await request('/api/library');
       const data = reply.library || {};
+      const manage = data.manage || {};
+      if (Number.isInteger(manage.seq) && manage.seq > libraryManageSeq) {
+        libraryManageSeq = manage.seq;
+        if (libraryPendingAction && manage.token === libraryPendingAction.token &&
+            (manage.status === 'ready' || manage.status === 'error')) {
+          const finished = libraryPendingAction;
+          libraryPendingAction = null;
+          libraryOutstanding = false;
+          if (manage.status === 'error') {
+            setLibraryStatus(manage.error || 'Änderung fehlgeschlagen');
+            return;
+          }
+          toast('Änderung gespeichert. Bibliothek wird aktualisiert …');
+          if ((finished.action === 'edit' || (finished.action === 'clear-manual' && libraryDetail?.cached)) &&
+              libraryDetail?.token === finished.token) {
+            try {
+              await request('/api/library/detail', {token: finished.token});
+              libraryOutstanding = true;
+              setLibraryStatus('Aktualisierte CD-Details werden geladen …');
+            } catch (error) {
+              await runLibraryQuery(libraryQuery, libraryOffset);
+            }
+          } else {
+            await runLibraryQuery(libraryQuery, libraryOffset);
+          }
+          return;
+        }
+      }
       if (!Number.isInteger(data.seq) || data.seq <= libraryLastSeq) return;
       libraryLastSeq = data.seq;
       if (data.status === 'loading') { setLibraryStatus('Bibliothek wird geladen …'); return; }

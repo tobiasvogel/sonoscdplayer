@@ -39,6 +39,23 @@ def _entry(raw, *, detail=False):
     return data
 
 
+def _manage(raw):
+    """Whitelist the write result, never cache identity internals or SQLite errors."""
+    if type(raw) is not dict:
+        raw = {}
+    status = raw.get('status')
+    if status not in ('idle', 'saving', 'ready', 'error'):
+        status = 'idle'
+    seq = raw.get('seq')
+    action = raw.get('action')
+    if action not in ('edit', 'reset', 'clear-manual', 'delete'):
+        action = None
+    token = raw.get('token') if valid_token(raw.get('token')) else None
+    return {'status': status, 'seq': seq if type(seq) is int and 0 <= seq <= 1_000_000_000 else 0,
+            'token': token, 'action': action,
+            'error': clean_text(raw.get('error'), 100)}
+
+
 def public_library(response):
     if type(response) is not dict or response.get('ok') is not True:
         raise ValueError('library unavailable')
@@ -65,4 +82,5 @@ def public_library(response):
             'entries': [item for item in (_entry(row) for row in (entries[:MAX_PAGE_SIZE]
                          if isinstance(entries, list) else [])) if item is not None],
             'detail': _entry(detail, detail=True) if detail is not None else None,
-            'error': clean_text(raw.get('error'), 100)}}
+            'error': clean_text(raw.get('error'), 100),
+            'manage': _manage(raw.get('manage'))}}

@@ -51,7 +51,8 @@ from sonoscdplayer.sonos.volume import VolumeControl, parse_volume_command
 from sonoscdplayer.sonos.groups import normalize_members
 from sonoscdplayer.system.package_paths import SOURCE_ROOT
 
-MAX_REQUEST = 1024
+# Library edits batch up to four fields; all request types remain validated.
+MAX_REQUEST = 4096
 # Commands whose refusal the display reports ("playback not possible ...").
 PLAY_COMMANDS = frozenset(('play', 'play-selected', 'playpause', 'resume'))
 COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'eject', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery', 'volume +N|-N', 'reset-disc')
@@ -655,6 +656,29 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                             else:
                                 reply = response(controller, ok=False, error='invalid cover request')
                         except (ValueError, RuntimeError) as exc:
+                            reply = response(controller, ok=False, error=str(exc))
+                    publisher.publish(controller, power)
+                    return reply
+
+                if isinstance(request, dict) and request.get('command') == 'library-manage':
+                    # Only scheduling and validation on the serialized player worker.
+                    if metadata_worker is None:
+                        reply = response(controller, ok=False, error='metadata unavailable')
+                    else:
+                        try:
+                            from sonoscdplayer.metadata.library_manage import validate_manage
+                            required = {'command', 'token', 'action'}
+                            if set(request) not in (required, required | {'changes'}):
+                                raise ValueError('invalid library manage fields')
+                            token, action, changes = validate_manage(
+                                request['token'], request['action'], request.get('changes'))
+                            metadata_worker.enqueue_library_manage(
+                                token=token, action=action,
+                                changes=([{'field': f, **({'track': n} if n else {}), 'value': v}
+                                          for f, n, v in changes] if action == 'edit' else None))
+                            reply = response(controller, ok=True)
+                            reply['queued'] = True
+                        except (ValueError, RuntimeError, TypeError, KeyError) as exc:
                             reply = response(controller, ok=False, error=str(exc))
                     publisher.publish(controller, power)
                     return reply

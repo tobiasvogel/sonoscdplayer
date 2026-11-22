@@ -27,6 +27,7 @@ from sonoscdplayer.metadata.manual_edits import ManualEdits, apply_edits, disc_t
 from sonoscdplayer.metadata.release_workflow import ReleaseWorkflow
 from sonoscdplayer.metadata.manual_cover import ManualCoverWorkflow, DEFAULT_STAGING
 from sonoscdplayer.metadata.library_index import LibraryWorkflow
+from sonoscdplayer.metadata.library_manage import LibraryManageWorkflow
 
 
 def matching_policy_from_config(metadata):
@@ -246,7 +247,7 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
     return apply_edits(snapshot, edits)
 
 
-class MetadataWorker(LibraryWorkflow, ManualCoverWorkflow, ReleaseWorkflow):
+class MetadataWorker(LibraryManageWorkflow, LibraryWorkflow, ManualCoverWorkflow, ReleaseWorkflow):
     """One in-flight metadata job. Stale completions can never change display."""
 
     def __init__(self, *, cache_path=DEFAULT_DB_PATH, cover_dir=DEFAULT_COVER_DIR,
@@ -264,6 +265,7 @@ class MetadataWorker(LibraryWorkflow, ManualCoverWorkflow, ReleaseWorkflow):
         self._cover = CoverStore(cover_dir)
         self._init_manual_covers(cover_dir, ui_path, cover_staging_dir)
         self._init_library(cache_path, cover_dir)
+        self._init_library_manage(cache_path)
         self._policy = matching_policy or MatchingPolicy()
         self._cover_policy = read_cover_preferences(ui_path).download_policy(
             display_supports_cover=display_supports_cover,
@@ -373,6 +375,7 @@ class MetadataWorker(LibraryWorkflow, ManualCoverWorkflow, ReleaseWorkflow):
     def poll(self, toc):
         """Never waits. Consume the result only for the currently verified TOC."""
         self._poll_library()
+        self._poll_library_manage()
         covered = self._poll_manual_covers()
         edited = self._consume_edits() or covered
         edited = self._poll_releases(toc) or edited
