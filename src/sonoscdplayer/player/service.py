@@ -470,12 +470,13 @@ def _current_disc(disc_monitor, drive_toc, drive_cdtext):
     return drive_toc, drive_cdtext
 
 
-def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, target_store=None, metadata_worker=None, drive_cdtext=None):
+def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, target_store=None, metadata_worker=None, drive_cdtext=None, stop_event=None):
     """Listen on ``socket_path`` and run the worker until SIGTERM/SIGINT.
 
     The optional arguments connect drive power management, the USB identity
     and TOC of the drive, the disc monitor, the remembered speaker selection
-    and the metadata worker.
+    and the metadata worker. A supplied stop_event is for controlled test
+    teardown; production runs without one.
     """
     path = Path(socket_path).expanduser().absolute()
     if not path.parent.is_dir():
@@ -867,7 +868,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
 
             busy = None
             next_refresh = time.monotonic()
-            while True:
+            while stop_event is None or not stop_event.is_set():
                 for conn, future in pending[:]:
                     if future.done():
                         pending.remove((conn, future))
