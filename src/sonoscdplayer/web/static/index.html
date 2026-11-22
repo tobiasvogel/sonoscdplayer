@@ -155,6 +155,7 @@ input[readonly],select:disabled,input:disabled{opacity:.7;cursor:not-allowed}
 .release-confirm .twoactions{margin-top:12px}
 .release-detail[hidden],.release-confirm[hidden]{display:none}
 @media(max-width:480px){.release-choice{align-items:flex-start}.release-confirm .twoactions{flex-direction:column}.release-confirm .btn{width:100%}}
+.cover-manual-row{align-items:flex-start}.cover-manual-row .twoactions{justify-content:flex-end}.cover-upload-label{display:inline-flex;align-items:center;cursor:pointer;white-space:nowrap}.cover-upload-label.disabled{opacity:.4;cursor:not-allowed}.cover-manual-row small{max-width:420px}.cover-manual-row .btn{white-space:normal}#cover-upload-status{display:block;margin-top:10px}@media(max-width:650px){.cover-manual-row{flex-direction:column}.cover-manual-row .twoactions{justify-content:flex-start}}
 </style>
 </head>
 <body>
@@ -180,6 +181,9 @@ input[readonly],select:disabled,input:disabled{opacity:.7;cursor:not-allowed}
 </div>
 <div class="pill-note">Leere Felder entfernen eine manuelle Korrektur; danach gelten wieder automatisch ermittelte Angaben. Jede Änderung wird nur für die aktuelle CD gespeichert.</div>
 <div class="panel-footer"><span id="meta-edit-status" role="status">Warte auf CD-Metadaten …</span><div class="twoactions"><button class="btn secondary" id="meta-discard" disabled>Verwerfen</button><button class="btn" id="meta-save" disabled>Änderungen speichern</button></div></div>
+<h3>Albumcover</h3>
+<div class="record cover-manual-row"><div><strong>Eigenes Cover hinterlegen</strong><small>JPEG oder PNG, maximal 4 MiB. Die Datei wird auf die konfigurierte Bildgrösse verkleinert und nur dieser CD zugeordnet.</small></div><div class="twoactions"><label class="btn secondary cover-upload-label" id="cover-upload-label" for="cover-upload">Bild auswählen</label><input type="file" id="cover-upload" accept="image/jpeg,image/png" hidden disabled><button class="btn danger" id="cover-remove" disabled>Eigenes Cover entfernen</button></div></div>
+<p id="cover-upload-status" class="help" role="status">Kein manuelles Cover gespeichert.</p>
 <h3>Release-Zuordnung</h3>
 <div class="record"><div><strong>MusicBrainz-Veröffentlichung wählen</strong><small>Die passende Ausgabe vergleichen und bei Bedarf ausdrücklich zuordnen.</small></div><button class="btn secondary" id="release-search" disabled>Releases suchen</button></div>
 <p id="release-status" class="release-status" role="status">Noch keine Release-Suche durchgeführt.</p>

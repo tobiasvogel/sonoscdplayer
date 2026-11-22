@@ -121,12 +121,12 @@
     $('#duration').textContent = valid ? formattedTime(duration) : '—';
     $('.progress').value = valid ? Math.round(Math.min(100, 100 * elapsed / duration)) : 0;
 
-    const identity = [album, noDisc ? null : metadata.artist, !noDisc && state.has_cover].join('|');
+    const identity = [album, noDisc ? null : metadata.artist, !noDisc && state.has_cover, metadata.cover_seq || 0].join('|');
     if (coverKey !== identity) {
       coverKey = identity;
       const img = $('#cover-image');
       img.hidden = noDisc || !state.has_cover;
-      img.src = !noDisc && state.has_cover ? '/api/cover?album=' + encodeURIComponent(album) : '';
+      img.src = !noDisc && state.has_cover ? '/api/cover?revision=' + encodeURIComponent(metadata.cover_seq || 0) : '';
       $('#art-placeholder').hidden = !noDisc && !!state.has_cover;
       img.onerror = () => {img.hidden = true; $('#art-placeholder').hidden = false;};
     }
@@ -189,6 +189,50 @@
       names.length ? names.join(' · ') + (missing ? ` · +${missing} weitere` : '') :
       countSpeakers === 1 ? '1 Lautsprecher ausgewählt' : `${countSpeakers} Lautsprecher ausgewählt`;
   }
+
+  // WEB-03c: upload bytes only after a matching, current-disc dashboard read.
+  let coverBusy = false;
+  function renderCoverTools(status) {
+    const ready = editSynced && editToken && !coverBusy;
+    $('#cover-upload').disabled = !ready;
+    $('#cover-upload-label').classList.toggle('disabled', !ready);
+    $('#cover-remove').disabled = !ready || status?.metadata?.cover_manual !== true;
+    $('#cover-upload-status').textContent = status?.metadata?.cover_error ||
+      (status?.metadata?.cover_manual ? 'Eigenes Cover aktiv – automatische Cover werden nicht darüber gespeichert.' :
+       'Kein manuelles Cover gespeichert.');
+  }
+  $('#cover-upload').addEventListener('change', async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!editSynced || !editToken || coverBusy) return;
+    if (!['image/jpeg', 'image/png'].includes(file.type) || file.size < 1 || file.size > 4 * 1024 * 1024) {
+      toast('Bitte JPEG oder PNG mit höchstens 4 MiB auswählen.'); return;
+    }
+    const token = editToken;
+    coverBusy = true;
+    try {
+      const response = await fetch('/api/cover/upload', {
+        method: 'POST', headers: {'Content-Type': 'application/octet-stream', 'X-Disc-Token': token}, body: file,
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Upload fehlgeschlagen');
+      toast('Cover wird geprüft und gespeichert …');
+      await refresh();
+    } catch (error) { toast('Cover: ' + error.message); }
+    finally { coverBusy = false; }
+  });
+  $('#cover-remove').addEventListener('click', async () => {
+    if (!editSynced || !editToken || coverBusy || !window.confirm('Eigenes Cover für diese CD entfernen?')) return;
+    const token = editToken;
+    coverBusy = true;
+    try {
+      await request('/api/cover/remove', {token});
+      toast('Manuelles Cover wird entfernt …');
+      await refresh();
+    } catch (error) { toast('Cover: ' + error.message); }
+    finally { coverBusy = false; }
+  });
 
   // WEB-03: Keep unsaved edits while the read-only dashboard keeps polling.
   let editToken = null;
@@ -495,6 +539,7 @@
       try { details = await request('/api/dashboard'); } catch (_) { /* Old player: placeholders remain. */ }
       renderDashboard(details, state);
       renderEditor(state, details);
+      renderCoverTools(state);
       renderReleases(details);
     } catch (_) {
       $('#connection-label').textContent = 'Player nicht erreichbar';
@@ -520,6 +565,7 @@
       coverKey = '';
       $('#delete-disc').disabled = true;
       renderEditor(null, null);
+      renderCoverTools(null);
       renderReleases(null);
     }
   }

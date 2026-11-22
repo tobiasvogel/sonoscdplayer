@@ -636,6 +636,29 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     publisher.publish(controller, power)
                     return reply
 
+                if isinstance(request, dict) and request.get('command') in ('upload-cover', 'remove-cover'):
+                    # Only validate and queue; image processing and file I/O stay off the player thread.
+                    if metadata_worker is None:
+                        reply = response(controller, ok=False, error='metadata unavailable')
+                    else:
+                        try:
+                            if request['command'] == 'upload-cover' and set(request) == {
+                                    'command', 'token', 'upload_id'}:
+                                metadata_worker.enqueue_cover(token=request['token'],
+                                                              upload_id=request['upload_id'])
+                                reply = response(controller, ok=True)
+                                reply['queued'] = True
+                            elif request['command'] == 'remove-cover' and set(request) == {'command', 'token'}:
+                                metadata_worker.enqueue_cover(token=request['token'], remove=True)
+                                reply = response(controller, ok=True)
+                                reply['queued'] = True
+                            else:
+                                reply = response(controller, ok=False, error='invalid cover request')
+                        except (ValueError, RuntimeError) as exc:
+                            reply = response(controller, ok=False, error=str(exc))
+                    publisher.publish(controller, power)
+                    return reply
+
                 if isinstance(request, dict) and request.get('command') == 'reset-disc':
                     # forget the inserted CD's stored metadata and look it
                     # up again. No drive or Sonos access; playback is not touched.

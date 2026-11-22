@@ -25,6 +25,7 @@ from sonoscdplayer.metadata.gnudb import query_disc as query_gnudb, read_entry a
 from sonoscdplayer.metadata.gnudb_fallback import resolve_fallback
 from sonoscdplayer.metadata.manual_edits import ManualEdits, apply_edits, disc_token, validate_edit
 from sonoscdplayer.metadata.release_workflow import ReleaseWorkflow
+from sonoscdplayer.metadata.manual_cover import ManualCoverWorkflow, DEFAULT_STAGING
 
 
 def matching_policy_from_config(metadata):
@@ -244,7 +245,7 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
     return apply_edits(snapshot, edits)
 
 
-class MetadataWorker(ReleaseWorkflow):
+class MetadataWorker(ManualCoverWorkflow, ReleaseWorkflow):
     """One in-flight metadata job. Stale completions can never change display."""
 
     def __init__(self, *, cache_path=DEFAULT_DB_PATH, cover_dir=DEFAULT_COVER_DIR,
@@ -253,12 +254,14 @@ class MetadataWorker(ReleaseWorkflow):
                  identify=identity_from_toc, lookup=lookup_disc,
                  executor=None, clock=time.monotonic, retry_delays=RETRY_DELAYS,
                  gnudb_enabled=False, gnudb_timeout=5,
-                 gnudb_query=query_gnudb, gnudb_read=read_gnudb):
+                 gnudb_query=query_gnudb, gnudb_read=read_gnudb,
+                 cover_staging_dir=DEFAULT_STAGING):
         self._cache = DiscCache(cache_path)
         self._manual = ManualEdits(cache_path)
         self._edit_jobs = []
         self._init_releases()
         self._cover = CoverStore(cover_dir)
+        self._init_manual_covers(cover_dir, ui_path, cover_staging_dir)
         self._policy = matching_policy or MatchingPolicy()
         self._cover_policy = read_cover_preferences(ui_path).download_policy(
             display_supports_cover=display_supports_cover,
@@ -290,6 +293,7 @@ class MetadataWorker(ReleaseWorkflow):
         if toc == self._last_toc:
             return False
         self._last_toc = toc
+        self._reset_manual_covers()
         self._reset_releases()
         self._last_cdtext = cdtext
         self._result = None
@@ -307,13 +311,17 @@ class MetadataWorker(ReleaseWorkflow):
 
     def _run(self, toc, cdtext=None):
         try:
-            return _safe_result(
+            value = _safe_result(
                 toc, cdtext, cache=self._cache, cover_cache=self._cover,
                 cover_policy=self._cover_policy, online=self._online,
                 timeout=self._timeout, policy=self._policy,
                 identify=self._identify, lookup=self._lookup,
                 gnudb_enabled=self._gnudb_enabled, gnudb_timeout=self._gnudb_timeout,
                 gnudb_query=self._gnudb_query, gnudb_read=self._gnudb_read)
+            if value is not None:
+                path = self._manual_covers.find(self._identify(toc))
+                value['_manual_cover_file'] = str(path) if path is not None else None
+            return value
         except Exception:
             # Even corrupt caches or inaccessible services must not block PLAY.
             return None
@@ -362,7 +370,8 @@ class MetadataWorker(ReleaseWorkflow):
 
     def poll(self, toc):
         """Never waits. Consume the result only for the currently verified TOC."""
-        edited = self._consume_edits()
+        covered = self._poll_manual_covers()
+        edited = self._consume_edits() or covered
         edited = self._poll_releases(toc) or edited
         if (self._pending is None and self._retry_at is not None
                 and toc == self._last_toc and self._clock() >= self._retry_at):
@@ -383,6 +392,9 @@ class MetadataWorker(ReleaseWorkflow):
             # A few later attempts per disc, further apart; never a loop.
             self._retry_at = self._clock() + self._retry_delays[self._retries]
             self._retries += 1
+        if not covered:
+            self._cover_path = value.get('_manual_cover_file')
+        value.pop('_manual_cover_file', None)
         self._result = value
         return True
 
@@ -411,7 +423,7 @@ class MetadataWorker(ReleaseWorkflow):
     @property
     def snapshot(self):
         """Current metadata state for the status reply."""
-        return self._release_snapshot()
+        return self._manual_cover_snapshot(self._release_snapshot())
 
     def close(self):
         """Stop the background worker."""

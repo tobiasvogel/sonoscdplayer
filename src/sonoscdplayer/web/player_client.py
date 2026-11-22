@@ -84,6 +84,21 @@ def command_payload(data: dict) -> dict:
     raise ValueError('unsupported command')
 
 
+def cover_payload(data: dict, operation: str) -> dict:
+    """Allow only the exact disc token and an opaque staging identifier."""
+    from sonoscdplayer.metadata.manual_cover import valid_upload_id
+    if type(data) is not dict:
+        raise ValueError('invalid cover request')
+    token = data.get('token')
+    if type(token) is not str or not valid_upload_id(token):
+        raise ValueError('invalid disc token')
+    if operation == 'upload' and set(data) == {'token', 'upload_id'} and valid_upload_id(data['upload_id']):
+        return {'command': 'upload-cover', 'token': token, 'upload_id': data['upload_id']}
+    if operation == 'remove' and set(data) == {'token'}:
+        return {'command': 'remove-cover', 'token': token}
+    raise ValueError('invalid cover request')
+
+
 def metadata_edit_payload(data: dict) -> dict:
     """Bounded, single-field edit forwarded to the player with disc identity proof."""
     from sonoscdplayer.metadata.manual_edits import validate_edit

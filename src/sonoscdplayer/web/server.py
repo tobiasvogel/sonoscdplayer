@@ -14,7 +14,9 @@ from pathlib import Path
 import re
 from urllib.parse import urlsplit, parse_qs
 
-from .player_client import PlayerClient, PlayerUnavailable, command_payload, metadata_edit_payload, release_payload
+from .player_client import PlayerClient, PlayerUnavailable, command_payload, metadata_edit_payload, release_payload, cover_payload
+from .cover_upload import stage_upload, discard_upload
+from sonoscdplayer.metadata.manual_cover import MAX_UPLOAD_BYTES
 from .state import WebPreferences
 from .dashboard_projection import public_dashboard, public_release_detail
 
@@ -52,7 +54,8 @@ def public_status(response: dict) -> dict:
                    'error': 'Player error' if player.get('error') else None},
         'disc': {k: disc.get(k) for k in ('mode', 'track_count')},
         'metadata': {k: metadata.get(k) for k in ('album', 'artist', 'track_title',
-                     'track_artist', 'match_status', 'lookup_status')},
+                     'track_artist', 'match_status', 'lookup_status',
+                     'cover_manual', 'cover_seq', 'cover_error')},
         'has_cover': bool(metadata.get('cover_file')),
         'progress': {k: progress.get(k) for k in ('elapsed_seconds', 'duration_seconds',
                      'position', 'duration', 'elapsed', 'total')},
@@ -162,13 +165,43 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
         def do_POST(self):
             path = urlsplit(self.path).path
             if path not in ('/api/command', '/api/theme', '/api/metadata',
-                            '/api/releases/search', '/api/releases/select'):
+                            '/api/releases/search', '/api/releases/select',
+                            '/api/cover/upload', '/api/cover/remove'):
                 return self._json(404, {'error': 'not found'})
             origin = self.headers.get('Origin')
             if origin:
                 url = urlsplit(origin)
                 if url.scheme not in ('http', 'https') or url.netloc != self.headers.get('Host'):
                     return self._json(403, {'error': 'cross-origin request forbidden'})
+            if path == '/api/cover/upload':
+                if self.headers.get_content_type() != 'application/octet-stream':
+                    return self._json(415, {'ok': False, 'error': 'Bilddaten erforderlich'})
+                token = self.headers.get('X-Disc-Token', '')
+                try:
+                    size = int(self.headers.get('Content-Length', '-1'))
+                except ValueError:
+                    size = -1
+                if not 0 < size <= MAX_UPLOAD_BYTES:
+                    return self._json(413, {'ok': False, 'error': 'Bild ist zu gross oder leer'})
+                upload_id = None
+                accepted = False
+                try:
+                    # Validate identity before writing even temporary bytes.
+                    cover_payload({'token': token, 'upload_id': '0' * 32}, 'upload')
+                    self.connection.settimeout(12)
+                    upload_id = stage_upload(self.rfile, size, preferences.path.parent)
+                    result = player.request(cover_payload({'token': token, 'upload_id': upload_id}, 'upload'), timeout=35)
+                    accepted = bool(result.get('ok'))
+                    if not accepted:
+                        return self._json(409, {'ok': False, 'error': 'Cover vom Player abgelehnt; CD prüfen'})
+                    return self._json(202, {'ok': True, 'queued': True})
+                except (ValueError, OSError, TimeoutError):
+                    return self._json(400, {'ok': False, 'error': 'Ungültige Bildübertragung'})
+                except PlayerUnavailable:
+                    return self._json(503, {'ok': False, 'error': 'Ergebnis unbekannt; Status prüfen'})
+                finally:
+                    if upload_id and not accepted:
+                        discard_upload(preferences.path.parent, upload_id)
             if self.headers.get_content_type() != 'application/json':
                 return self._json(415, {'error': 'JSON required'})
             try:
@@ -185,6 +218,8 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                     return self._json(200, {'ok': True, 'theme': preferences.read()})
                 if path == '/api/metadata':
                     request = metadata_edit_payload(data)
+                elif path == '/api/cover/remove':
+                    request = cover_payload(data, 'remove')
                 elif path.startswith('/api/releases/'):
                     request = release_payload(data, path.rsplit('/', 1)[1])
                 else:
@@ -200,7 +235,7 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
             # Hide raw player diagnostics containing installation-specific details.
             if not result.get('ok'):
                 return self._json(409, {'ok': False, 'error': 'Befehl vom Player abgelehnt; Status prüfen'})
-            if path == '/api/metadata' or path.startswith('/api/releases/'):
+            if path in ('/api/metadata', '/api/cover/remove') or path.startswith('/api/releases/'):
                 return self._json(202, {'ok': True, 'queued': True})
             return self._json(200, {'ok': True})
 
