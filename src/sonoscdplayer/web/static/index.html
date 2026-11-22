@@ -139,6 +139,22 @@ input[readonly],select:disabled,input:disabled{opacity:.7;cursor:not-allowed}
 .read-only-note{display:flex;align-items:center;gap:10px;padding:16px 1px 20px;color:var(--muted);font-size:13px;line-height:1.4}
 .read-only-note span:first-child{font-size:20px;color:var(--accent)}
 :root[data-theme="dark"] .read-only-note span:first-child{color:#f6ac42}
+/* WEB-03b: compact release comparison, also on narrow phones. */
+.release-status{margin:12px 0!important;font-size:12px!important}
+.release-list{display:grid;gap:8px;margin-top:12px}
+.release-choice{display:flex;gap:12px;justify-content:space-between;align-items:center;min-width:0;width:100%;border:1px solid var(--line);background:var(--surface2);color:var(--ink);padding:12px 14px;text-align:left;border-radius:11px}
+.release-choice:hover,.release-choice:focus-visible{border-color:var(--accent)}
+.release-choice strong{display:block;overflow-wrap:anywhere;font-size:13px}
+.release-choice small{display:block;color:var(--muted);font-size:11px;margin-top:5px;overflow-wrap:anywhere}
+.release-choice .tag{flex-shrink:0}
+.release-detail,.release-confirm{background:var(--surface2);color:var(--ink);padding:16px;border:1px solid var(--line);border-radius:13px;margin-top:14px;overflow-wrap:anywhere}
+.release-detail h4{font-size:16px;margin:0 0 5px}.release-detail p{margin:0 0 12px!important}
+.release-detail ol{font-size:12px;line-height:1.7;padding-left:25px;max-height:280px;overflow:auto}
+.release-detail li{padding-right:8px;border-bottom:1px solid var(--line)}
+.release-confirm p{margin:8px 0 14px!important}
+.release-confirm .twoactions{margin-top:12px}
+.release-detail[hidden],.release-confirm[hidden]{display:none}
+@media(max-width:480px){.release-choice{align-items:flex-start}.release-confirm .twoactions{flex-direction:column}.release-confirm .btn{width:100%}}
 </style>
 </head>
 <body>
@@ -164,7 +180,16 @@ input[readonly],select:disabled,input:disabled{opacity:.7;cursor:not-allowed}
 </div>
 <div class="pill-note">Leere Felder entfernen eine manuelle Korrektur; danach gelten wieder automatisch ermittelte Angaben. Jede Änderung wird nur für die aktuelle CD gespeichert.</div>
 <div class="panel-footer"><span id="meta-edit-status" role="status">Warte auf CD-Metadaten …</span><div class="twoactions"><button class="btn secondary" id="meta-discard" disabled>Verwerfen</button><button class="btn" id="meta-save" disabled>Änderungen speichern</button></div></div>
-<h3>Release-Zuordnung</h3><div class="record"><div><strong>MusicBrainz-Veröffentlichung wählen</strong><small>Die Auswahl mehrerer Release-Kandidaten folgt im nächsten WEB-03-Schritt.</small></div><span class="tag">Noch nicht aktiv</span></div></div>
+<h3>Release-Zuordnung</h3>
+<div class="record"><div><strong>MusicBrainz-Veröffentlichung wählen</strong><small>Die passende Ausgabe vergleichen und bei Bedarf ausdrücklich zuordnen.</small></div><button class="btn secondary" id="release-search" disabled>Releases suchen</button></div>
+<p id="release-status" class="release-status" role="status">Noch keine Release-Suche durchgeführt.</p>
+<div class="release-list" id="release-list" aria-label="MusicBrainz-Veröffentlichungen"></div>
+<div class="release-detail" id="release-detail" hidden></div>
+<div class="release-confirm" id="release-confirm" hidden>
+  <strong>Release-Wechsel und geschützte Felder</strong>
+  <p id="release-confirm-text">Wie sollen vorhandene manuelle Korrekturen behandelt werden?</p>
+  <div class="twoactions"><button class="btn secondary" id="release-keep">Korrekturen behalten</button><button class="btn danger" id="release-drop">Korrekturen verwerfen</button><button class="btn secondary" id="release-cancel">Abbrechen</button></div>
+</div></div>
 <div class="subpanel" id="library"><h2>CD-Verwaltung</h2><p>Gespeicherte CDs anzeigen, bearbeiten und bei Bedarf entfernen.</p><div class="record"><div><strong id="library-current">Eingelegte CD</strong><small>Der Player kann den Cache-Eintrag dieser CD zurücksetzen.</small></div><button class="btn secondary" id="delete-disc">CD-Eintrag zurücksetzen</button></div><div class="panel-footer"><span>Weitere gespeicherte CDs lassen sich erst nach Erweiterung der Player-API verwalten.</span><button class="btn secondary" id="delete-all" disabled>Alle Einträge löschen</button></div></div>
 <div class="subpanel" id="audio"><h2>Wiedergabe</h2><p>Grundeinstellungen zum Lesen und Abspielen der CD.</p><div class="fieldgrid"><div class="field"><label for="queue">Sonos-Warteschlange</label><select id="queue" disabled><option>Verwenden</option><option>Nicht verwenden</option></select></div><div class="field"><label for="continue">Nach dem Titel weiterspielen</label><select id="continue" disabled><option>Aktiviert</option><option>Deaktiviert</option></select></div><div class="field"><label for="buffer">Audiopuffer (MiB)</label><input id="buffer" type="number" value="16" min="16" max="512" disabled></div></div><div class="panel-footer"><span>Nur lesend; Konfigurations-Overlays und Dienstneustarts folgen später.</span><button class="btn" disabled>Speichern</button></div></div>
 <div class="subpanel" id="display"><h2>Anzeige</h2><p>Darstellung auf dem Gerät und im Web-Client. Die Menüsprache kann unabhängig von Linux gewählt werden.</p><div class="fieldgrid"><div class="field"><label for="lang">Sprache</label><select id="lang" disabled><option>Deutsch</option><option>English</option></select></div><div class="field"><label for="cover">Cover auf dem Display</label><select id="cover" disabled><option>Automatisch</option><option>Aus</option><option>Ein</option></select></div><div class="field span">

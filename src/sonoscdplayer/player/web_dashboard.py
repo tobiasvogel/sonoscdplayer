@@ -123,6 +123,12 @@ class DashboardPublisher:
                 'metadata_source': metadata.get('metadata_source'),
                 'edit_error': metadata.get('edit_error'),
                 'edit_seq': metadata.get('edit_seq', 0),
+                'release_status': metadata.get('release_status', 'idle'),
+                'release_candidates': metadata.get('release_candidates', []),
+                'release_total': metadata.get('release_total', 0),
+                'release_error': metadata.get('release_error'),
+                'release_seq': metadata.get('release_seq', 0),
+                'release_selected_id': metadata.get('release_selected_id'),
             },
         }
         with self._lock:

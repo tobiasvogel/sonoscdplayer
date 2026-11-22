@@ -605,6 +605,37 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     publisher.publish(controller, power)
                     return reply
 
+                if isinstance(request, dict) and request.get('command') in (
+                        'lookup-releases', 'select-release', 'release-detail'):
+                    name = request['command']
+                    if metadata_worker is None:
+                        reply = response(controller, ok=False, error='metadata unavailable')
+                    else:
+                        try:
+                            if name == 'lookup-releases' and set(request) == {'command', 'token'}:
+                                metadata_worker.enqueue_release_search(token=request['token'])
+                                reply = response(controller, ok=True)
+                                reply['queued'] = True
+                            elif name == 'select-release' and set(request) == {
+                                    'command', 'token', 'release_id', 'keep_manual'}:
+                                metadata_worker.enqueue_release_selection(
+                                    token=request['token'], release_id=request['release_id'],
+                                    keep_manual=request['keep_manual'])
+                                reply = response(controller, ok=True)
+                                reply['queued'] = True
+                            elif name == 'release-detail' and set(request) == {
+                                    'command', 'token', 'release_id'}:
+                                detail = metadata_worker.release_detail_for(
+                                    token=request['token'], release_id=request['release_id'])
+                                reply = response(controller, ok=True)
+                                reply['release_detail'] = detail
+                            else:
+                                reply = response(controller, ok=False, error='invalid release request')
+                        except (ValueError, RuntimeError) as exc:
+                            reply = response(controller, ok=False, error=str(exc))
+                    publisher.publish(controller, power)
+                    return reply
+
                 if isinstance(request, dict) and request.get('command') == 'reset-disc':
                     # forget the inserted CD's stored metadata and look it
                     # up again. No drive or Sonos access; playback is not touched.

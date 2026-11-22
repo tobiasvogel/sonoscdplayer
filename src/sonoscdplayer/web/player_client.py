@@ -99,3 +99,26 @@ def metadata_edit_payload(data: dict) -> dict:
     if track is not None:
         result['track'] = track
     return result
+
+
+# The token is disc+TOC qualified. MusicBrainz release IDs are canonical UUIDs.
+def release_payload(data: dict, operation: str) -> dict:
+    from sonoscdplayer.metadata.release_selection import valid_release_id
+    if type(data) is not dict:
+        raise ValueError('invalid release request')
+    token = data.get('token')
+    if (type(token) is not str or len(token) != 32 or
+            any(c not in '0123456789abcdef' for c in token)):
+        raise ValueError('invalid disc token')
+    if operation == 'search' and set(data) == {'token'}:
+        return {'command': 'lookup-releases', 'token': token}
+    if operation in ('detail', 'select'):
+        expected = {'token', 'release_id', 'keep_manual'} if operation == 'select' else {'token', 'release_id'}
+        if set(data) != expected or not valid_release_id(data.get('release_id')):
+            raise ValueError('invalid release fields')
+        if operation == 'select':
+            if type(data['keep_manual']) is not bool:
+                raise ValueError('manual corrections decision required')
+            return {'command': 'select-release', **data}
+        return {'command': 'release-detail', **data}
+    raise ValueError('invalid release operation')

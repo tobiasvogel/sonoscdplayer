@@ -24,6 +24,7 @@ from sonoscdplayer.metadata.cover_preferences import read_cover_preferences
 from sonoscdplayer.metadata.gnudb import query_disc as query_gnudb, read_entry as read_gnudb
 from sonoscdplayer.metadata.gnudb_fallback import resolve_fallback
 from sonoscdplayer.metadata.manual_edits import ManualEdits, apply_edits, disc_token, validate_edit
+from sonoscdplayer.metadata.release_workflow import ReleaseWorkflow
 
 
 def matching_policy_from_config(metadata):
@@ -139,7 +140,7 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
     if cached is not None and cached_gnudb is None:
         effective = _prefer_cdtext(local, cached.local)
         release_id = cached.release_id
-        match = 'cached'
+        match = 'manual' if cached.confirmed_by_user else 'cached'
         score = cached.confidence_score
     else:
         effective, release_id, match, score = local, None, 'toc', None
@@ -243,7 +244,7 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
     return apply_edits(snapshot, edits)
 
 
-class MetadataWorker:
+class MetadataWorker(ReleaseWorkflow):
     """One in-flight metadata job. Stale completions can never change display."""
 
     def __init__(self, *, cache_path=DEFAULT_DB_PATH, cover_dir=DEFAULT_COVER_DIR,
@@ -256,6 +257,7 @@ class MetadataWorker:
         self._cache = DiscCache(cache_path)
         self._manual = ManualEdits(cache_path)
         self._edit_jobs = []
+        self._init_releases()
         self._cover = CoverStore(cover_dir)
         self._policy = matching_policy or MatchingPolicy()
         self._cover_policy = read_cover_preferences(ui_path).download_policy(
@@ -288,6 +290,7 @@ class MetadataWorker:
         if toc == self._last_toc:
             return False
         self._last_toc = toc
+        self._reset_releases()
         self._last_cdtext = cdtext
         self._result = None
         self._retry_at = None
@@ -360,6 +363,7 @@ class MetadataWorker:
     def poll(self, toc):
         """Never waits. Consume the result only for the currently verified TOC."""
         edited = self._consume_edits()
+        edited = self._poll_releases(toc) or edited
         if (self._pending is None and self._retry_at is not None
                 and toc == self._last_toc and self._clock() >= self._retry_at):
             self._retry_at = None
@@ -393,6 +397,9 @@ class MetadataWorker:
             raise ValueError('no disc inserted')
         if self._edit_jobs:
             raise RuntimeError('manual edits still pending')
+        if self._release_selection is not None:
+            raise RuntimeError('release selection still pending')
+        self._reset_releases()
         identity = self._identify(toc)
         self._manual.delete(identity)
         self._cache.delete(identity)
@@ -404,7 +411,7 @@ class MetadataWorker:
     @property
     def snapshot(self):
         """Current metadata state for the status reply."""
-        return self._result.copy() if self._result is not None else None
+        return self._release_snapshot()
 
     def close(self):
         """Stop the background worker."""

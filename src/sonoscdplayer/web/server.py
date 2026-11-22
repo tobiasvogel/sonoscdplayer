@@ -12,11 +12,11 @@ import json
 import os
 from pathlib import Path
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 
-from .player_client import PlayerClient, PlayerUnavailable, command_payload, metadata_edit_payload
+from .player_client import PlayerClient, PlayerUnavailable, command_payload, metadata_edit_payload, release_payload
 from .state import WebPreferences
-from .dashboard_projection import public_dashboard
+from .dashboard_projection import public_dashboard, public_release_detail
 
 
 STATIC = Path(__file__).resolve().parent / 'static'
@@ -126,6 +126,20 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                     })
                 except PlayerUnavailable:
                     return self._json(503, {'ok': False, 'error': 'Player nicht erreichbar'})
+            if path == '/api/release-detail':
+                try:
+                    query = parse_qs(urlsplit(self.path).query, strict_parsing=True)
+                    if set(query) != {'token', 'release_id'} or any(len(v) != 1 for v in query.values()):
+                        raise ValueError('invalid release detail query')
+                    result = player.request(release_payload({key: value[0] for key, value in query.items()},
+                                                            'detail'), timeout=5)
+                    if not result.get('ok'):
+                        return self._json(409, {'ok': False, 'error': 'Release nicht mehr verfügbar'})
+                    return self._json(200, public_release_detail(result.get('release_detail')))
+                except ValueError:
+                    return self._json(400, {'ok': False, 'error': 'Ungültige Release-Abfrage'})
+                except PlayerUnavailable:
+                    return self._json(503, {'ok': False, 'error': 'Player nicht erreichbar'})
             if path == '/api/cover':
                 # Only the cover supplied by the player for the inserted CD.
                 # Never accept an arbitrary filesystem path from HTTP requests.
@@ -147,7 +161,8 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
 
         def do_POST(self):
             path = urlsplit(self.path).path
-            if path not in ('/api/command', '/api/theme', '/api/metadata'):
+            if path not in ('/api/command', '/api/theme', '/api/metadata',
+                            '/api/releases/search', '/api/releases/select'):
                 return self._json(404, {'error': 'not found'})
             origin = self.headers.get('Origin')
             if origin:
@@ -168,7 +183,12 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                         raise ValueError('theme is required')
                     preferences.set_theme(data['theme'])
                     return self._json(200, {'ok': True, 'theme': preferences.read()})
-                request = metadata_edit_payload(data) if path == '/api/metadata' else command_payload(data)
+                if path == '/api/metadata':
+                    request = metadata_edit_payload(data)
+                elif path.startswith('/api/releases/'):
+                    request = release_payload(data, path.rsplit('/', 1)[1])
+                else:
+                    request = command_payload(data)
             except (ValueError, TypeError):
                 return self._json(400, {'ok': False, 'error': 'Ungültige Eingabe'})
             except OSError:
@@ -180,7 +200,7 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
             # Hide raw player diagnostics containing installation-specific details.
             if not result.get('ok'):
                 return self._json(409, {'ok': False, 'error': 'Befehl vom Player abgelehnt; Status prüfen'})
-            if path == '/api/metadata':
+            if path == '/api/metadata' or path.startswith('/api/releases/'):
                 return self._json(202, {'ok': True, 'queued': True})
             return self._json(200, {'ok': True})
 

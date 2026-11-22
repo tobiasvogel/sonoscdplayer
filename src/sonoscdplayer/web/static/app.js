@@ -196,6 +196,7 @@
   let editTrack = 0;
   let editDirty = false;
   let editBusy = false;
+  let editSynced = false;
   let lastEditSeq = 0;
   const editInputs = ['#album', '#artist', '#title2', '#meta-track-artist'];
 
@@ -213,6 +214,7 @@
   }
 
   function renderEditor(status, details) {
+    editSynced = false;
     // A transient dashboard timeout is not a CD change; keep the user's draft.
     if (!details && Number(status?.player?.track_count) > 0) {
       editInputs.forEach(selector => { $(selector).disabled = true; });
@@ -250,6 +252,7 @@
       editTrack = 0;
     }
     editSnapshot = available ? {status, details} : null;
+    editSynced = available;
     if (available && (Number(details.edit_seq) || 0) > lastEditSeq) {
       lastEditSeq = details.edit_seq;
       if (details.edit_error) toast('Speichern fehlgeschlagen. Bitte Status prüfen.');
@@ -327,6 +330,158 @@
     }
   });
 
+  // WEB-03b: Explicit MusicBrainz lookup; never write disc/cache from JS.
+  let releaseBusy = false;
+  let releaseKey = '';
+  let chosenRelease = null;
+  let chosenToken = null;
+
+  function resetReleaseDetail() {
+    chosenRelease = null;
+    chosenToken = null;
+    $('#release-detail').hidden = true;
+    $('#release-detail').replaceChildren();
+    $('#release-confirm').hidden = true;
+  }
+
+  function renderReleases(details) {
+    // Re-fetch cover after an edition switch even if album/artist text did not change.
+    const coverEdition = details?.edit_token ? details.release_selected_id || null : null;
+    if (coverEdition !== renderReleases.coverEdition) {
+      renderReleases.coverEdition = coverEdition;
+      coverKey = '';
+    }
+    const available = !!(editSynced && editSnapshot && editToken && details?.edit_token === editToken);
+    const token = available ? editToken : null;
+    if (token !== renderReleases.token) {
+      renderReleases.token = token;
+      releaseKey = '';
+      resetReleaseDetail();
+    }
+    const status = available ? (details.release_status || 'idle') : 'idle';
+    $('#release-search').disabled = !available || editBusy || editDirty || releaseBusy ||
+      status === 'searching' || status === 'saving';
+    const messages = {
+      idle: 'Noch keine Release-Suche durchgeführt.',
+      searching: 'MusicBrainz wird im Hintergrund abgefragt …',
+      saving: 'Release-Zuordnung wird gespeichert …',
+      not_found: 'Keine passenden Veröffentlichungen gefunden.',
+      error: 'Release-Suche fehlgeschlagen.',
+      ready: `${(details?.release_candidates || []).length} Veröffentlichung(en) gefunden.`,
+    };
+    $('#release-status').textContent = !available ? 'Keine bearbeitbare CD eingelegt.' :
+      (details.release_error || messages[status] || messages.idle);
+    if (status === 'saving') $('#release-confirm').hidden = true;
+    const candidates = available && Array.isArray(details.release_candidates) ? details.release_candidates : [];
+    const signature = JSON.stringify([token, status, candidates, details?.release_selected_id]);
+    if (releaseKey === signature) return;
+    releaseKey = signature;
+    const container = $('#release-list');
+    container.replaceChildren();
+    for (const entry of candidates) {
+      const row = document.createElement('button');
+      row.type = 'button'; row.className = 'release-choice';
+      const left = document.createElement('span');
+      const heading = document.createElement('strong');
+      heading.textContent = entry.title || 'Unbenannte Veröffentlichung';
+      const sub = document.createElement('small');
+      sub.textContent = [entry.artist, entry.country, entry.date,
+        Number.isInteger(entry.score) ? `Vergleichswert ${entry.score}/100` : null,
+        `${entry.track_count} Tracks`].filter(Boolean).join(' · ');
+      left.append(heading, sub);
+      row.appendChild(left);
+      if (entry.release_id === details.release_selected_id) {
+        const tag = document.createElement('span'); tag.className = 'tag';
+        tag.textContent = 'Zugeordnet'; row.appendChild(tag);
+      }
+      row.addEventListener('click', () => loadReleaseDetail(entry.release_id));
+      container.appendChild(row);
+    }
+  }
+
+  $('#release-search').addEventListener('click', async () => {
+    if (!editSynced || !editSnapshot || !editToken || editBusy || editDirty || releaseBusy) return;
+    releaseBusy = true;
+    $('#release-search').disabled = true;
+    resetReleaseDetail();
+    try {
+      await request('/api/releases/search', {token: editToken});
+      toast('Release-Suche gestartet.');
+      await refresh();
+    } catch (error) { toast('Release-Suche: ' + error.message); }
+    finally { releaseBusy = false; }
+  });
+
+  async function loadReleaseDetail(releaseId) {
+    if (!editSynced || !editSnapshot || !editToken || editDirty || editBusy || releaseBusy) {
+      toast('Bitte zuerst offene Änderungen speichern oder verwerfen.');
+      return;
+    }
+    const token = editToken;
+    try {
+      const url = '/api/release-detail?token=' + encodeURIComponent(token) +
+        '&release_id=' + encodeURIComponent(releaseId);
+      const result = await request(url);
+      if (token !== editToken || result.release_id !== releaseId) return;
+      chosenRelease = result; chosenToken = token;
+      $('#release-confirm').hidden = true;
+      const panel = $('#release-detail'); panel.replaceChildren();
+      const h = document.createElement('h4'); h.textContent = result.title || 'Veröffentlichung';
+      const meta = document.createElement('p');
+      meta.textContent = [result.artist, result.country, result.date,
+        `${result.track_count} Tracks`].filter(Boolean).join(' · ');
+      const note = document.createElement('p');
+      const actual = editSnapshot.details.track_count;
+      note.textContent = actual === result.track_count ?
+        'Trackstruktur stimmt überein.' :
+        `Abweichende Trackstruktur (${result.track_count} statt ${actual}); die Übernahme erfolgt nach Tracknummer.`;
+      const list = document.createElement('ol');
+      for (const track of result.tracks || []) {
+        const li = document.createElement('li');
+        li.textContent = (track.title || `Track ${track.number}`) +
+          (track.artist ? ` · ${track.artist}` : '');
+        list.appendChild(li);
+      }
+      const select = document.createElement('button');
+      select.type = 'button'; select.className = 'btn';
+      select.textContent = 'Diese Veröffentlichung zuordnen';
+      select.addEventListener('click', confirmReleaseChoice);
+      panel.append(h, meta, note, list, select); panel.hidden = false;
+    } catch (error) { toast('Release-Details: ' + error.message); }
+  }
+
+  function confirmReleaseChoice() {
+    if (!editSynced || !chosenRelease || chosenToken !== editToken || !editSnapshot || editDirty || editBusy) {
+      toast('Bitte aktuellen CD- und Bearbeitungsstatus prüfen.'); return;
+    }
+    const protectedFields = editSnapshot.details.manual_fields || [];
+    if (!protectedFields.length) { submitRelease(true); return; }
+    const trackProtected = protectedFields.some(key => key.includes(':'));
+    const unsafe = trackProtected && chosenRelease.can_keep_track_edits !== true;
+    $('#release-confirm-text').textContent = unsafe ?
+      'Die bisherige Trackzuordnung lässt sich nicht sicher auf diese Veröffentlichung übertragen. Bitte Korrekturen verwerfen oder abbrechen.' :
+      `${protectedFields.length} manuelle Korrektur(en) vorhanden. Möchtest du diese beim Release-Wechsel behalten oder verwerfen?`;
+    $('#release-keep').disabled = unsafe;
+    $('#release-confirm').hidden = false;
+  }
+
+  async function submitRelease(keepManual) {
+    if (!editSynced || !chosenRelease || chosenToken !== editToken || !editSnapshot || editDirty || editBusy || releaseBusy) return;
+    releaseBusy = true; $('#release-confirm').hidden = true;
+    try {
+      await request('/api/releases/select', {
+        token: chosenToken, release_id: chosenRelease.release_id, keep_manual: keepManual,
+      });
+      toast('Release-Zuordnung angenommen. Speichervorgang läuft …');
+      await refresh();
+    } catch (error) { toast('Release-Zuordnung: ' + error.message); }
+    finally { releaseBusy = false; }
+  }
+
+  $('#release-keep').addEventListener('click', () => submitRelease(true));
+  $('#release-drop').addEventListener('click', () => submitRelease(false));
+  $('#release-cancel').addEventListener('click', () => { $('#release-confirm').hidden = true; });
+
   async function refresh() {
     try {
       const state = await request('/api/status');
@@ -340,6 +495,7 @@
       try { details = await request('/api/dashboard'); } catch (_) { /* Old player: placeholders remain. */ }
       renderDashboard(details, state);
       renderEditor(state, details);
+      renderReleases(details);
     } catch (_) {
       $('#connection-label').textContent = 'Player nicht erreichbar';
       $('#device-reachable').textContent = 'Keine Verbindung';
@@ -364,6 +520,7 @@
       coverKey = '';
       $('#delete-disc').disabled = true;
       renderEditor(null, null);
+      renderReleases(null);
     }
   }
 

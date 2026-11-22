@@ -121,7 +121,9 @@ def test_public_dashboard_has_titles_and_names_not_private_ids():
         'playing_on_selection': True, 'target_rev': 4,
         # WEB-03a: absent edit data is still represented by the public API.
         'edit_token': None, 'manual_fields': [], 'metadata_source': None,
-        'album': None, 'artist': None, 'edit_error': None, 'edit_seq': 0}
+        'album': None, 'artist': None, 'edit_error': None, 'edit_seq': 0,
+        'release_status': 'idle', 'release_candidates': [], 'release_total': 0,
+        'release_error': None, 'release_seq': 0, 'release_selected_id': None}
     assert 'RINCON_' not in str(result)
     assert '/fixture-private/' not in str(result)
 
