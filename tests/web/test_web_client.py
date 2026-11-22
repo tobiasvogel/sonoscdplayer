@@ -32,7 +32,7 @@ class FakePlayer(socketserver.StreamRequestHandler):
                     'player': {'mode': 'PLAYING', 'track': 2, 'track_count': 5},
                     'metadata': {'album': 'Record', 'artist': 'Artist',
                                  'track_title': 'Song', 'track_artist': 'Artist',
-                                 'cover_file': '/home/person/private.jpg'},
+                                 'cover_file': '/fixture-private/album-cover.jpg'},
                     'sonos': {'target_uid': 'RINCON_FAKE123', 'owned': True,
                               'transport': 'PLAYING'},
                     'target_rev': 1,
@@ -98,13 +98,13 @@ def test_status_projection_never_exposes_private_ids_or_paths():
     response = {'ok': True, 'state': {
         'player': {'mode': 'PLAYING', 'track': 1, 'track_count': 2},
         'sonos': {'target_uid': 'RINCON_REAL', 'owned': True, 'transport': 'PLAYING'},
-        'metadata': {'album': 'Example', 'cover_file': '/home/name/cover.jpg'},
+        'metadata': {'album': 'Example', 'cover_file': '/fixture-private/cover.jpg'},
         'last_rejection': {'seq': 1, 'reason': 'RINCON_ABC at 192.0.2.10'},
     }}
     result = public_status(response)
     serialized = json.dumps(result)
     assert 'RINCON_' not in serialized
-    assert '/home/' not in serialized
+    assert '/fixture-private/' not in serialized
     assert '192.0.2.10' not in serialized
     assert result['has_cover'] is True
     assert result['metadata']['album'] == 'Example'

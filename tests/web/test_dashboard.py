@@ -104,7 +104,7 @@ def test_late_speaker_discovery_does_not_change_new_target():
 
 def test_public_dashboard_has_titles_and_names_not_private_ids():
     reply = {'ok': True, 'dashboard': {'track_count': 3,
-        'tracks': [{'number': 1, 'title': 'Song', 'artist': 'Singer', 'path': '/home/private'},
+        'tracks': [{'number': 1, 'title': 'Song', 'artist': 'Singer', 'path': '/fixture-private/track.wav'},
                    {'number': 2, 'title': '  '}, {'number': 8, 'title': 'wrong'}],
         'speaker_names': ['Kitchen', 'Living room'],
         'speaker_count': 2,
@@ -120,7 +120,7 @@ def test_public_dashboard_has_titles_and_names_not_private_ids():
         'speaker_count': 2,
         'playing_on_selection': True, 'target_rev': 4}
     assert 'RINCON_' not in str(result)
-    assert '/home/' not in str(result)
+    assert '/fixture-private/' not in str(result)
 
 
 def test_malformed_dashboard_rejected():
