@@ -77,6 +77,7 @@
     document.querySelectorAll('.settings-nav button').forEach(button => button.classList.toggle('active', button.dataset.panel === panel));
     document.querySelectorAll('.subpanel').forEach(section => section.classList.toggle('active', section.id === panel));
     showPage('settings');
+    if (panel === 'library') openLibrary();
   }
   document.querySelectorAll('.navbtn').forEach(button => button.addEventListener('click', () => showPage(button.dataset.page)));
   document.querySelectorAll('.settings-nav button').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.panel)));
@@ -606,8 +607,111 @@
   dialog.addEventListener('click', event => { if (event.target === dialog) closeModal(); });
   document.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
 
+  // WEB-04a: server-side, paginated, read-only CD library. Never render HTML from metadata.
+  let libraryBusy = false;
+  let libraryOutstanding = false;
+  let libraryOffset = 0;
+  let libraryQuery = '';
+  let libraryLastSeq = -1;
+  const libraryLimit = 20;
+  function setLibraryStatus(text) { $('#library-status').textContent = text; }
+  function libraryNode(tag, value, cls) {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    node.textContent = value || '';
+    return node;
+  }
+  async function runLibraryQuery(query, offset) {
+    if (libraryBusy || libraryOutstanding) return;
+    libraryBusy = true;
+    libraryQuery = query.trim();
+    libraryOffset = offset;
+    $('#library-detail').hidden = true;
+    setLibraryStatus('Bibliothek wird durchsucht …');
+    try {
+      await request('/api/library/query', {query: libraryQuery, offset: libraryOffset, limit: libraryLimit});
+      libraryOutstanding = true;
+    } catch (error) { setLibraryStatus('Suche nicht möglich: ' + error.message); }
+    finally { libraryBusy = false; }
+  }
+  async function openLibrary() {
+    await runLibraryQuery(libraryQuery, libraryOffset);
+    pollLibrary();
+  }
+  function renderLibraryDetail(entry) {
+    const root = $('#library-detail');
+    root.replaceChildren();
+    if (!entry || typeof entry !== 'object') { root.hidden = true; return; }
+    root.hidden = false;
+    root.appendChild(libraryNode('h3', entry.album || 'Unbekanntes Album'));
+    root.appendChild(libraryNode('div', (entry.artist || 'Unbekannter Interpret') +
+      ' · ' + (entry.track_count === null ? 'Titelanzahl unbekannt' : entry.track_count + ' Titel'), 'library-meta'));
+    root.appendChild(libraryNode('div', 'Quelle: ' + (entry.match_method || 'unbekannt') +
+      (entry.confirmed_by_user ? ' · manuell bestätigte Release-Zuordnung' : '') +
+      (entry.manual_cover ? ' · eigenes Cover' : ''), 'library-meta'));
+    const lines = document.createElement('ol');
+    for (const row of Array.isArray(entry.tracks) ? entry.tracks.slice(0, 99) : []) {
+      const item = libraryNode('li', (row.title || `Track ${row.number}`) +
+        (row.artist ? ' · ' + row.artist : ''));
+      lines.appendChild(item);
+    }
+    root.appendChild(lines);
+  }
+  function renderLibrary(data) {
+    const root = $('#library-items');
+    root.replaceChildren();
+    const entries = Array.isArray(data.entries) ? data.entries : [];
+    for (const disc of entries) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'library-entry';
+      button.appendChild(libraryNode('strong', disc.album || 'Unbekanntes Album'));
+      const date = Number.isInteger(disc.updated_at) && disc.updated_at > 0
+        ? new Date(disc.updated_at * 1000).toLocaleDateString('de-CH') : 'Datum unbekannt';
+      button.appendChild(libraryNode('small', (disc.artist || 'Unbekannter Interpret') +
+        ' · ' + (disc.track_count === null ? 'Titelanzahl unbekannt' : disc.track_count + ' Titel') + ' · ' + date +
+        (disc.manual_cover ? ' · eigenes Cover' : '')));
+      button.addEventListener('click', async () => {
+        if (libraryBusy || libraryOutstanding) return;
+        libraryBusy = true;
+        setLibraryStatus('CD-Details werden geladen …');
+        try { await request('/api/library/detail', {token: disc.token}); libraryOutstanding = true; }
+        catch (error) { setLibraryStatus('Details nicht verfügbar: ' + error.message); }
+        finally { libraryBusy = false; }
+      });
+      root.appendChild(button);
+    }
+    if (!entries.length) root.appendChild(libraryNode('p', 'Keine passenden CDs gespeichert.'));
+    const total = Number.isInteger(data.total) ? data.total : 0;
+    const offset = Number.isInteger(data.offset) ? data.offset : 0;
+    $('#library-count').textContent = total ? `${offset + 1}–${Math.min(total, offset + entries.length)} von ${total}` : '0 Einträge';
+    $('#library-prev').disabled = offset <= 0;
+    $('#library-next').disabled = offset + entries.length >= total || !entries.length;
+  }
+  async function pollLibrary() {
+    try {
+      const reply = await request('/api/library');
+      const data = reply.library || {};
+      if (!Number.isInteger(data.seq) || data.seq <= libraryLastSeq) return;
+      libraryLastSeq = data.seq;
+      if (data.status === 'loading') { setLibraryStatus('Bibliothek wird geladen …'); return; }
+      if (data.status === 'error') { libraryOutstanding = false; setLibraryStatus(data.error || 'CD-Bibliothek nicht verfügbar'); return; }
+      if (data.status !== 'ready') return;
+      libraryOutstanding = false;
+      setLibraryStatus(`Gespeicherte CDs: ${data.total || 0}`);
+      if (data.detail) { renderLibraryDetail(data.detail); return; }
+      renderLibrary(data);
+    } catch (error) { setLibraryStatus('CD-Bibliothek nicht erreichbar: ' + error.message); }
+  }
+  $('#library-find').addEventListener('click', () => runLibraryQuery($('#library-search').value, 0));
+  $('#library-reload').addEventListener('click', () => runLibraryQuery(libraryQuery, libraryOffset));
+  $('#library-search').addEventListener('keydown', event => { if (event.key === 'Enter') runLibraryQuery(event.target.value, 0); });
+  $('#library-prev').addEventListener('click', () => runLibraryQuery(libraryQuery, Math.max(0, libraryOffset - libraryLimit)));
+  $('#library-next').addEventListener('click', () => runLibraryQuery(libraryQuery, libraryOffset + libraryLimit));
+
   paintTheme();
   loadTheme();
   refresh();
+  setInterval(() => { if (!document.hidden && $('#library').classList.contains('active')) pollLibrary(); }, 1400);
   setInterval(() => { if (!pending && !document.hidden) refresh(); }, 2000);
 })();

@@ -51,6 +51,12 @@ class FakePlayer(socketserver.StreamRequestHandler):
                 'playing_on_selection': True,
                 'private_uid': 'RINCON_HIDDEN',
             }}
+        elif request['command'] == 'library':
+            reply = {'ok': True, 'library': {'status': 'ready', 'seq': 2,
+                'query': '', 'offset': 0, 'limit': 20, 'total': 1,
+                'entries': [{'token': 'a'*32, 'album': 'Saved record', 'artist': 'Singer',
+                             'track_count': 2, 'updated_at': 7, 'private':'secret'}],
+                'detail': None, 'error': None}}
         elif request['command'] == 'get-target':
             reply = {'ok': True, 'target_selection': {
                 'selected': True, 'speakers': ['RINCON_FAKE123']}}
@@ -214,3 +220,22 @@ def test_playback_page_is_read_only_but_rest_control_remains(tmp_path):
         assert "$('#toggle')" not in js
         assert post_json(url + '/api/command', {'command': 'play-selected'})['ok']
         assert requests == [{'command': 'play-selected'}]
+
+
+def test_library_http_is_readonly_and_forwards_only_valid_requests(tmp_path):
+    with running_server(tmp_path) as (url, requests):
+        data = get_json(url + '/api/library')
+        assert data['library']['total'] == 1
+        assert data['library']['entries'][0]['album'] == 'Saved record'
+        assert 'secret' not in json.dumps(data)
+        assert requests[-1] == {'command': 'library'}
+        assert post_json(url + '/api/library/query', {'query': 'Singer', 'offset': 0, 'limit': 20})['queued']
+        assert requests[-1] == {'command': 'library-query', 'query': 'Singer', 'offset': 0, 'limit': 20}
+        assert post_json(url + '/api/library/detail', {'token': 'a'*32})['queued']
+        assert requests[-1] == {'command': 'library-detail', 'token': 'a'*32}
+        with pytest.raises(HTTPError) as exc:
+            post_json(url + '/api/library/query', {'query':'', 'offset': -1, 'limit': 20})
+        assert exc.value.code == 400
+        with pytest.raises(HTTPError) as exc:
+            post_json(url + '/api/library/detail', {'token': 'bad'})
+        assert exc.value.code == 400

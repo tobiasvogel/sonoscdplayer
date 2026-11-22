@@ -137,3 +137,16 @@ def release_payload(data: dict, operation: str) -> dict:
             return {'command': 'select-release', **data}
         return {'command': 'release-detail', **data}
     raise ValueError('invalid release operation')
+
+
+def library_payload(data: dict, operation: str) -> dict:
+    """Only bounded list/detail queries; no arbitrary SQL, paths or disc IDs."""
+    from sonoscdplayer.metadata.library_index import validate_page, valid_token
+    if type(data) is not dict:
+        raise ValueError('invalid library request')
+    if operation == 'query' and set(data) == {'query', 'offset', 'limit'}:
+        query, offset, limit = validate_page(data['query'], data['offset'], data['limit'])
+        return {'command': 'library-query', 'query': query, 'offset': offset, 'limit': limit}
+    if operation == 'detail' and set(data) == {'token'} and valid_token(data['token']):
+        return {'command': 'library-detail', 'token': data['token']}
+    raise ValueError('invalid library request')

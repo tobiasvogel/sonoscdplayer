@@ -14,11 +14,12 @@ from pathlib import Path
 import re
 from urllib.parse import urlsplit, parse_qs
 
-from .player_client import PlayerClient, PlayerUnavailable, command_payload, metadata_edit_payload, release_payload, cover_payload
+from .player_client import PlayerClient, PlayerUnavailable, command_payload, metadata_edit_payload, release_payload, cover_payload, library_payload
 from .cover_upload import stage_upload, discard_upload
 from sonoscdplayer.metadata.manual_cover import MAX_UPLOAD_BYTES
 from .state import WebPreferences
 from .dashboard_projection import public_dashboard, public_release_detail
+from .library_projection import public_library
 
 
 STATIC = Path(__file__).resolve().parent / 'static'
@@ -114,6 +115,11 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                         player.request({'command': 'dashboard'}, timeout=3)))
                 except (PlayerUnavailable, ValueError):
                     return self._json(503, {'ok': False, 'error': 'Dashboard nicht erreichbar'})
+            if path == '/api/library':
+                try:
+                    return self._json(200, public_library(player.request({'command': 'library'}, timeout=3)))
+                except (PlayerUnavailable, ValueError):
+                    return self._json(503, {'ok': False, 'error': 'CD-Bibliothek nicht erreichbar'})
             if path == '/api/targets':
                 try:
                     result = player.request({'command': 'get-target'}, timeout=8)
@@ -166,7 +172,8 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
             path = urlsplit(self.path).path
             if path not in ('/api/command', '/api/theme', '/api/metadata',
                             '/api/releases/search', '/api/releases/select',
-                            '/api/cover/upload', '/api/cover/remove'):
+                            '/api/cover/upload', '/api/cover/remove',
+                            '/api/library/query', '/api/library/detail'):
                 return self._json(404, {'error': 'not found'})
             origin = self.headers.get('Origin')
             if origin:
@@ -218,6 +225,8 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                     return self._json(200, {'ok': True, 'theme': preferences.read()})
                 if path == '/api/metadata':
                     request = metadata_edit_payload(data)
+                elif path.startswith('/api/library/'):
+                    request = library_payload(data, path.rsplit('/', 1)[1])
                 elif path == '/api/cover/remove':
                     request = cover_payload(data, 'remove')
                 elif path.startswith('/api/releases/'):
@@ -235,7 +244,7 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
             # Hide raw player diagnostics containing installation-specific details.
             if not result.get('ok'):
                 return self._json(409, {'ok': False, 'error': 'Befehl vom Player abgelehnt; Status prüfen'})
-            if path in ('/api/metadata', '/api/cover/remove') or path.startswith('/api/releases/'):
+            if path in ('/api/metadata', '/api/cover/remove') or path.startswith(('/api/releases/', '/api/library/')):
                 return self._json(202, {'ok': True, 'queued': True})
             return self._json(200, {'ok': True})
 

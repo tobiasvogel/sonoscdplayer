@@ -659,6 +659,28 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     publisher.publish(controller, power)
                     return reply
 
+                if isinstance(request, dict) and request.get('command') in ('library-query', 'library-detail'):
+                    # Query scheduling only; SQLite runs in the metadata executor.
+                    if metadata_worker is None:
+                        reply = response(controller, ok=False, error='metadata unavailable')
+                    else:
+                        try:
+                            if request['command'] == 'library-query' and set(request) == {
+                                    'command', 'query', 'offset', 'limit'}:
+                                metadata_worker.enqueue_library(query=request['query'],
+                                    offset=request['offset'], limit=request['limit'])
+                            elif request['command'] == 'library-detail' and set(request) == {
+                                    'command', 'token'}:
+                                metadata_worker.enqueue_library(token=request['token'])
+                            else:
+                                raise ValueError('invalid library request')
+                            reply = response(controller, ok=True)
+                            reply['queued'] = True
+                        except (ValueError, RuntimeError) as exc:
+                            reply = response(controller, ok=False, error=str(exc))
+                    publisher.publish(controller, power)
+                    return reply
+
                 if isinstance(request, dict) and request.get('command') == 'reset-disc':
                     # forget the inserted CD's stored metadata and look it
                     # up again. No drive or Sonos access; playback is not touched.
@@ -820,6 +842,9 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                         send_reply(conn, publisher.read())
                     elif isinstance(request, dict) and request == {'command': 'dashboard'}:
                         send_reply(conn, dashboard.read())
+                    elif isinstance(request, dict) and request == {'command': 'library'}:
+                        send_reply(conn, metadata_worker.library_snapshot() if metadata_worker is not None
+                                   else {'ok': False, 'error': 'metadata unavailable'})
                     elif sum(1 for _, f in pending if not f.done()) >= MAX_WAITING_COMMANDS:
                         # While a long PLAY runs, do not collect button presses
                         # that would all run late.
