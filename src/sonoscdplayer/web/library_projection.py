@@ -56,6 +56,33 @@ def _manage(raw):
             'error': clean_text(raw.get('error'), 100)}
 
 
+
+def _maintenance(raw):
+    """Only bounded public usage statistics, never filesystem names."""
+    if type(raw) is not dict:
+        raw = {}
+    status = raw.get('status')
+    if status not in ('idle', 'working', 'ready', 'error'):
+        status = 'idle'
+    action = raw.get('action')
+    if action not in ('stats', 'bulk-delete', 'clear-all', 'prune-auto'):
+        action = None
+    seq = raw.get('seq')
+    changed = raw.get('changed_count')
+    stats = raw.get('stats')
+    public_stats = None
+    if type(stats) is dict:
+        limits = {'disc_count': 100000, 'auto_cover_count': 1000000,
+                  'manual_cover_count': 1000000, 'unused_auto_count': 1000000,
+                  'database_bytes': 2**50, 'cover_bytes': 2**50,
+                  'unused_auto_bytes': 2**50, 'budget_bytes': 2**50}
+        public_stats = {key: value if type(value) is int and 0 <= value <= bound else 0
+                        for key, bound in limits.items()
+                        for value in [stats.get(key)]}
+    return {'status': status, 'action': action,
+            'seq': seq if type(seq) is int and 0 <= seq <= 1_000_000_000 else 0,
+            'changed_count': changed if type(changed) is int and 0 <= changed <= 1000000 else 0,
+            'stats': public_stats, 'error': clean_text(raw.get('error'), 100)}
 def public_library(response):
     if type(response) is not dict or response.get('ok') is not True:
         raise ValueError('library unavailable')
@@ -83,4 +110,5 @@ def public_library(response):
                          if isinstance(entries, list) else [])) if item is not None],
             'detail': _entry(detail, detail=True) if detail is not None else None,
             'error': clean_text(raw.get('error'), 100),
-            'manage': _manage(raw.get('manage'))}}
+            'manage': _manage(raw.get('manage')),
+            'maintenance': _maintenance(raw.get('maintenance'))}}

@@ -152,6 +152,22 @@ def library_payload(data: dict, operation: str) -> dict:
     raise ValueError('invalid library request')
 
 
+
+
+def library_maintenance_payload(data):
+    """Whitelisted cache housekeeping; never accept paths or SQL from HTTP."""
+    from sonoscdplayer.metadata.library_maintenance import validate_maintenance
+    if type(data) is not dict or set(data) not in (
+            {'action'}, {'action', 'tokens'}, {'action', 'confirmation'}):
+        raise ValueError('invalid maintenance request')
+    action, tokens, confirmation = validate_maintenance(
+        data['action'], data.get('tokens'), data.get('confirmation'))
+    result = {'command': 'library-maintenance', 'action': action}
+    if action == 'bulk-delete':
+        result['tokens'] = list(tokens)
+    if confirmation is not None:
+        result['confirmation'] = confirmation
+    return result
 def library_manage_payload(data: dict) -> dict:
     """Explicit, bounded edits only; never pass SQL keys or file paths."""
     from sonoscdplayer.metadata.library_manage import validate_manage

@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlsplit, parse_qs
 
-from .player_client import PlayerClient, PlayerUnavailable, command_payload, metadata_edit_payload, release_payload, cover_payload, library_payload, library_manage_payload
+from .player_client import PlayerClient, PlayerUnavailable, command_payload, metadata_edit_payload, release_payload, cover_payload, library_payload, library_manage_payload, library_maintenance_payload
 from .cover_upload import stage_upload, discard_upload
 from sonoscdplayer.metadata.manual_cover import MAX_UPLOAD_BYTES
 from .state import WebPreferences
@@ -174,7 +174,7 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                             '/api/releases/search', '/api/releases/select',
                             '/api/cover/upload', '/api/cover/remove',
                             '/api/library/query', '/api/library/detail',
-                            '/api/library/manage'):
+                            '/api/library/manage', '/api/library/maintenance'):
                 return self._json(404, {'error': 'not found'})
             origin = self.headers.get('Origin')
             if origin:
@@ -228,6 +228,8 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                     request = metadata_edit_payload(data)
                 elif path == '/api/library/manage':
                     request = library_manage_payload(data)
+                elif path == '/api/library/maintenance':
+                    request = library_maintenance_payload(data)
                 elif path.startswith('/api/library/'):
                     request = library_payload(data, path.rsplit('/', 1)[1])
                 elif path == '/api/cover/remove':

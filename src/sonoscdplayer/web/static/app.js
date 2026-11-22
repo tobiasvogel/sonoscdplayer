@@ -614,6 +614,11 @@
   let libraryQuery = '';
   let libraryLastSeq = -1;
   const libraryLimit = 20;
+  const librarySelected = new Set();
+  let libraryMaintenanceSeq = -1;
+  let libraryMaintenancePending = null;
+  let libraryStats = null;
+  let librarySelectionQuery = "";
   function setLibraryStatus(text) { $('#library-status').textContent = text; }
   function libraryNode(tag, value, cls) {
     const node = document.createElement(tag);
@@ -627,6 +632,11 @@
     libraryQuery = query.trim();
     libraryOffset = offset;
     libraryDetail = null;
+    if (librarySelectionQuery !== libraryQuery) {
+      librarySelected.clear();
+      librarySelectionQuery = libraryQuery;
+    }
+    updateLibrarySelection();
     $('#library-detail').hidden = true;
     setLibraryStatus('Bibliothek wird durchsucht …');
     try {
@@ -638,6 +648,7 @@
   async function openLibrary() {
     await runLibraryQuery(libraryQuery, libraryOffset);
     pollLibrary();
+    requestLibraryMaintenance('stats');
   }
   // WEB-04b: the library editor never acts on the currently inserted disc.
   let libraryDetail = null;
@@ -759,11 +770,86 @@
     root.appendChild(lines);
     renderStoredEditor(entry);
   }
+
+  // WEB-04c: explicitly confirmed, bounded maintenance; every operation is
+  // scheduled by the player and executed on the existing metadata worker.
+  function updateLibrarySelection() {
+    const count = librarySelected.size;
+    $('#library-selected-count').textContent = count + ' CDs markiert';
+    $('#library-delete-selected').disabled = count === 0 || !!libraryMaintenancePending;
+    $('#library-selection-clear').disabled = count === 0 || !!libraryMaintenancePending;
+  }
+  function formatLibraryBytes(value) {
+    if (!Number.isSafeInteger(value) || value < 0) return '—';
+    return (value / (1024 * 1024)).toLocaleString('de-CH', {maximumFractionDigits: 2}) + ' MiB';
+  }
+  function renderLibraryStats(stats) {
+    if (!stats) return;
+    libraryStats = stats;
+    $('#library-stats').textContent =
+      `${stats.disc_count} CDs · Datenbank ${formatLibraryBytes(stats.database_bytes)} · ` +
+      `${stats.auto_cover_count} automatische / ${stats.manual_cover_count} eigene Covers · ` +
+      `Cover ${formatLibraryBytes(stats.cover_bytes)} von ${formatLibraryBytes(stats.budget_bytes)} · ` +
+      `${stats.unused_auto_count} unbenutzte automatische Covers (${formatLibraryBytes(stats.unused_auto_bytes)})`;
+    $('#library-prune-auto').disabled = !stats.unused_auto_count || !!editToken || !!libraryMaintenancePending;
+    $('#delete-all').disabled = !stats.disc_count || !!editToken || !!libraryMaintenancePending;
+  }
+  async function requestLibraryMaintenance(action, extra = {}) {
+    if (libraryBusy || (action !== 'stats' && libraryOutstanding) || libraryMaintenancePending) return;
+    libraryMaintenancePending = action;
+    updateLibrarySelection();
+    $('#library-maintenance-status').textContent = action === 'stats' ?
+      'Speicherübersicht wird geladen …' : 'Speicherverwaltung läuft …';
+    try {
+      await request('/api/library/maintenance', {action, ...extra});
+    } catch (error) {
+      libraryMaintenancePending = null;
+      updateLibrarySelection();
+      $('#library-maintenance-status').textContent = 'Speicherverwaltung: ' + error.message;
+    }
+  }
+  $('#library-selection-clear').addEventListener('click', () => {
+    librarySelected.clear();
+    document.querySelectorAll('#library-items input[type="checkbox"]').forEach(box => { box.checked = false; });
+    updateLibrarySelection();
+  });
+  $('#library-delete-selected').addEventListener('click', () => {
+    const tokens = [...librarySelected];
+    if (!tokens.length || tokens.length > 40 ||
+        !window.confirm(`${tokens.length} markierte CD-Einträge samt manuellen Textkorrekturen löschen? Covers bleiben erhalten.`)) return;
+    requestLibraryMaintenance('bulk-delete', {tokens});
+  });
+  $('#delete-all').addEventListener('click', () => {
+    const phrase = 'DELETE ALL METADATA';
+    const typed = window.prompt(`Wirklich alle CD-Metadaten und manuellen Textkorrekturen löschen? Die CD muss ausgeworfen und die Wiedergabe gestoppt sein. Gib exakt ${phrase} ein:`);
+    if (typed === phrase) requestLibraryMaintenance('clear-all', {confirmation: phrase});
+  });
+  $('#library-prune-auto').addEventListener('click', () => {
+    const n = libraryStats?.unused_auto_count || 0;
+    if (!n || !window.confirm(`${n} nicht mehr zugeordnete automatische Coverdateien löschen? Eigene Covers bleiben erhalten. CD auswerfen und Wiedergabe stoppen.`)) return;
+    requestLibraryMaintenance('prune-auto', {confirmation: 'DELETE UNUSED AUTO COVERS'});
+  });
+  $('#library-refresh-stats').addEventListener('click', () => requestLibraryMaintenance('stats'));
   function renderLibrary(data) {
     const root = $('#library-items');
     root.replaceChildren();
     const entries = Array.isArray(data.entries) ? data.entries : [];
     for (const disc of entries) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'library-select-row';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.setAttribute('aria-label', 'CD zur Löschung auswählen: ' + (disc.album || 'Unbekanntes Album'));
+      checkbox.disabled = disc.token === editToken;
+      checkbox.checked = librarySelected.has(disc.token);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked && librarySelected.size >= 40) {
+          checkbox.checked = false; toast('Maximal 40 CDs pro Löschvorgang.'); return;
+        }
+        if (checkbox.checked) librarySelected.add(disc.token);
+        else librarySelected.delete(disc.token);
+        updateLibrarySelection();
+      });
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'library-entry';
@@ -781,7 +867,8 @@
         catch (error) { setLibraryStatus('Details nicht verfügbar: ' + error.message); }
         finally { libraryBusy = false; }
       });
-      root.appendChild(button);
+      wrapper.append(checkbox, button);
+      root.appendChild(wrapper);
     }
     if (!entries.length) root.appendChild(libraryNode('p', 'Keine passenden CDs gespeichert.'));
     const total = Number.isInteger(data.total) ? data.total : 0;
@@ -794,6 +881,27 @@
     try {
       const reply = await request('/api/library');
       const data = reply.library || {};
+
+      const maintenance = data.maintenance || {};
+      if (Number.isInteger(maintenance.seq) && maintenance.seq > libraryMaintenanceSeq) {
+        libraryMaintenanceSeq = maintenance.seq;
+        if (maintenance.stats) renderLibraryStats(maintenance.stats);
+        if (libraryMaintenancePending && maintenance.action === libraryMaintenancePending &&
+            (maintenance.status === 'ready' || maintenance.status === 'error')) {
+          const finished = libraryMaintenancePending;
+          libraryMaintenancePending = null;
+          if (maintenance.status === 'ready' && finished !== 'stats') librarySelected.clear();
+          updateLibrarySelection();
+          $('#library-maintenance-status').textContent = maintenance.status === 'error' ?
+            (maintenance.error || 'Speicherverwaltung fehlgeschlagen.') :
+            (finished === 'stats' ? 'Speicherbelegung aktualisiert.' :
+              `${maintenance.changed_count || 0} Eintrag/Datei(en) verarbeitet.`);
+          if (maintenance.status === 'ready' && finished !== 'stats') {
+            await runLibraryQuery(libraryQuery, 0);
+            return;
+          }
+        }
+      }
       const manage = data.manage || {};
       if (Number.isInteger(manage.seq) && manage.seq > libraryManageSeq) {
         libraryManageSeq = manage.seq;

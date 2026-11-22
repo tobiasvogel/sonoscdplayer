@@ -660,6 +660,33 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     publisher.publish(controller, power)
                     return reply
 
+                if isinstance(request, dict) and request.get('command') == 'library-maintenance':
+                    # No SQLite or cover I/O on the serialized player worker.
+                    if metadata_worker is None:
+                        reply = response(controller, ok=False, error='metadata unavailable')
+                    else:
+                        try:
+                            from sonoscdplayer.metadata.library_maintenance import validate_maintenance
+                            required = {'command', 'action'}
+                            if set(request) not in (required, required | {'tokens'}, required | {'confirmation'}):
+                                raise ValueError('invalid maintenance request')
+                            action, tokens, confirmation = validate_maintenance(
+                                request['action'], request.get('tokens'), request.get('confirmation'))
+                            if action != 'stats':
+                                mode = getattr(getattr(controller, 'state', None), 'mode', None)
+                                if (mode != Mode.STOPPED or getattr(controller, 'owned_url', None) or
+                                        getattr(controller, '_joined', False) or
+                                        getattr(controller, '_group_uncertain', False)):
+                                    raise ValueError('stop playback and finish group cleanup first')
+                            metadata_worker.enqueue_library_maintenance(
+                                action=action, tokens=list(tokens) if action == 'bulk-delete' else None,
+                                confirmation=confirmation)
+                            reply = response(controller, ok=True)
+                            reply['queued'] = True
+                        except (ValueError, RuntimeError, TypeError, KeyError) as exc:
+                            reply = response(controller, ok=False, error=str(exc))
+                    publisher.publish(controller, power)
+                    return reply
                 if isinstance(request, dict) and request.get('command') == 'library-manage':
                     # Only scheduling and validation on the serialized player worker.
                     if metadata_worker is None:
