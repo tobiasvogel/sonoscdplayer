@@ -100,19 +100,16 @@
     const active = playing || paused || mode === 'STARTING';
     const current = Number(player.track) || 0;
     const count = Math.max(0, Math.min(99, Number(player.track_count) || 0));
-    const album = metadata.album || (count ? 'Audio-CD' : 'Keine CD erkannt');
-    const title = metadata.track_title || (current ? `Track ${current}` : 'Keine Wiedergabe');
-    const artist = metadata.track_artist || metadata.artist || '—';
-    $('#player-status').textContent = ({PLAYING:'WIEDERGABE', PAUSED:'PAUSIERT', STARTING:'WIRD GESTARTET', STOPPED:'GESTOPPT', ERROR:'FEHLER'})[mode] || mode;
+    const noDisc = mode === 'NO_DISC' || state.disc?.mode === 'NO_DISC';
+    const album = noDisc ? 'Keine CD eingelegt' : (metadata.album || (count ? 'Audio-CD' : 'Keine CD erkannt'));
+    const title = noDisc ? 'Keine Wiedergabe' : (metadata.track_title || (current ? `Track ${current}` : 'Keine Wiedergabe'));
+    const artist = noDisc ? '—' : (metadata.track_artist || metadata.artist || '—');
+    $('#player-status').textContent = ({NO_DISC:'KEINE CD', PLAYING:'WIEDERGABE', PAUSED:'PAUSIERT', STARTING:'WIRD GESTARTET', STOPPED:'GESTOPPT', ERROR:'FEHLER'})[mode] || mode;
     $('#track-title').textContent = title;
     $('#track-artist').textContent = artist;
-    $('#track-info').textContent = count ? `Titel ${current || 1} von ${count} · ${album}` : 'Keine abspielbare CD';
-    $('#art-album').textContent = `${album} · ${metadata.artist || 'Unbekannter Interpret'}`;
+    $('#track-info').textContent = noDisc ? 'Keine CD eingelegt' : (count ? `Titel ${current || 1} von ${count} · ${album}` : 'Keine abspielbare CD');
+    $('#art-album').textContent = noDisc ? album : `${album} · ${metadata.artist || 'Unbekannter Interpret'}`;
     $('#library-current').textContent = album;
-    $('#album').value = metadata.album || '';
-    $('#artist').value = metadata.artist || '';
-    $('#title2').value = metadata.track_title || '';
-    $('#meta-source').textContent = metadata.match_status || 'TOC / keine Angaben';
 
     $('#delete-disc').disabled = pending || !count;
 
@@ -124,13 +121,13 @@
     $('#duration').textContent = valid ? formattedTime(duration) : '—';
     $('.progress').value = valid ? Math.round(Math.min(100, 100 * elapsed / duration)) : 0;
 
-    const identity = [album, metadata.artist, state.has_cover].join('|');
+    const identity = [album, noDisc ? null : metadata.artist, !noDisc && state.has_cover].join('|');
     if (coverKey !== identity) {
       coverKey = identity;
       const img = $('#cover-image');
-      img.hidden = !state.has_cover;
-      img.src = state.has_cover ? '/api/cover?album=' + encodeURIComponent(album) : '';
-      $('#art-placeholder').hidden = !!state.has_cover;
+      img.hidden = noDisc || !state.has_cover;
+      img.src = !noDisc && state.has_cover ? '/api/cover?album=' + encodeURIComponent(album) : '';
+      $('#art-placeholder').hidden = !noDisc && !!state.has_cover;
       img.onerror = () => {img.hidden = true; $('#art-placeholder').hidden = false;};
     }
     const rejection = state.last_rejection || {};
@@ -193,6 +190,143 @@
       countSpeakers === 1 ? '1 Lautsprecher ausgewählt' : `${countSpeakers} Lautsprecher ausgewählt`;
   }
 
+  // WEB-03: Keep unsaved edits while the read-only dashboard keeps polling.
+  let editToken = null;
+  let editSnapshot = null;
+  let editTrack = 0;
+  let editDirty = false;
+  let editBusy = false;
+  let lastEditSeq = 0;
+  const editInputs = ['#album', '#artist', '#title2', '#meta-track-artist'];
+
+  function populateEditor() {
+    const info = editSnapshot;
+    if (!info) return;
+    const tracks = info.details.tracks || [];
+    const entry = tracks.find(item => item.number === editTrack) || {};
+    const values = [info.details.album || '', info.details.artist || '',
+      entry.title || '', entry.artist || ''];
+    editInputs.forEach((selector, i) => { $(selector).value = values[i]; });
+    editDirty = false;
+    $('#meta-save').disabled = false;
+    $('#meta-discard').disabled = true;
+  }
+
+  function renderEditor(status, details) {
+    // A transient dashboard timeout is not a CD change; keep the user's draft.
+    if (!details && Number(status?.player?.track_count) > 0) {
+      editInputs.forEach(selector => { $(selector).disabled = true; });
+      $('#meta-track-select').disabled = true;
+      $('#meta-save').disabled = true;
+      $('#meta-discard').disabled = true;
+      $('#meta-edit-status').textContent = 'Metadaten momentan nicht erreichbar';
+      return;
+    }
+    const token = typeof details?.edit_token === 'string' ? details.edit_token : null;
+    const count = Number(details?.track_count) || 0;
+    const currentNumber = Number(status?.player?.track) || 0;
+    const dashboardTitle = details?.tracks?.[currentNumber - 1]?.title;
+    const mismatched = (details?.album && status?.metadata?.album &&
+        details.album !== status.metadata.album) ||
+      (dashboardTitle && status?.metadata?.track_title &&
+        dashboardTitle !== status.metadata.track_title);
+    if (mismatched) {
+      // Status and dashboard are separate cached reads and may briefly disagree.
+      // Keep the draft, but never allow an edit while the snapshots disagree.
+      editInputs.forEach(selector => { $(selector).disabled = true; });
+      $('#meta-track-select').disabled = true;
+      $('#meta-save').disabled = true;
+      $('#meta-discard').disabled = true;
+      $('#meta-edit-status').textContent = 'Metadaten werden synchronisiert …';
+      return;
+    }
+    const available = !!token && count > 0 && status?.player?.track_count === count;
+    const newDisc = token !== editToken;
+    if (newDisc) {
+      if (editDirty) toast('CD wurde gewechselt – ungespeicherte Eingaben verworfen.');
+      editToken = token;
+      editDirty = false;
+      lastEditSeq = Number(details?.edit_seq) || 0;
+      editTrack = 0;
+    }
+    editSnapshot = available ? {status, details} : null;
+    if (available && (Number(details.edit_seq) || 0) > lastEditSeq) {
+      lastEditSeq = details.edit_seq;
+      if (details.edit_error) toast('Speichern fehlgeschlagen. Bitte Status prüfen.');
+    }
+    editInputs.forEach(selector => { $(selector).disabled = !available || editBusy; });
+    $('#meta-track-select').disabled = !available || editBusy;
+    $('#meta-save').disabled = !available || editBusy;
+    $('#meta-discard').disabled = !available || editBusy || !editDirty;
+    if (!available) {
+      $('#meta-edit-status').textContent = 'Kein bearbeitbarer CD-Eintrag verfügbar';
+      $('#meta-source').textContent = status?.player?.mode === 'NO_DISC' || status?.disc?.mode === 'NO_DISC' ? 'Keine CD' : 'Nicht verfügbar';
+      $('#album').placeholder = status?.player?.mode === 'NO_DISC' || status?.disc?.mode === 'NO_DISC' ? 'Keine CD eingelegt' : 'Albumtitel';
+      $('#meta-track-select').replaceChildren();
+      editInputs.forEach(selector => { $(selector).value = ''; });
+      return;
+    }
+    $('#album').placeholder = 'Albumtitel';
+    if (newDisc || !editTrack || editTrack > count) {
+      editTrack = Math.max(1, Math.min(count, Number(status.player?.track) || 1));
+      const select = $('#meta-track-select');
+      select.replaceChildren();
+      for (let n = 1; n <= count; n++) {
+        const option = document.createElement('option');
+        option.value = String(n);
+        option.textContent = `${n}. ${details.tracks?.[n - 1]?.title || 'Track ' + n}`;
+        select.appendChild(option);
+      }
+      select.value = String(editTrack);
+    }
+    if (!editDirty && !editBusy) populateEditor();
+    const manual = Array.isArray(details.manual_fields) ? details.manual_fields : [];
+    $('#meta-source').textContent = manual.length ? 'Manuell korrigiert' :
+      (details.metadata_source || status.metadata?.match_status || 'TOC');
+    $('#meta-edit-status').textContent = editDirty ? 'Ungespeicherte Änderungen' :
+      `${manual.length} manuelle Feldkorrektur(en) gespeichert`;
+  }
+
+  editInputs.forEach(selector => $(selector).addEventListener('input', () => {
+    editDirty = true;
+    $('#meta-discard').disabled = false;
+    $('#meta-edit-status').textContent = 'Ungespeicherte Änderungen';
+  }));
+  $('#meta-discard').addEventListener('click', () => populateEditor());
+  $('#meta-track-select').addEventListener('change', event => {
+    if (editDirty) toast('Ungespeicherte Änderungen wurden verworfen.');
+    editTrack = Number(event.target.value);
+    populateEditor();
+  });
+  $('#meta-save').addEventListener('click', async () => {
+    if (!editSnapshot || !editToken || editBusy) return;
+    const {status, details} = editSnapshot;
+    const row = details.tracks?.find(item => item.number === editTrack) || {};
+    const fields = [
+      ['album', null, details.album || '', $('#album').value],
+      ['artist', null, details.artist || '', $('#artist').value],
+      ['track_title', editTrack, row.title || '', $('#title2').value],
+      ['track_artist', editTrack, row.artist || '', $('#meta-track-artist').value],
+    ];
+    const edits = fields.filter(([field, n, before, after]) => before !== after)
+      .map(([field, track, _before, text]) => ({token: editToken, field,
+        ...(track ? {track} : {}), value: text.trim() || null}));
+    if (!edits.length) { editDirty = false; toast('Keine Änderungen vorhanden.'); return; }
+    editBusy = true;
+    $('#meta-save').disabled = true;
+    $('#meta-discard').disabled = true;
+    try {
+      for (const edit of edits) await request('/api/metadata', edit);
+      editDirty = false;
+      toast('Korrekturen angenommen. Anzeige wird aktualisiert …');
+      await refresh();
+    } catch (error) {
+      toast('Korrektur nicht vollständig gespeichert: ' + error.message);
+    } finally {
+      editBusy = false;
+    }
+  });
+
   async function refresh() {
     try {
       const state = await request('/api/status');
@@ -205,6 +339,7 @@
       let details = null;
       try { details = await request('/api/dashboard'); } catch (_) { /* Old player: placeholders remain. */ }
       renderDashboard(details, state);
+      renderEditor(state, details);
     } catch (_) {
       $('#connection-label').textContent = 'Player nicht erreichbar';
       $('#device-reachable').textContent = 'Keine Verbindung';
@@ -228,6 +363,7 @@
       $('#art-placeholder').hidden = false;
       coverKey = '';
       $('#delete-disc').disabled = true;
+      renderEditor(null, null);
     }
   }
 

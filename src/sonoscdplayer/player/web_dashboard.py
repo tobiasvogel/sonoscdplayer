@@ -106,6 +106,7 @@ class DashboardPublisher:
                 # A name-discovery failure must not prevent CD playback.
                 self._pending = None
         tracks = dashboard_tracks(controller)
+        metadata = controller.metadata_snapshot if isinstance(controller.metadata_snapshot, dict) else {}
         reply = {
             'ok': True,
             'dashboard': {
@@ -115,6 +116,13 @@ class DashboardPublisher:
                 'speaker_count': len(uids),
                 'target_rev': getattr(controller, 'target_rev', 0),
                 'playing_on_selection': playing,
+                'album': metadata.get('album'),
+                'artist': metadata.get('artist'),
+                'edit_token': metadata.get('edit_token'),
+                'manual_fields': metadata.get('manual_fields', []),
+                'metadata_source': metadata.get('metadata_source'),
+                'edit_error': metadata.get('edit_error'),
+                'edit_seq': metadata.get('edit_seq', 0),
             },
         }
         with self._lock:

@@ -23,6 +23,7 @@ from sonoscdplayer.metadata.musicbrainz import identity_from_toc, lookup_disc
 from sonoscdplayer.metadata.cover_preferences import read_cover_preferences
 from sonoscdplayer.metadata.gnudb import query_disc as query_gnudb, read_entry as read_gnudb
 from sonoscdplayer.metadata.gnudb_fallback import resolve_fallback
+from sonoscdplayer.metadata.manual_edits import ManualEdits, apply_edits, disc_token, validate_edit
 
 
 def matching_policy_from_config(metadata):
@@ -214,7 +215,7 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                 except Exception:
                     pass
                 break
-    return {
+    snapshot = {
         'disc_id': identity.disc_id,
         'album': effective.album,
         'artist': effective.artist,
@@ -232,7 +233,14 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
         'cdtext_status': local.cdtext_status,
         'lookup_status': lookup_status,
         'lookup_error': lookup_error,
+        'edit_token': disc_token(identity),
     }
+    try:
+        edits = ManualEdits(cache.path).get(identity)
+    except Exception:
+        # Manual cache corruption must not hide verified CD-TEXT or music data.
+        edits = {}
+    return apply_edits(snapshot, edits)
 
 
 class MetadataWorker:
@@ -246,6 +254,8 @@ class MetadataWorker:
                  gnudb_enabled=False, gnudb_timeout=5,
                  gnudb_query=query_gnudb, gnudb_read=read_gnudb):
         self._cache = DiscCache(cache_path)
+        self._manual = ManualEdits(cache_path)
+        self._edit_jobs = []
         self._cover = CoverStore(cover_dir)
         self._policy = matching_policy or MatchingPolicy()
         self._cover_policy = read_cover_preferences(ui_path).download_policy(
@@ -305,22 +315,65 @@ class MetadataWorker:
             # Even corrupt caches or inaccessible services must not block PLAY.
             return None
 
+    def enqueue_edit(self, *, token, field, track=None, value=None):
+        """Queue a disc-qualified edit without blocking player or audio control."""
+        field, track, value = validate_edit(field, track, value)
+        if not isinstance(token, str) or len(token) != 32:
+            raise ValueError('invalid disc token')
+        if self._last_toc is None or self._result is None:
+            raise ValueError('no identified disc ready for editing')
+        identity = self._identify(self._last_toc)  # cached TOC only; no drive I/O
+        if disc_token(identity) != token or self._result.get('edit_token') != token:
+            raise ValueError('disc changed; reload metadata')
+        if track is not None and track not in {entry['number'] for entry in self._result.get('tracks', ())}:
+            raise ValueError('track not on this disc')
+        if len(self._edit_jobs) >= 8:
+            raise RuntimeError('too many pending metadata edits')
+        future = self._executor.submit(self._manual.set, identity,
+                                       field=field, track=track, value=value)
+        self._edit_jobs.append((token, future))
+
+    def _consume_edits(self):
+        changed = False
+        pending = []
+        for token, future in self._edit_jobs:
+            if not future.done():
+                pending.append((token, future))
+                continue
+            try:
+                fields = future.result()
+            except Exception as exc:
+                print(f'[metadata] manual edit failed: {type(exc).__name__}', flush=True)
+                if self._result is not None and self._result.get('edit_token') == token:
+                    self._result['edit_error'] = 'Metadaten konnten nicht gespeichert werden'
+                    self._result['edit_seq'] = self._result.get('edit_seq', 0) + 1
+                    changed = True
+                continue
+            if self._result is not None and self._result.get('edit_token') == token:
+                self._result = apply_edits(self._result, fields)
+                self._result['edit_seq'] = self._result.get('edit_seq', 0) + 1
+                self._result['edit_error'] = None
+                changed = True
+        self._edit_jobs = pending
+        return changed
+
     def poll(self, toc):
         """Never waits. Consume the result only for the currently verified TOC."""
+        edited = self._consume_edits()
         if (self._pending is None and self._retry_at is not None
                 and toc == self._last_toc and self._clock() >= self._retry_at):
             self._retry_at = None
             self._submit(toc)
-            return False
+            return edited
         if self._pending is None or not self._pending.done():
-            return False
+            return edited
         pending, expected = self._pending, self._pending_toc
         self._pending, self._pending_toc = None, None
         if toc != expected or toc != self._last_toc:
-            return False
+            return edited
         value = pending.result()
         if value is None:
-            return False
+            return edited
         if (value.get('lookup_status') in _RETRY_STATUSES
                 and self._retries < len(self._retry_delays)):
             # A few later attempts per disc, further apart; never a loop.
@@ -338,7 +391,11 @@ class MetadataWorker:
         toc = self._last_toc
         if toc is None:
             raise ValueError('no disc inserted')
-        self._cache.delete(self._identify(toc))
+        if self._edit_jobs:
+            raise RuntimeError('manual edits still pending')
+        identity = self._identify(toc)
+        self._manual.delete(identity)
+        self._cache.delete(identity)
         self._result = None
         self._retry_at, self._retries = None, 0
         self._submit(toc)

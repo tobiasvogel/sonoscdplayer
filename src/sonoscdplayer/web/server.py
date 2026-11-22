@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlsplit
 
-from .player_client import PlayerClient, PlayerUnavailable, command_payload
+from .player_client import PlayerClient, PlayerUnavailable, command_payload, metadata_edit_payload
 from .state import WebPreferences
 from .dashboard_projection import public_dashboard
 
@@ -147,7 +147,7 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
 
         def do_POST(self):
             path = urlsplit(self.path).path
-            if path not in ('/api/command', '/api/theme'):
+            if path not in ('/api/command', '/api/theme', '/api/metadata'):
                 return self._json(404, {'error': 'not found'})
             origin = self.headers.get('Origin')
             if origin:
@@ -168,7 +168,7 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                         raise ValueError('theme is required')
                     preferences.set_theme(data['theme'])
                     return self._json(200, {'ok': True, 'theme': preferences.read()})
-                request = command_payload(data)
+                request = metadata_edit_payload(data) if path == '/api/metadata' else command_payload(data)
             except (ValueError, TypeError):
                 return self._json(400, {'ok': False, 'error': 'Ungültige Eingabe'})
             except OSError:
@@ -180,6 +180,8 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
             # Hide raw player diagnostics containing installation-specific details.
             if not result.get('ok'):
                 return self._json(409, {'ok': False, 'error': 'Befehl vom Player abgelehnt; Status prüfen'})
+            if path == '/api/metadata':
+                return self._json(202, {'ok': True, 'queued': True})
             return self._json(200, {'ok': True})
 
     return Handler

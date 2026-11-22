@@ -52,4 +52,16 @@ def public_dashboard(response):
         'speaker_count': selected_count,
         'target_rev': payload.get('target_rev') if type(payload.get('target_rev')) is int else None,
         'playing_on_selection': payload.get('playing_on_selection') is True,
+        'edit_token': (payload.get('edit_token') if isinstance(payload.get('edit_token'), str)
+                       and len(payload['edit_token']) == 32 and
+                       all(char in '0123456789abcdef' for char in payload['edit_token']) else None),
+        'manual_fields': ([field for field in payload.get('manual_fields', [])[:200]
+                           if isinstance(field, str) and len(field) <= 24]
+                          if isinstance(payload.get('manual_fields'), list) else []),
+        'metadata_source': _text(payload.get('metadata_source'), 40),
+        'album': _text(payload.get('album')),
+        'artist': _text(payload.get('artist')),
+        'edit_error': _text(payload.get('edit_error'), 80),
+        'edit_seq': (payload.get('edit_seq') if type(payload.get('edit_seq')) is int
+                     and payload['edit_seq'] >= 0 else 0),
     }

@@ -586,6 +586,25 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     if metadata_worker.observe(current_toc, current_text):
                         controller.metadata_snapshot = None
 
+                if isinstance(request, dict) and request.get('command') == 'edit-metadata':
+                    # Validation and scheduling only; SQLite I/O stays off this worker.
+                    if set(request) - {'command', 'token', 'field', 'track', 'value'} or not all(
+                            key in request for key in ('token', 'field', 'value')):
+                        reply = response(controller, ok=False, error='invalid metadata edit keys')
+                    elif metadata_worker is None:
+                        reply = response(controller, ok=False, error='metadata unavailable')
+                    else:
+                        try:
+                            metadata_worker.enqueue_edit(token=request['token'],
+                                field=request['field'], track=request.get('track'),
+                                value=request['value'])
+                            reply = response(controller, ok=True)
+                            reply['queued'] = True
+                        except (ValueError, RuntimeError) as exc:
+                            reply = response(controller, ok=False, error=str(exc))
+                    publisher.publish(controller, power)
+                    return reply
+
                 if isinstance(request, dict) and request.get('command') == 'reset-disc':
                     # forget the inserted CD's stored metadata and look it
                     # up again. No drive or Sonos access; playback is not touched.

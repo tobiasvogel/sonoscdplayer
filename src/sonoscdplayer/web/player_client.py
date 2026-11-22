@@ -82,3 +82,20 @@ def command_payload(data: dict) -> dict:
             raise ValueError('invalid target fields')
         return {'command': command, 'uid': uid, 'members': members}
     raise ValueError('unsupported command')
+
+
+def metadata_edit_payload(data: dict) -> dict:
+    """Bounded, single-field edit forwarded to the player with disc identity proof."""
+    from sonoscdplayer.metadata.manual_edits import validate_edit
+    if not isinstance(data, dict) or set(data) - {'token', 'field', 'track', 'value'}:
+        raise ValueError('invalid metadata edit fields')
+    token = data.get('token')
+    if not isinstance(token, str) or len(token) != 32 or any(c not in '0123456789abcdef' for c in token):
+        raise ValueError('invalid disc token')
+    if 'value' not in data or 'field' not in data:
+        raise ValueError('missing metadata value or field')
+    field, track, value = validate_edit(data['field'], data.get('track'), data['value'])
+    result = {'command': 'edit-metadata', 'token': token, 'field': field, 'value': value}
+    if track is not None:
+        result['track'] = track
+    return result
