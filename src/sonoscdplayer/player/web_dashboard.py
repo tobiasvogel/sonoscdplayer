@@ -40,8 +40,9 @@ def discover_names(uids):
 
 def dashboard_tracks(controller):
     """Present cached titles only; never inspect the drive or load SQLite."""
-    numbers = tuple(getattr(controller.state, 'track_numbers', ()) or ())[:99]
-    metadata = controller.metadata_snapshot or {}
+    state = getattr(controller, 'state', None)
+    numbers = tuple(getattr(state, 'track_numbers', ()) or ())[:99]
+    metadata = getattr(controller, 'metadata_snapshot', None) or {}
     if not isinstance(metadata, dict):
         metadata = {}
     raw_tracks = metadata.get('tracks') or ()
@@ -80,7 +81,9 @@ class DashboardPublisher:
         # The player follows app group changes via the selection_hook. When
         # ownership is active, show that known group rather than the last idle
         # selection, but never claim to be playing in STOPPED mode.
-        playing = bool(controller.owned_url) and controller.state.mode.value in ('PLAYING', 'PAUSED', 'STARTING')
+        state = getattr(controller, 'state', None)
+        mode = getattr(getattr(state, 'mode', None), 'value', None)
+        playing = bool(getattr(controller, 'owned_url', None)) and mode in ('PLAYING', 'PAUSED', 'STARTING')
         uids = selected
         if playing and getattr(controller, 'uid', None):
             uids = (controller.uid,) + tuple(uid for uid in selected if uid != controller.uid)
@@ -106,7 +109,9 @@ class DashboardPublisher:
                 # A name-discovery failure must not prevent CD playback.
                 self._pending = None
         tracks = dashboard_tracks(controller)
-        metadata = controller.metadata_snapshot if isinstance(controller.metadata_snapshot, dict) else {}
+        metadata = getattr(controller, 'metadata_snapshot', None)
+        if not isinstance(metadata, dict):
+            metadata = {}
         reply = {
             'ok': True,
             'dashboard': {
