@@ -118,7 +118,10 @@ def test_public_dashboard_has_titles_and_names_not_private_ids():
                    {'number': 3, 'title': None, 'artist': None}],
         'speaker_names': ['Kitchen', 'Living room'],
         'speaker_count': 2,
-        'playing_on_selection': True, 'target_rev': 4}
+        'playing_on_selection': True, 'target_rev': 4,
+        # WEB-03a: absent edit data is still represented by the public API.
+        'edit_token': None, 'manual_fields': [], 'metadata_source': None,
+        'album': None, 'artist': None, 'edit_error': None, 'edit_seq': 0}
     assert 'RINCON_' not in str(result)
     assert '/fixture-private/' not in str(result)
 
