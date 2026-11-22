@@ -688,23 +688,77 @@ class TrackExecuteTests(unittest.TestCase):
         self.assertEqual(sends, issued)
         self.assertIn('not retrying', reports[0])
 
-    def test_busy_second_press_dropped(self):
-        entered, release, done = (threading.Event() for _ in range(3))
-        sends = []
+    def busy_executor(self, mode_after='STOPPED'):
+        """An executor whose first status read waits until released.
+
+        Returns (executor, entered, release, sends).
+        """
+        entered, release = threading.Event(), threading.Event()
+        sends, reads = [], []
         def reader(path, command):
             if command == 'status':
-                entered.set()
-                release.wait(2)
-                return status()
+                reads.append(command)
+                if len(reads) == 1:
+                    entered.set()
+                    release.wait(2)
+                    return status('STOPPED', False, False)
+                return status(mode_after, mode_after != 'STOPPED', mode_after != 'STOPPED')
             return target()
         executor = SelectedTargetExecutor('/offline', reader=reader,
-                   sender=lambda *args: sends.append(args),
-                   report=lambda _: done.set())
+                   sender=lambda *args: sends.append(args), report=lambda _: None)
+        return executor, entered, release, sends
+
+    def wait_idle(self, executor):
+        for _ in range(200):
+            with executor._lock:
+                if not executor._busy:
+                    return
+            threading.Event().wait(0.01)
+        self.fail('executor did not become idle')
+
+    def test_presses_while_busy_are_counted_and_sent_while_stopped(self):
+        executor, entered, release, sends = self.busy_executor()
         self.assertTrue(executor.submit('next'))
         self.assertTrue(entered.wait(2))
-        self.assertFalse(executor.submit('previous'))
+        for _ in range(4):
+            self.assertTrue(executor.submit('next'))
+        self.assertTrue(executor.submit('previous'))
         release.set()
-        self.assertTrue(done.wait(2))
+        self.wait_idle(executor)
+        # 1 press, then the net +3 of the presses made meanwhile, one by one.
+        self.assertEqual(sends, [('/offline', 'next', None)] * 4)
+
+    def test_presses_while_busy_add_up_with_direction(self):
+        for extra, expected in ((['previous', 'previous'], ['next', 'previous', 'previous']),
+                                (['next', 'previous'], ['next'])):
+            with self.subTest(extra=extra):
+                executor, entered, release, sends = self.busy_executor()
+                self.assertTrue(executor.submit('next'))
+                self.assertTrue(entered.wait(2))
+                for action in extra:
+                    self.assertTrue(executor.submit(action))
+                release.set()
+                self.wait_idle(executor)
+                self.assertEqual(sends, [('/offline', a, None) for a in expected])
+
+    def test_counted_presses_dropped_once_playback_started(self):
+        # Playback behaviour is unchanged: no queued jumps on Sonos.
+        executor, entered, release, sends = self.busy_executor(mode_after='PLAYING')
+        self.assertTrue(executor.submit('next'))
+        self.assertTrue(entered.wait(2))
+        self.assertTrue(executor.submit('next'))
+        release.set()
+        self.wait_idle(executor)
+        self.assertEqual(sends, [('/offline', 'next', None)])
+
+    def test_other_busy_presses_still_dropped(self):
+        executor, entered, release, sends = self.busy_executor()
+        self.assertTrue(executor.submit('next'))
+        self.assertTrue(entered.wait(2))
+        for action in ('playpause', 'stop', 'eject'):
+            self.assertFalse(executor.submit(action))
+        release.set()
+        self.wait_idle(executor)
         self.assertEqual(sends, [('/offline', 'next', None)])
 
     def test_gpio_events_and_release_mapping(self):

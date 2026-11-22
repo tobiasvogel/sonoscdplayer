@@ -6,6 +6,11 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- NEXT and PREVIOUS on the device react at once while the player is
+  stopped: the track number counts up or down immediately, the drive is no
+  longer woken for it (only PLAY wakes it and reads the chosen track), and
+  presses made in quick succession are no longer lost. During playback the
+  buttons behave as before.
 - Fixes from a second code audit: the track server's log lines no longer
   pile up in memory during playback; a wrong password for an already saved
   WLAN no longer deletes the working profile; cancelling the WLAN setup in

@@ -102,8 +102,8 @@ SonosCDPlayer supports conventional CD playback controls through configurable ph
 | --- | --- |
 | Play / Pause | Start, pause, or resume CD playback |
 | Stop | Stop the player's CD playback |
-| Next | Select or play the next track |
-| Previous | Select or play the previous track |
+| Next | Select or play the next track (stopped: counts up at once, without waking the drive) |
+| Previous | Select or play the previous track (stopped: counts down at once, without waking the drive) |
 | Eject | Open the drive tray when the required safety conditions are met |
 | Volume + / − | Change the Sonos volume in steps of 1 (the whole group when grouped); hold to repeat. Works during the player's own playback, or before playback on a selected speaker that is not playing anything |
 | Rotary encoder | Navigate the display interface |
