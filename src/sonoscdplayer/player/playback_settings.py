@@ -70,8 +70,10 @@ def _read(state_dir):
     path = Path(state_dir) / FILE_NAME
     try:
         fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))
-    except (FileNotFoundError, OSError):
+    except FileNotFoundError:
         return {}, 'none'
+    except OSError:
+        return {}, 'invalid'
     try:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_BYTES:

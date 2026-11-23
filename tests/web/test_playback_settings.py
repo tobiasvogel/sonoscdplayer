@@ -142,6 +142,31 @@ def test_rejects_symlink_state_and_invalid_base(tmp_path):
     assert not (state / FILE_NAME).is_file() or (state / FILE_NAME).is_symlink()
 
 
+def test_unreadable_state_is_not_treated_as_missing(tmp_path, monkeypatch):
+    """Unreadable state cannot be mistaken for an absent overlay."""
+    from unittest.mock import patch
+    from sonoscdplayer.player import playback_settings
+
+    _, state = configured(tmp_path)
+    path = state / FILE_NAME
+    path.write_text('existing state', encoding='utf-8')
+    original_open = playback_settings.os.open
+
+    def denied_open(target, flags, *args, **kwargs):
+        if Path(target) == path:
+            raise PermissionError('read denied')
+        return original_open(target, flags, *args, **kwargs)
+
+    with patch.object(playback_settings.os, 'open', side_effect=denied_open):
+        assert read_overrides(state) == ({}, 'invalid')
+        settings, revision = merged(BASE, state_dir=state)
+        assert settings == BASE
+        assert revision == 'invalid'
+        with pytest.raises(ValueError, match='invalid stored settings'):
+            update(BASE, state, command(state))
+    assert path.read_text(encoding='utf-8') == 'existing state'
+
+
 def test_uses_runtime_default_true_for_missing_optional_booleans():
     data = {'streaming': {'max_buffer_mib': 16}}
     assert base_values(data) == {'sonos.use_queue': True,
