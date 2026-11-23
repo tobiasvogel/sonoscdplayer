@@ -477,5 +477,7 @@
   "web.settings.yes": "Yes",
   "web.settings.no": "No",
   "web.settings.unavailable": "Device settings are currently unavailable.",
-  "web.api.settings_unavailable": "Device settings unavailable"
+  "web.api.settings_unavailable": "Device settings unavailable",
+  "web.settings.invalid": "Invalid configuration value",
+  "web.settings.invalid_notice": "Some configured values are invalid and were not used. Other settings remain visible."
 }

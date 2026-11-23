@@ -477,5 +477,7 @@
   "web.settings.yes": "Ja",
   "web.settings.no": "Nein",
   "web.settings.unavailable": "Einstellungen sind derzeit nicht lesbar.",
-  "web.api.settings_unavailable": "Geräteeinstellungen nicht verfügbar"
+  "web.api.settings_unavailable": "Geräteeinstellungen nicht verfügbar",
+  "web.settings.invalid": "Ungültiger Konfigurationswert",
+  "web.settings.invalid_notice": "Einzelne konfigurierte Werte sind ungültig und wurden nicht übernommen. Andere Werte werden weiterhin angezeigt."
 }

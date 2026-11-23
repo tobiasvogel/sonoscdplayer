@@ -83,6 +83,43 @@ def test_invalid_declared_field_cannot_be_misrepresented(tmp_path):
     config, state = sample_files(tmp_path)
     player = config / 'player.toml'
     player.write_text('[playback]\ncontinue = "maybe"\n', encoding='utf-8')
+    result = settings_snapshot(config_root=config, state_root=state)
+    assert by_key(result, 'playback.continue')['source'] == 'invalid'
+    assert by_key(result, 'playback.continue')['value'] is None
+    assert by_key(result, 'playback.continue')['base'] is None
+    assert result['invalid_keys'] == ['playback.continue']
+    assert by_key(result, 'sonos.use_queue')['source'] == 'default'
+    assert 'maybe' not in json.dumps(result)
+
+
+def test_broken_unrelated_setting_does_not_hide_playback_values(tmp_path):
+    config, state = sample_files(tmp_path)
+    player = config / 'player.toml'
+    player.write_text(player.read_text(encoding='utf-8') +
+                      '[led_outputs]\nbrightness = "not-a-number"\n', encoding='utf-8')
+    result = settings_snapshot(config_root=config, state_root=state)
+    assert by_key(result, 'streaming.max_buffer_mib')['value'] == 64
+    assert by_key(result, 'sonos.use_queue')['value'] is False
+    assert by_key(result, 'playback.continue')['value'] is True
+    assert by_key(result, 'led_outputs.brightness')['source'] == 'invalid'
+    assert result['invalid_keys'] == ['led_outputs.brightness']
+    assert 'not-a-number' not in json.dumps(result)
+
+
+def test_valid_saved_language_wins_even_if_toml_language_invalid(tmp_path):
+    config, state = sample_files(tmp_path)
+    (config / 'ui.toml').write_text('[ui]\nlanguage = "not-supported"\n', encoding='utf-8')
+    result = settings_snapshot(config_root=config, state_root=state)
+    assert by_key(result, 'ui.language')['value'] == 'en'
+    assert by_key(result, 'ui.language')['source'] == 'state'
+    assert by_key(result, 'ui.language')['base'] is None
+    assert result['invalid_keys'] == ['ui.language']
+    assert 'not-supported' not in json.dumps(result)
+
+
+def test_missing_required_player_document_is_still_rejected(tmp_path):
+    config, state = sample_files(tmp_path)
+    (config / 'player.toml').unlink()
     with pytest.raises(SettingsUnavailable):
         settings_snapshot(config_root=config, state_root=state)
 
@@ -105,7 +142,14 @@ def test_http_settings_is_read_only_and_no_player_rpc(tmp_path, monkeypatch):
             payload = json.load(response)
             assert by_key(payload, 'ui.language')['value'] == 'en'
             assert response.headers['Cache-Control'] == 'no-store'
-        (config / 'player.toml').write_text('{invalid', encoding='utf-8')
+        player = config / 'player.toml'
+        player.write_text(player.read_text(encoding='utf-8') +
+                          '[led_outputs]\nbrightness = "invalid"\n', encoding='utf-8')
+        with urlopen(url, timeout=3) as response:
+            partial = json.load(response)
+        assert by_key(partial, 'sonos.use_queue')['value'] is False
+        assert partial['invalid_keys'] == ['led_outputs.brightness']
+        player.write_text('{invalid', encoding='utf-8')
         with pytest.raises(HTTPError) as error:
             urlopen(url, timeout=3)
         assert error.value.code == 503

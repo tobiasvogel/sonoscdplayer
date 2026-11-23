@@ -225,6 +225,7 @@ def settings_snapshot(*, config_root=None, state_root=None):
         theme = None
 
     rows = []
+    invalid_keys = []
     for filename, document, names in (
         ('player.toml', player, PLAYER_FIELDS),
         ('ui.toml', ui, UI_FIELDS),
@@ -233,7 +234,18 @@ def settings_snapshot(*, config_root=None, state_root=None):
         for identifier in names:
             base = _value(document, identifier)
             if base is not None and not _valid_config(identifier, base):
-                raise SettingsUnavailable('invalid configured setting')
+                # An invalid *individual* setting must never hide otherwise
+                # valid playback settings. Never publish its original value.
+                invalid_keys.append(identifier)
+                if identifier == 'ui.language' and saved_language is not None:
+                    rows.append(_row(filename, identifier, None,
+                                     override=saved_language, has_override=True))
+                else:
+                    rows.append({'file': filename, 'key': identifier, 'base': None,
+                                 'value': None, 'source': 'invalid',
+                                 'origin_file': filename, 'stored_override': False,
+                                 'runtime_verified': False})
+                continue
             if base is None and identifier not in KNOWN_DEFAULTS and not (
                     identifier == 'ui.language' and saved_language is not None):
                 continue
@@ -245,4 +257,4 @@ def settings_snapshot(*, config_root=None, state_root=None):
     rows.append(_row('web.json', 'web.appearance.theme', None,
                      override=theme, has_override=theme is not None))
     return {'ok': True, 'settings': rows, 'read_only': True,
-            'runtime_verified': False}
+            'runtime_verified': False, 'invalid_keys': invalid_keys}

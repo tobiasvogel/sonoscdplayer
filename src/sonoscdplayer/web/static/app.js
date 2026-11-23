@@ -125,7 +125,8 @@
   }
   function settingsOrigin(row) {
     const source = ({config: 'web.settings.config', state: 'web.settings.state',
-      default: 'web.settings.default', unknown: 'web.settings.unknown'})[row.source];
+      default: 'web.settings.default', invalid: 'web.settings.invalid',
+      unknown: 'web.settings.unknown'})[row.source];
     const label = tr(source || 'web.settings.unknown') +
       (row.origin_file ? ' (' + row.origin_file + ')' : '');
     return row.source === 'state' ? label + ' · ' + tr('web.settings.base') + ': ' +
@@ -134,7 +135,11 @@
   function settingsField(id, row, optionValues) {
     const element = $(id);
     if (!element) return;
-    if (!row) { element.value = ''; element.disabled = true; return; }
+    if (!row) {
+      element.value = ''; element.disabled = true;
+      element.closest('.field')?.querySelector('.settings-field-origin')?.remove();
+      return;
+    }
     if (optionValues) {
       optionValues.forEach((value, index) => {
         if (element.options[index]) element.options[index].value = String(value);
@@ -158,6 +163,7 @@
     note.textContent = settingsOrigin(row);
   }
   function renderSettings(data) {
+    document.querySelectorAll('.settings-load-error').forEach(node => node.remove());
     const rows = Array.isArray(data.settings) ? data.settings : [];
     const byKey = new Map(rows.map(row => [row.key, row]));
     settingsField('#queue', byKey.get('sonos.use_queue'), ['true', 'false']);
@@ -175,6 +181,10 @@
     heading.textContent = tr('web.settings.overview'); box.appendChild(heading);
     const warning = document.createElement('p'); warning.className = 'help';
     warning.textContent = tr('web.settings.runtime_unverified'); box.appendChild(warning);
+    if (Array.isArray(data.invalid_keys) && data.invalid_keys.length) {
+      const invalid = document.createElement('p'); invalid.className = 'help';
+      invalid.textContent = tr('web.settings.invalid_notice'); box.appendChild(invalid);
+    }
     for (const file of ['player.toml', 'ui.toml', 'interface.toml', 'web.json']) {
       const entries = rows.filter(item => item.file === file);
       if (!entries.length) continue;
@@ -203,10 +213,20 @@
       const response = await request('/api/settings');
       renderSettings(response);
     } catch (_) {
-      // Avoid stale values from a previous successful read.
+      // Never disguise a failed configuration read as merely empty fields.
       for (const id of ['#queue', '#continue', '#buffer', '#lang', '#cover']) {
-        const field = $(id);
-        if (field) { field.value = ''; field.disabled = true; }
+        settingsField(id, null);
+      }
+      for (const sectionId of ['audio', 'display']) {
+        const section = $('#' + sectionId);
+        let status = section.querySelector('.settings-load-error');
+        if (!status) {
+          status = document.createElement('p');
+          status.className = 'help settings-load-error';
+          status.setAttribute('role', 'alert');
+          section.insertBefore(status, section.querySelector('.fieldgrid'));
+        }
+        status.textContent = tr('web.settings.unavailable');
       }
       let box = $('#settings-readonly');
       if (!box) { box = document.createElement('div'); box.id = 'settings-readonly'; $('#system').appendChild(box); }
