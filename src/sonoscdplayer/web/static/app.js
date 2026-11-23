@@ -105,12 +105,115 @@
     document.querySelectorAll('.screen').forEach(screen => screen.classList.toggle('active', screen.id === name));
     $('#pagetitle').textContent = name === 'playback' ? tr('web.text.now_playing') : tr('web.text.settings');
     $('#eyebrow').textContent = name === 'playback' ? tr('web.text.listen_to_music') : tr('web.text.manage_device');
+    if (name === 'settings') loadSettings();
   }
   function showPanel(panel) {
     document.querySelectorAll('.settings-nav button').forEach(button => button.classList.toggle('active', button.dataset.panel === panel));
     document.querySelectorAll('.subpanel').forEach(section => section.classList.toggle('active', section.id === panel));
     showPage('settings');
     if (panel === 'library') openLibrary();
+  }
+  // WEB-05a: inspect installed, allowlisted configuration and existing state.
+  // No settings endpoint accepts writes; the running services are not restarted.
+  let settingsBusy = false;
+  function settingsText(value) {
+    if (value === null || value === undefined) return tr('web.settings.unknown');
+    if (value === true) return tr('web.settings.yes');
+    if (value === false) return tr('web.settings.no');
+    if (Array.isArray(value)) return value.join(', ');
+    return String(value);
+  }
+  function settingsOrigin(row) {
+    const source = ({config: 'web.settings.config', state: 'web.settings.state',
+      default: 'web.settings.default', unknown: 'web.settings.unknown'})[row.source];
+    const label = tr(source || 'web.settings.unknown') +
+      (row.origin_file ? ' (' + row.origin_file + ')' : '');
+    return row.source === 'state' ? label + ' · ' + tr('web.settings.base') + ': ' +
+      settingsText(row.base) : label;
+  }
+  function settingsField(id, row, optionValues) {
+    const element = $(id);
+    if (!element) return;
+    if (!row) { element.value = ''; element.disabled = true; return; }
+    if (optionValues) {
+      optionValues.forEach((value, index) => {
+        if (element.options[index]) element.options[index].value = String(value);
+      });
+    }
+    element.value = row.value === null ? '' : String(row.value);
+    if (row.value !== null && element.tagName === 'SELECT' && element.selectedIndex < 0) {
+      const option = document.createElement('option');
+      option.value = String(row.value); option.textContent = String(row.value);
+      element.appendChild(option); element.value = option.value;
+    }
+    element.disabled = true;
+    const parent = element.closest('.field');
+    if (!parent) return;
+    let note = parent.querySelector('.settings-field-origin');
+    if (!note) {
+      note = document.createElement('small');
+      note.className = 'help settings-field-origin';
+      parent.appendChild(note);
+    }
+    note.textContent = settingsOrigin(row);
+  }
+  function renderSettings(data) {
+    const rows = Array.isArray(data.settings) ? data.settings : [];
+    const byKey = new Map(rows.map(row => [row.key, row]));
+    settingsField('#queue', byKey.get('sonos.use_queue'), ['true', 'false']);
+    settingsField('#continue', byKey.get('playback.continue'), ['true', 'false']);
+    settingsField('#buffer', byKey.get('streaming.max_buffer_mib'));
+    settingsField('#lang', byKey.get('ui.language'), ['de', 'en']);
+    settingsField('#cover', byKey.get('ui.cover.mode'), ['auto', 'off', 'on']);
+    let box = $('#settings-readonly');
+    if (!box) {
+      box = document.createElement('div'); box.id = 'settings-readonly';
+      $('#system').appendChild(box);
+    }
+    box.replaceChildren();
+    const heading = document.createElement('h3');
+    heading.textContent = tr('web.settings.overview'); box.appendChild(heading);
+    const warning = document.createElement('p'); warning.className = 'help';
+    warning.textContent = tr('web.settings.runtime_unverified'); box.appendChild(warning);
+    for (const file of ['player.toml', 'ui.toml', 'interface.toml', 'web.json']) {
+      const entries = rows.filter(item => item.file === file);
+      if (!entries.length) continue;
+      const section = document.createElement('details');
+      section.className = 'library-detail';
+      const summary = document.createElement('summary');
+      summary.textContent = file + ' (' + entries.length + ')';
+      section.appendChild(summary);
+      for (const row of entries) {
+        const entry = document.createElement('div'); entry.className = 'record';
+        const content = document.createElement('div');
+        const name = document.createElement('strong'); name.textContent = row.key;
+        const meta = document.createElement('small');
+        meta.textContent = tr('web.settings.merged') + ': ' + settingsText(row.value) +
+          ' · ' + settingsOrigin(row);
+        content.append(name, meta); entry.appendChild(content);
+        section.appendChild(entry);
+      }
+      box.appendChild(section);
+    }
+  }
+  async function loadSettings() {
+    if (settingsBusy) return;
+    settingsBusy = true;
+    try {
+      const response = await request('/api/settings');
+      renderSettings(response);
+    } catch (_) {
+      // Avoid stale values from a previous successful read.
+      for (const id of ['#queue', '#continue', '#buffer', '#lang', '#cover']) {
+        const field = $(id);
+        if (field) { field.value = ''; field.disabled = true; }
+      }
+      let box = $('#settings-readonly');
+      if (!box) { box = document.createElement('div'); box.id = 'settings-readonly'; $('#system').appendChild(box); }
+      box.textContent = tr('web.settings.unavailable');
+    } finally {
+      settingsBusy = false;
+    }
   }
   document.querySelectorAll('.navbtn').forEach(button => button.addEventListener('click', () => showPage(button.dataset.page)));
   document.querySelectorAll('.settings-nav button').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.panel)));

@@ -465,5 +465,17 @@
   "web.error.playback.no_target": "Kein Wiedergabeziel ausgewählt",
   "web.error.playback.drive_wake": "CD-Laufwerk konnte nicht sicher gestartet werden",
   "web.error.playback.disc_unavailable": "CD nicht bereit oder nicht lesbar",
-  "web.error.playback.eject_unverified": "Auswerfen blockiert: Laufwerkszustand nicht bestätigt"
+  "web.error.playback.eject_unverified": "Auswerfen blockiert: Laufwerkszustand nicht bestätigt",
+  "web.settings.overview": "Gespeicherte Geräteeinstellungen",
+  "web.settings.runtime_unverified": "Zusammenführung der gespeicherten Werte. Die Übernahme durch laufende Dienste ist noch nicht überprüft. Änderungen sind hier deaktiviert.",
+  "web.settings.config": "Grundeinstellung",
+  "web.settings.state": "Gespeicherte Änderung",
+  "web.settings.default": "Programmstandard",
+  "web.settings.base": "Grundwert",
+  "web.settings.merged": "Zusammengeführter Wert",
+  "web.settings.unknown": "Nicht festgelegt",
+  "web.settings.yes": "Ja",
+  "web.settings.no": "Nein",
+  "web.settings.unavailable": "Einstellungen sind derzeit nicht lesbar.",
+  "web.api.settings_unavailable": "Geräteeinstellungen nicht verfügbar"
 }

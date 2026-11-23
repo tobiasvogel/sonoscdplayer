@@ -20,6 +20,7 @@ from sonoscdplayer.metadata.manual_cover import MAX_UPLOAD_BYTES
 from .state import WebPreferences
 from .dashboard_projection import public_dashboard, public_release_detail
 from .library_projection import public_library
+from .settings_read import settings_snapshot, SettingsUnavailable
 from .i18n import (web_catalog, web_message, metadata_error_message,
                    player_rejection_message)
 
@@ -111,6 +112,11 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                 return self._file((STATIC / 'app.js').read_bytes(), 'text/javascript; charset=utf-8')
             if path == '/api/i18n':
                 return self._json(200, web_catalog(preferences.path.parent))
+            if path == '/api/settings':
+                try:
+                    return self._json(200, settings_snapshot(state_root=preferences.path.parent))
+                except (OSError, SettingsUnavailable):
+                    return self._json(503, {'ok': False, 'error': 'web.api.settings_unavailable'})
             if path == '/api/theme':
                 return self._json(200, {'theme': preferences.read()})
             if path == '/api/status':

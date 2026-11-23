@@ -465,5 +465,17 @@
   "web.error.playback.no_target": "No playback target selected",
   "web.error.playback.drive_wake": "Could not safely start the CD drive",
   "web.error.playback.disc_unavailable": "CD not ready or unreadable",
-  "web.error.playback.eject_unverified": "Eject blocked: drive state not verified"
+  "web.error.playback.eject_unverified": "Eject blocked: drive state not verified",
+  "web.settings.overview": "Saved device settings",
+  "web.settings.runtime_unverified": "Merged saved values. Whether running services have applied them has not yet been verified. Editing is disabled here.",
+  "web.settings.config": "Base configuration",
+  "web.settings.state": "Saved state override",
+  "web.settings.default": "Built-in default",
+  "web.settings.base": "Base value",
+  "web.settings.merged": "Merged value",
+  "web.settings.unknown": "Not specified",
+  "web.settings.yes": "Yes",
+  "web.settings.no": "No",
+  "web.settings.unavailable": "Device settings are currently unavailable.",
+  "web.api.settings_unavailable": "Device settings unavailable"
 }
