@@ -271,7 +271,7 @@
   "web.text.enabled": "Aktiviert",
   "web.text.disabled": "Deaktiviert",
   "web.text.audio_buffer_mib": "Audiopuffer (MiB)",
-  "web.text.read_only_configuration_overrides_and_service_restarts_will": "Nur lesend; Konfigurations-Overlays und Dienstneustarts folgen später.",
+  "web.text.read_only_configuration_overrides_and_service_restarts_will": "Änderungen werden gespeichert, aber erst nach einem manuellen Player-Neustart übernommen.",
   "web.text.save": "Speichern",
   "web.text.display_settings_on_the_device_and_in_the": "Darstellung auf dem Gerät und im Web-Client. Die Menüsprache kann unabhängig von Linux gewählt werden.",
   "web.text.language": "Sprache",
@@ -479,5 +479,16 @@
   "web.settings.unavailable": "Einstellungen sind derzeit nicht lesbar.",
   "web.api.settings_unavailable": "Geräteeinstellungen nicht verfügbar",
   "web.settings.invalid": "Ungültiger Konfigurationswert",
-  "web.settings.invalid_notice": "Einzelne konfigurierte Werte sind ungültig und wurden nicht übernommen. Andere Werte werden weiterhin angezeigt."
+  "web.settings.invalid_notice": "Einzelne konfigurierte Werte sind ungültig und wurden nicht übernommen. Andere Werte werden weiterhin angezeigt.",
+  "web.settings.save_playback": "Wiedergabeeinstellungen speichern",
+  "web.settings.reset_playback": "Wiedergabewerte zurücksetzen",
+  "web.settings.reset_confirm": "Gespeicherte Wiedergabewerte entfernen und die Grundeinstellungen wiederherstellen?",
+  "web.settings.runtime_unconfirmed": "Laufende Player-Werte nicht bestätigt; ein Neustart kann erforderlich sein.",
+  "web.settings.restart_needed": "Gespeicherte Werte unterscheiden sich vom laufenden Player. Player-Neustart zur Übernahme erforderlich.",
+  "web.settings.runtime_applied": "Gespeicherte Wiedergabewerte stimmen mit dem laufenden Player überein.",
+  "web.settings.invalid_playback": "Bitte gültige Wiedergabeeinstellungen eingeben (Puffer: 16–512 MiB).",
+  "web.settings.playback_saved": "Wiedergabeeinstellungen gespeichert. Kein automatischer Neustart.",
+  "web.settings.playback_reset": "Gespeicherte Wiedergabeeinstellungen zurückgesetzt.",
+  "web.settings.save_failed": "Speichern fehlgeschlagen: ",
+  "web.api.settings_conflict": "Die Einstellungen wurden zwischenzeitlich geändert. Bitte neu laden."
 }

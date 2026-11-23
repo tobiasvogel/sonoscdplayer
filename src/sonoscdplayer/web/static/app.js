@@ -113,15 +113,86 @@
     showPage('settings');
     if (panel === 'library') openLibrary();
   }
-  // WEB-05a: inspect installed, allowlisted configuration and existing state.
-  // No settings endpoint accepts writes; the running services are not restarted.
+  // WEB-05b: edit only the three validated playback preferences.
   let settingsBusy = false;
+  let playbackRevision = null;
+  let playbackEditable = false;
+  const playbackKeys = ['sonos.use_queue', 'playback.continue', 'streaming.max_buffer_mib'];
   function settingsText(value) {
     if (value === null || value === undefined) return tr('web.settings.unknown');
     if (value === true) return tr('web.settings.yes');
     if (value === false) return tr('web.settings.no');
     if (Array.isArray(value)) return value.join(', ');
     return String(value);
+  }
+  function installPlaybackControls() {
+    const footer = $('#audio .panel-footer');
+    if (!footer) return;
+    let save = $('#playback-settings-save');
+    if (!save) {
+      save = footer.querySelector('button');
+      save.id = 'playback-settings-save';
+      save.removeAttribute('data-i18n');
+      save.addEventListener('click', () => editPlaybackSettings('save'));
+      const reset = document.createElement('button');
+      reset.id = 'playback-settings-reset';
+      reset.className = 'btn secondary';
+      reset.type = 'button';
+      reset.addEventListener('click', () => editPlaybackSettings('reset'));
+      footer.appendChild(reset);
+    }
+    save.textContent = tr('web.settings.save_playback');
+    save.disabled = !playbackEditable;
+    const reset = $('#playback-settings-reset');
+    reset.textContent = tr('web.settings.reset_playback');
+    reset.disabled = !playbackEditable;
+    let status = $('#playback-settings-status');
+    if (!status) {
+      status = document.createElement('p');
+      status.id = 'playback-settings-status';
+      status.className = 'help';
+      status.setAttribute('role', 'status');
+      $('#audio').insertBefore(status, $('#audio .fieldgrid'));
+    }
+  }
+  async function loadPlaybackRuntime(snapshot) {
+    const status = $('#playback-settings-status');
+    if (!status) return;
+    try {
+      const answer = await request('/api/settings/runtime');
+      const runtime = answer.values;
+      if (!runtime) { status.textContent = tr('web.settings.runtime_unconfirmed'); return; }
+      const byKey = new Map(snapshot.settings.map(row => [row.key, row]));
+      const changed = playbackKeys.some(key => byKey.get(key)?.value !== runtime[key]);
+      status.textContent = changed ? tr('web.settings.restart_needed') : tr('web.settings.runtime_applied');
+    } catch (_) {
+      status.textContent = tr('web.settings.runtime_unconfirmed');
+    }
+  }
+  async function editPlaybackSettings(action) {
+    if (!playbackEditable || playbackRevision === null) return;
+    if (action === 'reset' && !window.confirm(tr('web.settings.reset_confirm'))) return;
+    const values = action === 'save' ? {
+      'sonos.use_queue': $('#queue').value === 'true',
+      'playback.continue': $('#continue').value === 'true',
+      'streaming.max_buffer_mib': Number($('#buffer').value)
+    } : {};
+    if (action === 'save' && (!['true', 'false'].includes($('#queue').value) ||
+        !['true', 'false'].includes($('#continue').value) ||
+        !Number.isInteger(values['streaming.max_buffer_mib']) ||
+        values['streaming.max_buffer_mib'] < 16 || values['streaming.max_buffer_mib'] > 512)) {
+      toast(tr('web.settings.invalid_playback')); return;
+    }
+    $('#playback-settings-save').disabled = true;
+    $('#playback-settings-reset').disabled = true;
+    try {
+      await request('/api/settings/playback', {action, revision: playbackRevision, values});
+      toast(tr(action === 'save' ? 'web.settings.playback_saved' : 'web.settings.playback_reset'));
+    } catch (error) {
+      toast(tr('web.settings.save_failed') + error.message);
+    } finally {
+      await loadSettings();
+    }
   }
   function settingsOrigin(row) {
     const source = ({config: 'web.settings.config', state: 'web.settings.state',
@@ -151,7 +222,7 @@
       option.value = String(row.value); option.textContent = String(row.value);
       element.appendChild(option); element.value = option.value;
     }
-    element.disabled = true;
+    element.disabled = !playbackEditable || !['#queue', '#continue', '#buffer'].includes(id);
     const parent = element.closest('.field');
     if (!parent) return;
     let note = parent.querySelector('.settings-field-origin');
@@ -166,11 +237,15 @@
     document.querySelectorAll('.settings-load-error').forEach(node => node.remove());
     const rows = Array.isArray(data.settings) ? data.settings : [];
     const byKey = new Map(rows.map(row => [row.key, row]));
+    playbackRevision = typeof data.playback?.revision === 'string' ? data.playback.revision : null;
+    playbackEditable = data.playback?.editable === true && playbackRevision !== null &&
+      playbackKeys.every(key => byKey.get(key)?.value !== null && byKey.has(key));
     settingsField('#queue', byKey.get('sonos.use_queue'), ['true', 'false']);
     settingsField('#continue', byKey.get('playback.continue'), ['true', 'false']);
     settingsField('#buffer', byKey.get('streaming.max_buffer_mib'));
     settingsField('#lang', byKey.get('ui.language'), ['de', 'en']);
     settingsField('#cover', byKey.get('ui.cover.mode'), ['auto', 'off', 'on']);
+    installPlaybackControls();
     let box = $('#settings-readonly');
     if (!box) {
       box = document.createElement('div'); box.id = 'settings-readonly';
@@ -212,6 +287,7 @@
     try {
       const response = await request('/api/settings');
       renderSettings(response);
+      await loadPlaybackRuntime(response);
     } catch (_) {
       // Never disguise a failed configuration read as merely empty fields.
       for (const id of ['#queue', '#continue', '#buffer', '#lang', '#cover']) {

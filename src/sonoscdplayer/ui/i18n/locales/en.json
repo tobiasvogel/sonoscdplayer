@@ -271,7 +271,7 @@
   "web.text.enabled": "Enabled",
   "web.text.disabled": "Disabled",
   "web.text.audio_buffer_mib": "Audio buffer (MiB)",
-  "web.text.read_only_configuration_overrides_and_service_restarts_will": "Read-only; configuration overrides and service restarts will follow later.",
+  "web.text.read_only_configuration_overrides_and_service_restarts_will": "Changes are saved but only take effect after a manual player restart.",
   "web.text.save": "Save",
   "web.text.display_settings_on_the_device_and_in_the": "Display settings on the device and in the web client. The menu language can be chosen independently of Linux.",
   "web.text.language": "Language",
@@ -479,5 +479,16 @@
   "web.settings.unavailable": "Device settings are currently unavailable.",
   "web.api.settings_unavailable": "Device settings unavailable",
   "web.settings.invalid": "Invalid configuration value",
-  "web.settings.invalid_notice": "Some configured values are invalid and were not used. Other settings remain visible."
+  "web.settings.invalid_notice": "Some configured values are invalid and were not used. Other settings remain visible.",
+  "web.settings.save_playback": "Save playback settings",
+  "web.settings.reset_playback": "Reset playback overrides",
+  "web.settings.reset_confirm": "Remove the saved playback overrides and restore the base configuration?",
+  "web.settings.runtime_unconfirmed": "Running player settings could not be verified; a restart may be needed.",
+  "web.settings.restart_needed": "Saved values differ from the running player. Restart the player to apply them.",
+  "web.settings.runtime_applied": "Saved playback settings match the running player.",
+  "web.settings.invalid_playback": "Enter valid playback values (buffer: 16–512 MiB).",
+  "web.settings.playback_saved": "Playback settings saved. No automatic restart.",
+  "web.settings.playback_reset": "Saved playback settings reset.",
+  "web.settings.save_failed": "Could not save settings: ",
+  "web.api.settings_conflict": "The settings were changed elsewhere. Reload and try again."
 }

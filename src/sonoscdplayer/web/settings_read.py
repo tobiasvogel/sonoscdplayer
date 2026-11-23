@@ -14,6 +14,7 @@ import tomllib
 from sonoscdplayer.system import config_paths
 from sonoscdplayer.system.state_files import default_state_dir
 from sonoscdplayer.ui.i18n.translator import available_languages
+from sonoscdplayer.player.playback_settings import FIELDS as PLAYBACK_FIELDS, read_overrides, base_values
 
 MAX_CONFIG_BYTES = 65536
 MAX_STATE_BYTES = 16384
@@ -214,6 +215,14 @@ def settings_snapshot(*, config_root=None, state_root=None):
     ui = _document(root / 'ui.toml', limit=MAX_CONFIG_BYTES)
     display_state = _state_document(state / 'ui.json')
     web_state = _state_document(state / 'web.json')
+    playback_overrides, playback_revision = read_overrides(state)
+    # Invalid base values are shown as invalid, not silently concealed by a
+    # stored override. No writes are performed by this read-only endpoint.
+    playable = True
+    try:
+        base_values(player)
+    except ValueError:
+        playable = False
 
     saved_language = (display_state.get('language')
                       if type(display_state.get('version')) is int and display_state['version'] == 1
@@ -252,9 +261,15 @@ def settings_snapshot(*, config_root=None, state_root=None):
             if identifier == 'ui.language' and saved_language is not None:
                 rows.append(_row(filename, identifier, base, override=saved_language,
                                  has_override=True))
+            elif filename == 'player.toml' and identifier in PLAYBACK_FIELDS and playable and identifier in playback_overrides:
+                rows.append(_row(filename, identifier, base,
+                                 override=playback_overrides[identifier], has_override=True))
+                rows[-1]['origin_file'] = 'player-settings.json'
             else:
                 rows.append(_row(filename, identifier, base))
     rows.append(_row('web.json', 'web.appearance.theme', None,
                      override=theme, has_override=theme is not None))
     return {'ok': True, 'settings': rows, 'read_only': True,
-            'runtime_verified': False, 'invalid_keys': invalid_keys}
+            'runtime_verified': False, 'invalid_keys': invalid_keys,
+            'playback': {'editable': playable, 'revision': playback_revision,
+                         'runtime': None, 'restart_required': None}}

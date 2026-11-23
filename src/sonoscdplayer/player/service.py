@@ -894,6 +894,10 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                         send_reply(conn, publisher.read())
                     elif isinstance(request, dict) and request == {'command': 'dashboard'}:
                         send_reply(conn, dashboard.read())
+                    elif isinstance(request, dict) and request == {'command': 'settings-status'}:
+                        runtime = getattr(controller, 'playback_runtime_settings', None)
+                        send_reply(conn, {'ok': True, 'settings': runtime.copy()}
+                                   if isinstance(runtime, dict) else {'ok': False, 'error': 'unavailable'})
                     elif isinstance(request, dict) and request == {'command': 'library'}:
                         send_reply(conn, metadata_worker.library_snapshot() if metadata_worker is not None
                                    else {'ok': False, 'error': 'metadata unavailable'})
@@ -1013,10 +1017,18 @@ def run(argv=None):
                 raise ValueError('invalid audio_startup settings')
         if shutdown_policy not in ('stop_owned', 'leave_playing'):
             raise ValueError('invalid service.shutdown_policy')
+        from sonoscdplayer.player.playback_settings import merged, FIELDS as PLAYBACK_FIELDS
+        settings, _ = merged(settings, state_dir=ns.state_dir)
+        effective_buffer = settings['streaming']['max_buffer_mib']
         ctrl = Controller(state, None, None, ns.port,
                           TrackServerProcess(base, device, conf, ns.port,
                                         startup_prebuffer=startup_enabled,
-                                        startup_timeout=float(startup_timeout)), route=routed_source_ip)
+                                        startup_timeout=float(startup_timeout),
+                                        max_buffer_mib=effective_buffer), route=routed_source_ip)
+        ctrl.playback_runtime_settings = {
+            field: settings[field.split('.')[0]][field.split('.')[1]]
+            for field in PLAYBACK_FIELDS
+        }
         ctrl.disc_status = disc_status
         ctrl.album_prefix = album_prefix_from_config(settings)
         ctrl.use_queue = use_queue_from_config(settings)

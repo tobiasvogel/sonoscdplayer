@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import threading
 from urllib.parse import urlsplit, parse_qs
 
 from .player_client import PlayerClient, PlayerUnavailable, command_payload, metadata_edit_payload, release_payload, cover_payload, library_payload, library_manage_payload, library_maintenance_payload
@@ -20,7 +21,10 @@ from sonoscdplayer.metadata.manual_cover import MAX_UPLOAD_BYTES
 from .state import WebPreferences
 from .dashboard_projection import public_dashboard, public_release_detail
 from .library_projection import public_library
-from .settings_read import settings_snapshot, SettingsUnavailable
+from .settings_read import settings_snapshot, SettingsUnavailable, _document, MAX_CONFIG_BYTES
+from sonoscdplayer.system import config_paths
+from sonoscdplayer.player.playback_settings import (FIELDS as PLAYBACK_FIELDS, valid as playback_valid,
+                                                    update as update_playback, SettingsConflict)
 from .i18n import (web_catalog, web_message, metadata_error_message,
                    player_rejection_message)
 
@@ -71,6 +75,7 @@ def public_status(response: dict) -> dict:
 
 def make_handler(player: PlayerClient, preferences: WebPreferences):
     """Build an HTTP handler that can be exercised against a fake player."""
+    settings_write_lock = threading.Lock()
     class Handler(BaseHTTPRequestHandler):
         server_version = 'SonosCDPlayerWeb'
         sys_version = ''
@@ -117,6 +122,17 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                     return self._json(200, settings_snapshot(state_root=preferences.path.parent))
                 except (OSError, SettingsUnavailable):
                     return self._json(503, {'ok': False, 'error': 'web.api.settings_unavailable'})
+            if path == '/api/settings/runtime':
+                # A dedicated RPC reads only the in-memory values loaded on startup.
+                try:
+                    reply = player.request({'command': 'settings-status'}, timeout=2)
+                except (PlayerUnavailable, ValueError):
+                    reply = None
+                values = reply.get('settings') if isinstance(reply, dict) and reply.get('ok') is True else None
+                if type(values) is not dict or set(values) != set(PLAYBACK_FIELDS) or any(
+                        not playback_valid(key, value) for key, value in values.items()):
+                    values = None
+                return self._json(200, {'ok': True, 'values': values})
             if path == '/api/theme':
                 return self._json(200, {'theme': preferences.read()})
             if path == '/api/status':
@@ -207,7 +223,8 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                             '/api/releases/search', '/api/releases/select',
                             '/api/cover/upload', '/api/cover/remove',
                             '/api/library/query', '/api/library/detail',
-                            '/api/library/manage', '/api/library/maintenance'):
+                            '/api/library/manage', '/api/library/maintenance',
+                            '/api/settings/playback'):
                 return self._json(404, {'error': 'web.api.not_found'})
             origin = self.headers.get('Origin')
             if origin:
@@ -252,6 +269,12 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                 data = json.loads(self.rfile.read(size))
                 if not isinstance(data, dict):
                     raise ValueError('JSON object required')
+                if path == '/api/settings/playback':
+                    with settings_write_lock:
+                        config = _document(config_paths.player_config(),
+                                           limit=MAX_CONFIG_BYTES, required=True)
+                        revision = update_playback(config, preferences.path.parent, data)
+                    return self._json(200, {'ok': True, 'revision': revision})
                 if path == '/api/theme':
                     if set(data) != {'theme'}:
                         raise ValueError('theme is required')
@@ -271,10 +294,12 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                     request = release_payload(data, path.rsplit('/', 1)[1])
                 else:
                     request = command_payload(data)
+            except SettingsConflict:
+                return self._json(409, {'ok': False, 'error': 'web.api.settings_conflict'})
+            except (OSError, SettingsUnavailable):
+                return self._json(503, {'ok': False, 'error': 'web.api.setting_unsaved'})
             except (ValueError, TypeError):
                 return self._json(400, {'ok': False, 'error': 'web.api.invalid_input'})
-            except OSError:
-                return self._json(503, {'ok': False, 'error': 'web.api.setting_unsaved'})
             try:
                 result = player.request(request, timeout=35)
             except PlayerUnavailable:
