@@ -1,6 +1,8 @@
 """WEB-03b: validation and strict projection of release selection endpoints."""
 from contextlib import contextmanager
 from http.server import ThreadingHTTPServer
+from pathlib import Path
+import tempfile
 import json
 import threading
 from urllib.parse import urlencode
@@ -8,6 +10,8 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
 from sonoscdplayer.web.server import make_handler
+from sonoscdplayer.web.state import WebPreferences
+from sonoscdplayer.ui.i18n.translator import catalog
 from sonoscdplayer.web.player_client import release_payload
 from sonoscdplayer.web.dashboard_projection import public_dashboard, public_release_detail
 
@@ -25,13 +29,18 @@ class FakePlayer:
         return {'ok':True,'queued':True}
 
 @contextmanager
-def server():
-    player=FakePlayer()
-    instance=ThreadingHTTPServer(('127.0.0.1',0),make_handler(player,object()))
-    thread=threading.Thread(target=instance.serve_forever,daemon=True)
-    thread.start()
-    try:yield 'http://127.0.0.1:'+str(instance.server_port),player
-    finally:instance.shutdown();instance.server_close();thread.join(2)
+def server(language='de'):
+    # Error localization requires a real preferences state directory.
+    with tempfile.TemporaryDirectory(prefix='sonoscdplayer-web-release-test-') as state_dir:
+        (Path(state_dir) / 'ui.json').write_text(
+            json.dumps({'version': 1, 'language': language}), encoding='utf-8')
+        player=FakePlayer()
+        instance=ThreadingHTTPServer(('127.0.0.1',0),make_handler(
+            player, WebPreferences(state_dir)))
+        thread=threading.Thread(target=instance.serve_forever,daemon=True)
+        thread.start()
+        try:yield 'http://127.0.0.1:'+str(instance.server_port),player
+        finally:instance.shutdown();instance.server_close();thread.join(2)
 
 def post(url,data,headers=None):
     request=Request(url,data=json.dumps(data).encode(),method='POST',
@@ -59,12 +68,17 @@ def test_release_search_select_and_details_have_bounded_player_commands():
 def test_bad_release_ids_and_origins_are_rejected_before_player():
     with server() as (base, player):
         for data in ({'token':'a'*31}, {'token':TOKEN,'uid':'RINCON_FAKE'}):
-            assert post(base+'/api/releases/search',data)[0]==400
+            code, payload = post(base+'/api/releases/search',data)
+            assert code == 400
+            assert payload['error'] == catalog('de')['web.api.invalid_input']
         for data in ({'token':TOKEN,'release_id':'RINCON_FAKE','keep_manual':True},
                      {'token':TOKEN,'release_id':RID,'keep_manual':'yes'}):
             assert post(base+'/api/releases/select',data)[0]==400
-        assert post(base+'/api/releases/select',{'token':TOKEN,'release_id':RID,'keep_manual':True},
-                    {'Origin':'http://untrusted.example'})[0]==403
+        code, payload = post(base+'/api/releases/select',
+            {'token':TOKEN,'release_id':RID,'keep_manual':True},
+            {'Origin':'http://untrusted.example'})
+        assert code == 403
+        assert payload['error'] == catalog('de')['web.api.cross_origin']
         assert player.requests==[]
 
 
