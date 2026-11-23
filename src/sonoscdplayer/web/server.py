@@ -20,6 +20,7 @@ from sonoscdplayer.metadata.manual_cover import MAX_UPLOAD_BYTES
 from .state import WebPreferences
 from .dashboard_projection import public_dashboard, public_release_detail
 from .library_projection import public_library
+from .i18n import web_catalog, web_message
 
 
 STATIC = Path(__file__).resolve().parent / 'static'
@@ -77,6 +78,11 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
             pass
 
         def _json(self, code, payload):
+            # Public errors are locale keys, resolved from the display catalogs.
+            # Internal exception strings and filesystem details are never sent.
+            if isinstance(payload, dict) and isinstance(payload.get('error'), str) and \
+                    payload['error'].startswith('web.api.'):
+                payload = {**payload, 'error': web_message(preferences.path.parent, payload['error'])}
             raw = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
             self.send_response(code)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
@@ -102,24 +108,29 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                 return self._file((STATIC / 'index.html').read_bytes(), 'text/html; charset=utf-8')
             if path == '/app.js':
                 return self._file((STATIC / 'app.js').read_bytes(), 'text/javascript; charset=utf-8')
+            if path == '/api/i18n':
+                return self._json(200, web_catalog(preferences.path.parent))
             if path == '/api/theme':
                 return self._json(200, {'theme': preferences.read()})
             if path == '/api/status':
                 try:
-                    return self._json(200, public_status(player.request({'command': 'status'}, timeout=3)))
+                    reply = public_status(player.request({'command': 'status'}, timeout=3))
+                    if reply['player']['error']:
+                        reply['player']['error'] = web_message(preferences.path.parent, 'web.api.player_error')
+                    return self._json(200, reply)
                 except PlayerUnavailable:
-                    return self._json(503, {'ok': False, 'error': 'Player nicht erreichbar'})
+                    return self._json(503, {'ok': False, 'error': 'web.api.player_unavailable'})
             if path == '/api/dashboard':
                 try:
                     return self._json(200, public_dashboard(
                         player.request({'command': 'dashboard'}, timeout=3)))
                 except (PlayerUnavailable, ValueError):
-                    return self._json(503, {'ok': False, 'error': 'Dashboard nicht erreichbar'})
+                    return self._json(503, {'ok': False, 'error': 'web.api.dashboard_unavailable'})
             if path == '/api/library':
                 try:
                     return self._json(200, public_library(player.request({'command': 'library'}, timeout=3)))
                 except (PlayerUnavailable, ValueError):
-                    return self._json(503, {'ok': False, 'error': 'CD-Bibliothek nicht erreichbar'})
+                    return self._json(503, {'ok': False, 'error': 'web.api.library_unavailable'})
             if path == '/api/targets':
                 try:
                     result = player.request({'command': 'get-target'}, timeout=8)
@@ -131,10 +142,10 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                             'selected': bool((result.get('target_selection') or {}).get('selected')),
                             'speakers_count': len((result.get('target_selection') or {}).get('speakers') or []),
                         },
-                        'error': 'Lautsprecherwahl derzeit nicht verfügbar' if not result.get('ok') else None,
+                        'error': 'web.api.target_unavailable' if not result.get('ok') else None,
                     })
                 except PlayerUnavailable:
-                    return self._json(503, {'ok': False, 'error': 'Player nicht erreichbar'})
+                    return self._json(503, {'ok': False, 'error': 'web.api.player_unavailable'})
             if path == '/api/release-detail':
                 try:
                     query = parse_qs(urlsplit(self.path).query, strict_parsing=True)
@@ -143,12 +154,12 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                     result = player.request(release_payload({key: value[0] for key, value in query.items()},
                                                             'detail'), timeout=5)
                     if not result.get('ok'):
-                        return self._json(409, {'ok': False, 'error': 'Release nicht mehr verfügbar'})
+                        return self._json(409, {'ok': False, 'error': 'web.api.release_unavailable'})
                     return self._json(200, public_release_detail(result.get('release_detail')))
                 except ValueError:
-                    return self._json(400, {'ok': False, 'error': 'Ungültige Release-Abfrage'})
+                    return self._json(400, {'ok': False, 'error': 'web.api.invalid_release_query'})
                 except PlayerUnavailable:
-                    return self._json(503, {'ok': False, 'error': 'Player nicht erreichbar'})
+                    return self._json(503, {'ok': False, 'error': 'web.api.player_unavailable'})
             if path == '/api/cover':
                 # Only the cover supplied by the player for the inserted CD.
                 # Never accept an arbitrary filesystem path from HTTP requests.
@@ -161,12 +172,12 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                     if (candidate is None or root not in candidate.parents or
                             candidate.suffix.lower() not in ('.jpeg', '.jpg', '.png') or
                             not candidate.is_file() or candidate.stat().st_size > 6 * 1024 * 1024):
-                        return self._json(404, {'error': 'cover not available'})
+                        return self._json(404, {'error': 'web.api.cover_unavailable'})
                     kind = 'image/png' if candidate.suffix.lower() == '.png' else 'image/jpeg'
                     return self._file(candidate.read_bytes(), kind)
                 except (PlayerUnavailable, OSError, ValueError):
-                    return self._json(404, {'error': 'cover not available'})
-            self._json(404, {'error': 'not found'})
+                    return self._json(404, {'error': 'web.api.cover_unavailable'})
+            self._json(404, {'error': 'web.api.not_found'})
 
         def do_POST(self):
             path = urlsplit(self.path).path
@@ -175,22 +186,22 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                             '/api/cover/upload', '/api/cover/remove',
                             '/api/library/query', '/api/library/detail',
                             '/api/library/manage', '/api/library/maintenance'):
-                return self._json(404, {'error': 'not found'})
+                return self._json(404, {'error': 'web.api.not_found'})
             origin = self.headers.get('Origin')
             if origin:
                 url = urlsplit(origin)
                 if url.scheme not in ('http', 'https') or url.netloc != self.headers.get('Host'):
-                    return self._json(403, {'error': 'cross-origin request forbidden'})
+                    return self._json(403, {'error': 'web.api.cross_origin'})
             if path == '/api/cover/upload':
                 if self.headers.get_content_type() != 'application/octet-stream':
-                    return self._json(415, {'ok': False, 'error': 'Bilddaten erforderlich'})
+                    return self._json(415, {'ok': False, 'error': 'web.api.image_required'})
                 token = self.headers.get('X-Disc-Token', '')
                 try:
                     size = int(self.headers.get('Content-Length', '-1'))
                 except ValueError:
                     size = -1
                 if not 0 < size <= MAX_UPLOAD_BYTES:
-                    return self._json(413, {'ok': False, 'error': 'Bild ist zu gross oder leer'})
+                    return self._json(413, {'ok': False, 'error': 'web.api.image_size'})
                 upload_id = None
                 accepted = False
                 try:
@@ -201,17 +212,17 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                     result = player.request(cover_payload({'token': token, 'upload_id': upload_id}, 'upload'), timeout=35)
                     accepted = bool(result.get('ok'))
                     if not accepted:
-                        return self._json(409, {'ok': False, 'error': 'Cover vom Player abgelehnt; CD prüfen'})
+                        return self._json(409, {'ok': False, 'error': 'web.api.cover_rejected'})
                     return self._json(202, {'ok': True, 'queued': True})
                 except (ValueError, OSError, TimeoutError):
-                    return self._json(400, {'ok': False, 'error': 'Ungültige Bildübertragung'})
+                    return self._json(400, {'ok': False, 'error': 'web.api.invalid_image'})
                 except PlayerUnavailable:
-                    return self._json(503, {'ok': False, 'error': 'Ergebnis unbekannt; Status prüfen'})
+                    return self._json(503, {'ok': False, 'error': 'web.api.outcome_unknown'})
                 finally:
                     if upload_id and not accepted:
                         discard_upload(preferences.path.parent, upload_id)
             if self.headers.get_content_type() != 'application/json':
-                return self._json(415, {'error': 'JSON required'})
+                return self._json(415, {'error': 'web.api.json_required'})
             try:
                 size = int(self.headers.get('Content-Length', '-1'))
                 if not 0 <= size <= MAX_BODY:
@@ -239,16 +250,16 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                 else:
                     request = command_payload(data)
             except (ValueError, TypeError):
-                return self._json(400, {'ok': False, 'error': 'Ungültige Eingabe'})
+                return self._json(400, {'ok': False, 'error': 'web.api.invalid_input'})
             except OSError:
-                return self._json(503, {'ok': False, 'error': 'Einstellung nicht speicherbar'})
+                return self._json(503, {'ok': False, 'error': 'web.api.setting_unsaved'})
             try:
                 result = player.request(request, timeout=35)
             except PlayerUnavailable:
-                return self._json(503, {'ok': False, 'error': 'Ergebnis unbekannt; Status prüfen, nicht erneut senden'})
+                return self._json(503, {'ok': False, 'error': 'web.api.outcome_no_retry'})
             # Hide raw player diagnostics containing installation-specific details.
             if not result.get('ok'):
-                return self._json(409, {'ok': False, 'error': 'Befehl vom Player abgelehnt; Status prüfen'})
+                return self._json(409, {'ok': False, 'error': 'web.api.command_rejected'})
             if path in ('/api/metadata', '/api/cover/remove') or path.startswith(('/api/releases/', '/api/library/')):
                 return self._json(202, {'ok': True, 'queued': True})
             return self._json(200, {'ok': True})

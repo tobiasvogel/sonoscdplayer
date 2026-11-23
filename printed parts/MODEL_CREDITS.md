@@ -11,3 +11,6 @@ https://grabcad.com/library/usb-uhb-4u-waveshare-1
 
 Waveshare OLED Display Module:
 https://grabcad.com/library/waveshare-128x128-display-1-5-zoll-1
+
+M3 Heat Set Screw Inserts:
+https://grabcad.com/library/m3-heat-set-screw-inserts-for-3d-printing-1

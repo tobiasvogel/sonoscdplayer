@@ -150,7 +150,7 @@ def test_api_reads_status_and_updates_theme(tmp_path):
         assert 'RINCON' not in json.dumps(targets)
         with urlopen(url + '/') as response:
             page = response.read().decode('utf-8')
-            assert 'theme-switcher' in page and 'Jetzt wiedergeben' in page
+            assert 'theme-switcher' in page and 'data-i18n="web.text.now_playing"' in page
         with urlopen(url + '/app.js') as response:
             assert "'/api/dashboard'" in response.read().decode('utf-8')
 
