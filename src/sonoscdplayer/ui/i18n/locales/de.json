@@ -191,7 +191,7 @@
   "web.text.dark_warm_theme": "Dunkles warmes Theme",
   "web.text.dark": "☾ Dunkel",
   "web.text.playback_overview_read_only": "Wiedergabeübersicht · nur Anzeige.",
-  "web.text.control_playback_on_the_cd_player_or_in": "Musikwiedergabe wird am CD-Player oder in der Sonos-App gesteuert. Die separate REST-API bleibt für zukünftige Web-Player und Community-Projekte verfügbar.",
+  "web.text.control_playback_on_the_cd_player_or_in": "Musikwiedergabe wird am CD-Player oder in der Sonos-App gesteuert.",
   "web.text.album_art_or_decorative_placeholder": "Cover oder gestalterischer Platzhalter",
   "web.text.album_cover": "Albumcover",
   "web.text.no_cd_detected": "Keine CD erkannt",

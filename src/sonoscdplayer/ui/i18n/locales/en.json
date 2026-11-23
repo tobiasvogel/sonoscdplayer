@@ -191,7 +191,7 @@
   "web.text.dark_warm_theme": "Dark warm theme",
   "web.text.dark": "☾ Dark",
   "web.text.playback_overview_read_only": "Playback overview · read-only.",
-  "web.text.control_playback_on_the_cd_player_or_in": "Control playback on the CD player or in the Sonos app. The separate REST API remains available for future web players and community projects.",
+  "web.text.control_playback_on_the_cd_player_or_in": "Control playback on the CD player or in the Sonos app.",
   "web.text.album_art_or_decorative_placeholder": "Album art or decorative placeholder",
   "web.text.album_cover": "Album cover",
   "web.text.no_cd_detected": "No CD detected",
