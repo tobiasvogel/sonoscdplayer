@@ -20,7 +20,8 @@ from sonoscdplayer.metadata.manual_cover import MAX_UPLOAD_BYTES
 from .state import WebPreferences
 from .dashboard_projection import public_dashboard, public_release_detail
 from .library_projection import public_library
-from .i18n import web_catalog, web_message
+from .i18n import (web_catalog, web_message, metadata_error_message,
+                   player_rejection_message)
 
 
 STATIC = Path(__file__).resolve().parent / 'static'
@@ -117,18 +118,33 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                     reply = public_status(player.request({'command': 'status'}, timeout=3))
                     if reply['player']['error']:
                         reply['player']['error'] = web_message(preferences.path.parent, 'web.api.player_error')
+                    reply['metadata']['cover_error'] = metadata_error_message(
+                        preferences.path.parent, reply['metadata'].get('cover_error'))
+                    reply['last_rejection']['reason'] = player_rejection_message(
+                        preferences.path.parent, reply['last_rejection'].get('reason'))
                     return self._json(200, reply)
                 except PlayerUnavailable:
                     return self._json(503, {'ok': False, 'error': 'web.api.player_unavailable'})
             if path == '/api/dashboard':
                 try:
-                    return self._json(200, public_dashboard(
-                        player.request({'command': 'dashboard'}, timeout=3)))
+                    info = public_dashboard(player.request({'command': 'dashboard'}, timeout=3))
+                    for key in ('edit_error', 'release_error'):
+                        info[key] = metadata_error_message(preferences.path.parent, info.get(key))
+                    return self._json(200, info)
                 except (PlayerUnavailable, ValueError):
                     return self._json(503, {'ok': False, 'error': 'web.api.dashboard_unavailable'})
             if path == '/api/library':
                 try:
-                    return self._json(200, public_library(player.request({'command': 'library'}, timeout=3)))
+                    info = public_library(player.request({'command': 'library'}, timeout=3))
+                    library = info['library']
+                    library['error'] = metadata_error_message(
+                        preferences.path.parent, library.get('error'))
+                    for section in ('manage', 'maintenance'):
+                        data = library.get(section)
+                        if isinstance(data, dict):
+                            data['error'] = metadata_error_message(
+                                preferences.path.parent, data.get('error'))
+                    return self._json(200, info)
                 except (PlayerUnavailable, ValueError):
                     return self._json(503, {'ok': False, 'error': 'web.api.library_unavailable'})
             if path == '/api/targets':

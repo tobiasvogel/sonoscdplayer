@@ -187,9 +187,9 @@ class ManualCoverWorkflow:
             self._cover_path = future.result()
             self._cover_error = None
         except CoverBudgetFull:
-            self._cover_error = 'Cover-Speicherbudget ausgeschöpft'
+            self._cover_error = 'metadata.error.cover_budget_full'
         except Exception:
-            self._cover_error = 'Cover konnte nicht gespeichert werden'
+            self._cover_error = 'metadata.error.cover_save_failed'
         self._cover_seq += 1
         return True
 

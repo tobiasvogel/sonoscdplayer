@@ -450,5 +450,20 @@
   "web.api.outcome_no_retry": "Ergebnis unbekannt; Status prüfen, nicht erneut senden",
   "web.api.command_rejected": "Befehl vom Player abgelehnt; Status prüfen",
   "web.api.player_error": "Player-Fehler",
-  "web.dynamic.stored_cds": "Gespeicherte CDs: {count}"
+  "web.dynamic.stored_cds": "Gespeicherte CDs: {count}",
+  "metadata.error.generic": "Metadaten konnten nicht verarbeitet werden",
+  "metadata.error.edit_save_failed": "Metadaten konnten nicht gespeichert werden",
+  "metadata.error.cover_budget_full": "Cover-Speicherbudget ausgeschöpft",
+  "metadata.error.cover_save_failed": "Cover konnte nicht gespeichert werden",
+  "metadata.error.musicbrainz_unavailable": "MusicBrainz derzeit nicht erreichbar",
+  "metadata.error.release_search_failed": "Release-Suche fehlgeschlagen",
+  "metadata.error.release_save_failed": "Zuordnung konnte nicht gespeichert werden",
+  "metadata.error.library_unavailable": "CD-Bibliothek nicht verfügbar",
+  "metadata.error.library_edit_failed": "Änderung konnte nicht gespeichert werden; Bibliothek erneut laden",
+  "metadata.error.library_maintenance_failed": "Speicherverwaltung fehlgeschlagen; Bibliothek neu laden",
+  "web.error.playback.generic": "Anfrage abgelehnt; Player-Status prüfen",
+  "web.error.playback.no_target": "Kein Wiedergabeziel ausgewählt",
+  "web.error.playback.drive_wake": "CD-Laufwerk konnte nicht sicher gestartet werden",
+  "web.error.playback.disc_unavailable": "CD nicht bereit oder nicht lesbar",
+  "web.error.playback.eject_unverified": "Auswerfen blockiert: Laufwerkszustand nicht bestätigt"
 }

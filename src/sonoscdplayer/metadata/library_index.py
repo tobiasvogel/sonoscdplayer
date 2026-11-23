@@ -232,7 +232,7 @@ class LibraryWorkflow:
             result = future.result()
         except Exception:
             with self._library_gate:
-                self._library_state.update(status='error', error='CD-Bibliothek nicht verfügbar')
+                self._library_state.update(status='error', error='metadata.error.library_unavailable')
                 self._library_state['seq'] += 1
         else:
             with self._library_gate:

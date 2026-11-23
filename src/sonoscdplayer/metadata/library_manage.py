@@ -179,7 +179,7 @@ class LibraryManageWorkflow:
         except Exception:
             # Never expose SQLite paths or internal identities to the browser.
             self._library_manage_state.update(status='error',
-                error='Änderung konnte nicht gespeichert werden; Bibliothek erneut laden')
+                error='metadata.error.library_edit_failed')
         else:
             self._library_manage_state.update(status='ready', error=None)
             # A disc may have been inserted while the queued change was saved.

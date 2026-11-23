@@ -450,5 +450,20 @@
   "web.api.outcome_no_retry": "Outcome unknown; check status, do not resend",
   "web.api.command_rejected": "Command rejected by the player; check status",
   "web.api.player_error": "Player error",
-  "web.dynamic.stored_cds": "Stored CDs: {count}"
+  "web.dynamic.stored_cds": "Stored CDs: {count}",
+  "metadata.error.generic": "Metadata could not be processed",
+  "metadata.error.edit_save_failed": "Could not save metadata",
+  "metadata.error.cover_budget_full": "Cover storage budget exhausted",
+  "metadata.error.cover_save_failed": "Could not save cover artwork",
+  "metadata.error.musicbrainz_unavailable": "MusicBrainz is currently unavailable",
+  "metadata.error.release_search_failed": "Release search failed",
+  "metadata.error.release_save_failed": "Could not save the release association",
+  "metadata.error.library_unavailable": "CD library unavailable",
+  "metadata.error.library_edit_failed": "Could not save changes; reload the library",
+  "metadata.error.library_maintenance_failed": "Storage management failed; reload the library",
+  "web.error.playback.generic": "Request rejected; check player status",
+  "web.error.playback.no_target": "No playback target selected",
+  "web.error.playback.drive_wake": "Could not safely start the CD drive",
+  "web.error.playback.disc_unavailable": "CD not ready or unreadable",
+  "web.error.playback.eject_unverified": "Eject blocked: drive state not verified"
 }

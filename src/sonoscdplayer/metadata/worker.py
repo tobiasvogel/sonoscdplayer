@@ -362,7 +362,7 @@ class MetadataWorker(LibraryMaintenanceWorkflow, LibraryManageWorkflow, LibraryW
             except Exception as exc:
                 print(f'[metadata] manual edit failed: {type(exc).__name__}', flush=True)
                 if self._result is not None and self._result.get('edit_token') == token:
-                    self._result['edit_error'] = 'Metadaten konnten nicht gespeichert werden'
+                    self._result['edit_error'] = 'metadata.error.edit_save_failed'
                     self._result['edit_seq'] = self._result.get('edit_seq', 0) + 1
                     changed = True
                 continue

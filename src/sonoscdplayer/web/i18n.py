@@ -44,3 +44,33 @@ def web_message(state_dir: str | Path, key: str) -> str:
     if key not in translations:
         raise KeyError(key)
     return translations[key]
+
+
+def metadata_error_message(state_dir: str | Path, value: object) -> str | None:
+    """Resolve a player's *known* metadata error code, never raw exception text.
+
+    Old player processes may still return German strings. Such unknown strings
+    are deliberately replaced by a generic catalog message, not echoed to LAN.
+    """
+    if value is None:
+        return None
+    english = catalog('en')
+    key = (value if type(value) is str and value.startswith('metadata.error.')
+           and value in english else 'metadata.error.generic')
+    return catalog(active_language(state_dir)).get(key, english[key])
+
+
+def player_rejection_message(state_dir: str | Path, value: object) -> str | None:
+    """Give bounded, translated playback feedback; never publish exception detail."""
+    if not isinstance(value, str) or not value:
+        return None
+    known = {
+        'ValueError: no confirmed target': 'web.error.playback.no_target',
+        'drive wake unverified; PLAY blocked': 'web.error.playback.drive_wake',
+        'disc unavailable, unreadable or unverified; inspect status before PLAY':
+            'web.error.playback.disc_unavailable',
+        'EJECT blocked: idle drive state unverified': 'web.error.playback.eject_unverified',
+    }
+    key = known.get(value, 'web.error.playback.generic')
+    english = catalog('en')
+    return catalog(active_language(state_dir)).get(key, english[key])

@@ -130,13 +130,13 @@ class ReleaseWorkflow:
                             status='ready' if summaries else 'not_found',
                             candidates=summaries, total=len(self._release_items),
                             error=None if answer.status not in ('offline', 'unavailable', 'error')
-                            else 'MusicBrainz derzeit nicht erreichbar')
+                            else 'metadata.error.musicbrainz_unavailable')
                         if answer.status in ('offline', 'unavailable', 'error'):
                             self._release_info['status'] = 'error'
                     except Exception:
                         self._release_items = {}
                         self._release_info.update(status='error', candidates=[], total=0,
-                                                  error='Release-Suche fehlgeschlagen')
+                                                  error='metadata.error.release_search_failed')
                     self._release_info['seq'] += 1
                     changed = True
         if self._release_selection is not None:
@@ -147,7 +147,7 @@ class ReleaseWorkflow:
                     try:
                         future.result()
                     except Exception:
-                        self._release_info.update(status='ready', error='Zuordnung konnte nicht gespeichert werden')
+                        self._release_info.update(status='ready', error='metadata.error.release_save_failed')
                     else:
                         self._release_info.update(status='ready', error=None)
                         self._result = None

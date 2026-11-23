@@ -241,7 +241,7 @@ class LibraryMaintenanceWorkflow:
             result = future.result()
         except Exception:
             self._maintenance_state.update(status='error',
-                error='Speicherverwaltung fehlgeschlagen; Bibliothek neu laden')
+                error='metadata.error.library_maintenance_failed')
         else:
             self._maintenance_state.update(status='ready', error=None,
                 changed_count=result['changed_count'], stats=result['stats'])

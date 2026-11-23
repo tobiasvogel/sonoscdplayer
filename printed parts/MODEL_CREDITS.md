@@ -14,3 +14,6 @@ https://grabcad.com/library/waveshare-128x128-display-1-5-zoll-1
 
 M3 Heat Set Screw Inserts:
 https://grabcad.com/library/m3-heat-set-screw-inserts-for-3d-printing-1
+
+40 Pin IDC Cable:
+https://grabcad.com/library/cable-idc-40-position-rectangular-socket-to-socket-1
