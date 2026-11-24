@@ -5,16 +5,32 @@ No image decoding, arbitrary user paths, deletion or player RPC.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 import stat
 
 from sonoscdplayer.metadata.cover_store import DEFAULT_COVER_DIR
 
 MAX_COVERS = 10000
+# CoverStore uses SHA-256(release UUID); ManualCoverStore uses the TOC-qualified
+# 32-hex disc token. Other JPEGs must not enter a future deletion inventory.
+_AUTO_NAME = re.compile(r'[0-9a-f]{64}\.jpg\Z')
+_MANUAL_NAME = re.compile(r'manual-[0-9a-f]{32}\.jpg\Z')
+
+
+def cover_kind(name):
+    """Identify only filenames written by the two supported cover stores."""
+    if not isinstance(name, str):
+        return None
+    if _AUTO_NAME.fullmatch(name):
+        return 'automatic'
+    if _MANUAL_NAME.fullmatch(name):
+        return 'manual'
+    return None
 
 
 def cover_storage_snapshot(budget_mb, directory=None):
-    """Report regular JPEG files only; fail rather than claim zero on I/O errors."""
+    """Report recognized store files only; fail on I/O errors."""
     if type(budget_mb) is not int or not 1 <= budget_mb <= 10000:
         raise ValueError('invalid cover budget')
     root = Path(DEFAULT_COVER_DIR if directory is None else directory)
@@ -22,7 +38,8 @@ def cover_storage_snapshot(budget_mb, directory=None):
     try:
         with os.scandir(root) as entries:
             for entry in entries:
-                if not entry.name.endswith('.jpg'):
+                kind = cover_kind(entry.name)
+                if kind is None:
                     continue
                 info = entry.stat(follow_symlinks=False)
                 if not stat.S_ISREG(info.st_mode):
@@ -31,7 +48,7 @@ def cover_storage_snapshot(budget_mb, directory=None):
                 if count > MAX_COVERS:
                     raise OSError('too many cover files')
                 used += info.st_size
-                if entry.name.startswith('manual-'):
+                if kind == 'manual':
                     manual += 1
                     manual_bytes += info.st_size
     except FileNotFoundError:
