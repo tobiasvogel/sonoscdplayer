@@ -440,6 +440,30 @@
     return Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
   }
 
+  // These values are cached player status, not an invitation to run a new lookup.
+  // Unknown future status codes must never be displayed as success.
+  function renderMetadataSourceStatus(metadata, noDisc = false) {
+    const statusKeys = {
+      cdtext: {available: 'available', unavailable: 'unavailable', error: 'error',
+        not_found: 'not_found', absent: 'not_found'},
+      lookup: {unique: 'unique', ambiguous: 'ambiguous', not_found: 'not_found',
+        unavailable: 'unavailable', offline: 'offline', error: 'error'},
+      match: {toc: 'toc', cached: 'cached', manual: 'manual', gnudb: 'gnudb',
+        consensus: 'consensus', majority: 'majority', unique: 'unique',
+        ambiguous: 'ambiguous', none: 'not_found'}
+    };
+    for (const [kind, property, element] of [
+      ['cdtext', 'cdtext_status', '#metadata-cdtext'],
+      ['lookup', 'lookup_status', '#metadata-lookup'],
+      ['match', 'match_status', '#metadata-match']
+    ]) {
+      const raw = !noDisc && metadata && typeof metadata[property] === 'string'
+        ? metadata[property] : null;
+      const name = noDisc ? 'no_disc' : (Object.prototype.hasOwnProperty.call(statusKeys[kind], raw) ? statusKeys[kind][raw] : 'unknown');
+      $(element).textContent = tr('web.metadata_status.' + name);
+    }
+  }
+
   function renderStatus(state) {
     const player = state.player || {};
     const metadata = state.metadata || {};
@@ -450,6 +474,7 @@
     const current = Number(player.track) || 0;
     const count = Math.max(0, Math.min(99, Number(player.track_count) || 0));
     const noDisc = mode === 'NO_DISC' || state.disc?.mode === 'NO_DISC';
+    renderMetadataSourceStatus(metadata, noDisc);
     const album = noDisc ? tr('web.text.no_cd_inserted') : (metadata.album || (count ? tr('web.text.audio_cd') : tr('web.text.no_cd_detected')));
     const title = noDisc ? tr('web.text.no_playback') : (metadata.track_title || (current ? tr('web.dynamic.track_number', {number: current}) : tr('web.text.no_playback')));
     const artist = noDisc ? '—' : (metadata.track_artist || metadata.artist || '—');
@@ -895,6 +920,7 @@
       $('#device-reachable').textContent = tr('web.text.no_connection');
       document.querySelectorAll('.chip .dot,.railfoot .dot').forEach(dot => dot.classList.add('offline'));
       $('#player-status').textContent = tr('web.text.offline');
+      renderMetadataSourceStatus(null);
       $('#target-name').textContent = tr('web.text.unavailable');
       $('#track-title').textContent = tr('web.text.player_unavailable');
       $('#track-artist').textContent = '—';
