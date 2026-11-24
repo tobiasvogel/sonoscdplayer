@@ -497,6 +497,7 @@
   "web.settings.reset_cover": "Use base cover mode",
   "web.settings.cover_scope": "Cover mode controls cover downloads as well as display rendering. Saved for next controlled player and display service restart; no automatic restart.",
   "web.settings.cover_saved": "Cover mode saved. Player and display restart required to apply it.",
+  "web.settings.cover_corrupt_reset_confirm": "Saved cover settings are corrupt. Remove the override and restore the base setting?",
   "web.settings.input_title": "Buttons and rotary encoder",
   "web.settings.input_scope": "Only timing and rotary-encoder direction can be changed. GPIO assignments, pull/level wiring and power-button timing remain read-only.",
   "web.settings.input_poll": "GPIO polling interval (ms)",

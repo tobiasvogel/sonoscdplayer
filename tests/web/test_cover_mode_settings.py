@@ -99,6 +99,12 @@ def test_http_cover_staging_does_not_contact_player(tmp_path, monkeypatch):
         assert row['origin_file'] == FILE_NAME
         assert post({'mode': None, 'revision': response['revision']})[0] == 200
         assert not (state / FILE_NAME).exists()
+        # Corruption is recoverable only via explicit reset with its revision.
+        (state / FILE_NAME).write_bytes(b'{broken')
+        assert post({'mode': 'on', 'revision': 'invalid'})[0] == 400
+        assert post({'mode': None, 'revision': 'none'})[0] == 409
+        assert post({'mode': None, 'revision': 'invalid'})[0] == 200
+        assert not (state / FILE_NAME).exists()
         assert (config / 'ui.toml').read_text() == '[ui.cover]\nmode = "on"\n'
     finally:
         http.shutdown()

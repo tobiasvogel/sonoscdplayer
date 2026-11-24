@@ -221,9 +221,11 @@
     await loadSettings();
   }
   async function saveCoverMode(reset = false) {
-    if (coverRevision === null || coverRevision === 'invalid') return;
+    if (coverRevision === null || (!reset && coverRevision === 'invalid')) return;
     const mode = reset ? null : $('#cover').value;
     if (mode !== null && !['auto', 'on', 'off'].includes(mode)) return;
+    if (reset && coverRevision === 'invalid' &&
+        !window.confirm(tr('web.settings.cover_corrupt_reset_confirm'))) return;
     $('#save-cover-mode').disabled = true;
     $('#reset-cover-mode').disabled = true;
     try {
@@ -342,11 +344,11 @@
     $('#lang').disabled = languageRevision === null || !['de', 'en'].includes(byKey.get('ui.language')?.value);
     $('#save-display-language').disabled = $('#lang').disabled;
     settingsField('#cover', byKey.get('ui.cover.mode'), ['auto', 'off', 'on']);
-    const coverEditable = coverRevision !== null && coverRevision !== 'invalid' &&
-      ['auto', 'on', 'off'].includes(byKey.get('ui.cover.mode')?.value);
+    const coverBaseValid = ['auto', 'on', 'off'].includes(byKey.get('ui.cover.mode')?.value);
+    const coverEditable = coverRevision !== null && coverRevision !== 'invalid' && coverBaseValid;
     $('#cover').disabled = !coverEditable;
     $('#save-cover-mode').disabled = !coverEditable;
-    $('#reset-cover-mode').disabled = !coverEditable;
+    $('#reset-cover-mode').disabled = coverRevision === null || !coverBaseValid;
     renderInputSettings(data);
     installPlaybackControls();
     let box = $('#settings-readonly');

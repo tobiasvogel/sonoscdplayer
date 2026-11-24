@@ -73,7 +73,8 @@ def save_cover_mode(directory, mode, revision):
     current, current_revision = read_cover_mode(root)
     if current_revision != revision:
         raise CoverConflict('cover settings changed')
-    if current_revision == 'invalid':
+    if current_revision == 'invalid' and mode is not None:
+        # A corrupt state can only be removed by an explicit reset.
         raise ValueError('invalid saved cover state')
     path = root / FILE_NAME
     if path.is_symlink():

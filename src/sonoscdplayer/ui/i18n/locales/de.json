@@ -497,6 +497,7 @@
   "web.settings.reset_cover": "Cover-Grundwert verwenden",
   "web.settings.cover_scope": "Der Covermodus steuert auch das Herunterladen von Covern, nicht nur die Darstellung. Übernahme erst nach kontrolliertem Neustart von Player- und Displaydienst; kein automatischer Neustart.",
   "web.settings.cover_saved": "Covermodus gespeichert. Neustart von Player und Display zur Übernahme erforderlich.",
+  "web.settings.cover_corrupt_reset_confirm": "Die gespeicherten Covereinstellungen sind beschädigt. Override endgültig entfernen und den Grundwert wiederherstellen?",
   "web.settings.input_title": "Tasten und Drehgeber",
   "web.settings.input_scope": "Nur Zeitparameter und Drehrichtung sind änderbar. GPIO-Belegung, Pull-/Pegel-Einstellungen und Power-Tastendruckzeiten bleiben schreibgeschützt.",
   "web.settings.input_poll": "GPIO-Abfrageintervall (ms)",
