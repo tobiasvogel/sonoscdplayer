@@ -57,6 +57,28 @@ class LocalizationTests(unittest.TestCase):
             value=load_ui_config(p)
         self.assertEqual((value.language,value.cover_mode),('en','off'))
 
+    def test_display_adopts_saved_language_only_when_menu_is_idle(self):
+        from sonoscdplayer.ui.display_service import refresh_saved_language
+        from sonoscdplayer.ui.language_state import UiState
+        with tempfile.TemporaryDirectory() as tmp:
+            state = UiState(tmp, log=lambda *_: None)
+            menu = InteractiveMenu(discover=lambda *,timeout: speakers(), language='de')
+            assert state.save_language('en')
+            self.assertTrue(refresh_saved_language(menu, state))
+            self.assertEqual(menu.language, 'en')
+            self.assertEqual(menu.language_focus, menu.languages.index('en'))
+            self.assertFalse(refresh_saved_language(menu, state))
+            assert state.save_language('de')
+            menu.active = True
+            self.assertFalse(refresh_saved_language(menu, state))
+            self.assertEqual(menu.language, 'en')
+            menu.active = False
+            menu.language_picker = True
+            self.assertFalse(refresh_saved_language(menu, state))
+            menu.language_picker = False
+            self.assertTrue(refresh_saved_language(menu, state))
+            self.assertEqual(menu.language, 'de')
+
     def test_invalid_config_is_rejected(self):
         with self.assertRaises(ValueError):
             UIConfig(language='fr')
