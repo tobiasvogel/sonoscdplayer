@@ -14,6 +14,7 @@ from io import BytesIO
 import os
 from pathlib import Path
 import re
+import stat
 import tempfile
 import urllib.error
 import urllib.request
@@ -21,6 +22,11 @@ import urllib.request
 DEFAULT_COVER_DIR = Path('/var/lib/sonoscdplayer/covers')
 _UUID = re.compile(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')
 
+
+# Keep the budget accounting aligned with the private web inventory.  Unknown
+# JPEGs and symlinks are not managed covers and must not affect the quota.
+_AUTO_COVER_NAME = re.compile(r'[0-9a-f]{64}\.jpg\Z')
+_MANUAL_COVER_NAME = re.compile(r'manual-[0-9a-f]{32}\.jpg\Z')
 
 DEFAULT_BUDGET_MB = 100
 
@@ -60,12 +66,21 @@ class CoverStore:
         return self.directory / (sha256(release_id.lower().encode()).hexdigest() + '.jpg')
 
     def used_bytes(self) -> int:
-        """Size of all stored covers."""
+        """Count only regular, recognized covers; never treat I/O errors as free space."""
         try:
-            return sum(entry.stat().st_size for entry in self.directory.glob('*.jpg')
-                       if entry.is_file())
-        except OSError:
-            return 0
+            scan = os.scandir(self.directory)
+        except FileNotFoundError:
+            return 0  # Initial empty cache; no directory created yet.
+        used = 0
+        with scan as entries:
+            for entry in entries:
+                if not (_AUTO_COVER_NAME.fullmatch(entry.name) or
+                        _MANUAL_COVER_NAME.fullmatch(entry.name)):
+                    continue
+                info = entry.stat(follow_symlinks=False)
+                if stat.S_ISREG(info.st_mode):
+                    used += info.st_size
+        return used
 
     def find(self, release_id: str) -> Path | None:
         """Path of the stored cover for this release, or None."""
