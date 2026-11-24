@@ -35,8 +35,10 @@ def refresh_saved_language(menu, ui_state):
     owner of its current interaction; an external change must not move a
     language picker or interrupt an open device menu.
     """
-    if (menu is None or menu.active or menu.power_menu or
-            menu.language_picker or menu.shutdown_screen is not None):
+    if (menu is None or not hasattr(menu, 'languages') or
+            getattr(menu, 'active', True) or getattr(menu, 'power_menu', False) or
+            getattr(menu, 'language_picker', False) or
+            getattr(menu, 'shutdown_screen', None) is not None):
         return False
     saved = ui_state.language(menu.languages)
     if saved is None or saved == menu.language:
