@@ -1,4 +1,4 @@
-"""Regression: disk budget accounting must agree with managed cover inventory."""
+"""Regression: disk budget counts legacy JPEGs; inventory lists managed covers only."""
 import os
 
 import pytest
@@ -7,14 +7,14 @@ from sonoscdplayer.metadata.cover_store import CoverStore
 from sonoscdplayer.web.cover_storage import cover_inventory
 
 
-def test_budget_counts_only_regular_recognized_covers(tmp_path):
+def test_budget_includes_legacy_jpegs_but_inventory_does_not(tmp_path):
     auto = tmp_path / ('a' * 64 + '.jpg')
     manual = tmp_path / ('manual-' + 'b' * 32 + '.jpg')
     auto.write_bytes(b'a' * 17)
     manual.write_bytes(b'b' * 23)
     (tmp_path / 'unmanaged.jpg').write_bytes(b'x' * 400)
     (tmp_path / ('c' * 64 + '.jpg')).symlink_to(auto)
-    assert CoverStore(tmp_path).used_bytes() == 40
+    assert CoverStore(tmp_path).used_bytes() == 440
     assert sum(item.size for item in cover_inventory(tmp_path)) == 40
 
 

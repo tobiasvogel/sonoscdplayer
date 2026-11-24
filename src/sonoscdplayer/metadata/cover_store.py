@@ -23,10 +23,8 @@ DEFAULT_COVER_DIR = Path('/var/lib/sonoscdplayer/covers')
 _UUID = re.compile(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')
 
 
-# Keep the budget accounting aligned with the private web inventory.  Unknown
-# JPEGs and symlinks are not managed covers and must not affect the quota.
-_AUTO_COVER_NAME = re.compile(r'[0-9a-f]{64}\.jpg\Z')
-_MANUAL_COVER_NAME = re.compile(r'manual-[0-9a-f]{32}\.jpg\Z')
+# The storage budget also includes legacy/unmanaged JPEGs; only the web
+# inventory restricts filenames. Symlinks are excluded from both scans.
 
 DEFAULT_BUDGET_MB = 100
 
@@ -66,7 +64,7 @@ class CoverStore:
         return self.directory / (sha256(release_id.lower().encode()).hexdigest() + '.jpg')
 
     def used_bytes(self) -> int:
-        """Count only regular, recognized covers; never treat I/O errors as free space."""
+        """Count all regular JPEGs; never treat I/O errors as free space."""
         try:
             scan = os.scandir(self.directory)
         except FileNotFoundError:
@@ -74,8 +72,7 @@ class CoverStore:
         used = 0
         with scan as entries:
             for entry in entries:
-                if not (_AUTO_COVER_NAME.fullmatch(entry.name) or
-                        _MANUAL_COVER_NAME.fullmatch(entry.name)):
+                if not entry.name.lower().endswith('.jpg'):
                     continue
                 info = entry.stat(follow_symlinks=False)
                 if stat.S_ISREG(info.st_mode):
