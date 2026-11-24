@@ -460,7 +460,8 @@
       const raw = !noDisc && metadata && typeof metadata[property] === 'string'
         ? metadata[property] : null;
       const name = noDisc ? 'no_disc' : (Object.prototype.hasOwnProperty.call(statusKeys[kind], raw) ? statusKeys[kind][raw] : 'unknown');
-      $(element).textContent = tr('web.metadata_status.' + name);
+      const translationKey = 'web.metadata_status.' + name;
+      $(element).textContent = tr(translationKey);
     }
   }
 
