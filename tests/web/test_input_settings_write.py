@@ -67,6 +67,12 @@ def test_refuse_symlink_and_corrupt_state(tmp_path):
     with pytest.raises(ValueError):
         update_input_settings(tmp_path, base(), {
             'action': 'save', 'revision': 'none', 'values': values()})
+    with pytest.raises(InputSettingsConflict):
+        update_input_settings(tmp_path, base(), {
+            'action': 'reset', 'revision': 'none', 'values': {}})
+    assert update_input_settings(tmp_path, base(), {
+        'action': 'reset', 'revision': 'invalid', 'values': {}}) == 'none'
+    assert not path.exists()
 
 
 def test_web_endpoint_does_not_contact_player_or_modify_toml(tmp_path, monkeypatch):
@@ -113,6 +119,15 @@ def test_web_endpoint_does_not_contact_player_or_modify_toml(tmp_path, monkeypat
         assert (config / 'interface.toml').read_bytes() == original
         assert post({'action': 'reset', 'revision': result['revision'], 'values': {}})[0] == 200
         assert get()['input']['revision'] == 'none'
+        (state / 'input-settings.json').write_text('{invalid')
+        damaged = get()['input']
+        assert damaged['editable'] is False
+        assert damaged['resettable'] is True
+        assert damaged['revision'] == 'invalid'
+        assert post({'action': 'save', 'revision': 'invalid', 'values': values()})[0] == 400
+        assert post({'action': 'reset', 'revision': 'invalid', 'values': {}})[0] == 200
+        assert get()['input']['revision'] == 'none'
+        assert (config / 'interface.toml').read_bytes() == original
     finally:
         http.shutdown()
         http.server_close()

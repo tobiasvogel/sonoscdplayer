@@ -19,7 +19,7 @@ from sonoscdplayer.hardware.inputs.input_settings import (
 )
 
 _LOCK_FILE = '.input-settings.lock'
-_REVISION = re.compile(r'(?:none|[0-9a-f]{64})\Z')
+_REVISION = re.compile(r'(?:none|invalid|[0-9a-f]{64})\Z')
 
 
 class InputSettingsConflict(ValueError):
@@ -66,9 +66,16 @@ def update_input_settings(directory, base_config, request):
         apply_settings(base_config, values)
     root = Path(directory)
     with _locked(root):
-        _current, existing_revision = read_settings(root)
+        try:
+            _current, existing_revision = read_settings(root)
+        except ValueError:
+            # A corrupt overlay must never be applied, but a deliberate reset
+            # can recover it. Ordinary saves remain forbidden.
+            existing_revision = 'invalid'
         if existing_revision != revision:
             raise InputSettingsConflict('input settings changed')
+        if existing_revision == 'invalid' and action != 'reset':
+            raise ValueError('invalid saved input settings')
         path = root / FILE_NAME
         if path.is_symlink():
             raise OSError('invalid input settings path')

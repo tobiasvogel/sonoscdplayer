@@ -236,12 +236,14 @@ def settings_snapshot(*, config_root=None, state_root=None):
     web_state = _state_document(state / 'web.json')
     playback_overrides, playback_revision = read_overrides(state)
     input_editable = False
+    input_base_valid = False
     input_revision = 'invalid'
     input_values = {}
     input_overrides = {}
     try:
         # Full production parser: do not stage edits on invalid or absent wiring.
         input_cfg = load_input_config(root / 'interface.toml')
+        input_base_valid = True
         input_overrides, input_revision = read_input_settings(state)
         input_values = {
             'gpio.poll_interval_ms': input_cfg.poll_interval_ms,
@@ -333,7 +335,8 @@ def settings_snapshot(*, config_root=None, state_root=None):
             'runtime_verified': False, 'invalid_keys': invalid_keys,
             'display': {'language_revision': language_revision,
                         'cover_revision': cover_revision},
-            'input': {'editable': input_editable, 'revision': input_revision,
-                      'values': input_values},
+            'input': {'editable': input_editable,
+                      'resettable': input_base_valid and not input_editable,
+                      'revision': input_revision, 'values': input_values},
             'playback': {'editable': playable, 'revision': playback_revision,
                          'runtime': None, 'restart_required': None}}

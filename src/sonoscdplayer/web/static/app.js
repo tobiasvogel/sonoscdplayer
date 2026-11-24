@@ -121,6 +121,7 @@
   let coverRevision = null;
   let inputRevision = null;
   let inputEditable = false;
+  let inputResettable = false;
   const inputSpecs = [
     ['gpio.poll_interval_ms', 'input-poll', 1, 1000],
     ['volume.repeat_delay_ms', 'input-repeat-delay', 100, 5000],
@@ -242,16 +243,19 @@
       inputRevision !== 'invalid' && values && typeof values === 'object' &&
       !Array.isArray(values) && inputSpecs.every(([key]) =>
         Object.prototype.hasOwnProperty.call(values, key));
+    inputResettable = section?.resettable === true && inputRevision === 'invalid';
     for (const [key, id] of inputSpecs) {
       const field = $('#' + id);
       field.disabled = !inputEditable;
       field.value = inputEditable ? String(values[key]) : '';
     }
     $('#input-settings-save').disabled = !inputEditable;
-    $('#input-settings-reset').disabled = !inputEditable;
+    $('#input-settings-reset').disabled = !(inputEditable || inputResettable);
   }
   async function editInputSettings(action) {
-    if (!inputEditable || inputRevision === null) return;
+    if (inputRevision === null ||
+        (action === 'save' && !inputEditable) ||
+        (action === 'reset' && !(inputEditable || inputResettable))) return;
     if (action === 'reset' && !window.confirm(tr('web.settings.input_reset_confirm'))) return;
     const values = {};
     if (action === 'save') {
