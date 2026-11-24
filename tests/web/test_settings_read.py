@@ -31,6 +31,31 @@ def by_key(snapshot, key):
     return next(item for item in snapshot['settings'] if item['key'] == key)
 
 
+def test_button_sources_match_production_input_parser(tmp_path):
+    config, state = sample_files(tmp_path)
+    (config / 'interface.toml').write_text(
+        '[buttons]\nconnect = "keys:0"\nstop = 18\nspeaker_select = -1\n'
+        '[shift_registers.keys]\ntype = "74hc165"\n'
+        'load_pin = 2\nclock_pin = 3\ndata_pin = 4\nchips = 1\n',
+        encoding='utf-8')
+    snapshot = settings_snapshot(config_root=config, state_root=state)
+    assert by_key(snapshot, 'buttons.connect')['value'] == 'keys:0'
+    assert by_key(snapshot, 'buttons.connect')['source'] == 'config'
+    assert by_key(snapshot, 'buttons.stop')['value'] == 18
+    assert by_key(snapshot, 'buttons.speaker_select')['value'] == -1
+    assert not any(key.startswith('buttons.') for key in snapshot['invalid_keys'])
+
+
+def test_invalid_shift_register_channel_is_not_exposed_as_valid(tmp_path):
+    config, state = sample_files(tmp_path)
+    (config / 'interface.toml').write_text(
+        '[buttons]\nconnect = "unknown:0"\n', encoding='utf-8')
+    snapshot = settings_snapshot(config_root=config, state_root=state)
+    assert by_key(snapshot, 'buttons.connect')['source'] == 'invalid'
+    assert by_key(snapshot, 'buttons.connect')['value'] is None
+    assert 'buttons.connect' in snapshot['invalid_keys']
+
+
 def test_merge_base_and_existing_owned_state(tmp_path):
     config, state = sample_files(tmp_path)
     before = {p: p.read_bytes() for p in (*config.iterdir(), *state.iterdir())}

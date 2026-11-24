@@ -16,6 +16,7 @@ from sonoscdplayer.system.state_files import default_state_dir
 from sonoscdplayer.ui.i18n.translator import available_languages
 from sonoscdplayer.ui.language_state import UiState
 from sonoscdplayer.ui.cover_state import read_cover_mode
+from sonoscdplayer.hardware.inputs.event_engine import _button_source, _registers
 from sonoscdplayer.player.playback_settings import FIELDS as PLAYBACK_FIELDS, read_overrides, base_values
 
 MAX_CONFIG_BYTES = 65536
@@ -139,8 +140,21 @@ ENUMS = {
 }
 
 
-def _valid_config(identifier, value):
+def _valid_config(identifier, value, *, interface=None):
     """Never present malformed declared values as if they were active."""
+    if identifier.startswith('buttons.'):
+        # The input parser supports BCM pins AND named 74HC165 channels.
+        # speaker_select may also be deliberately unassigned.
+        if identifier == 'buttons.speaker_select' and (
+                type(value) is int and value == -1 or
+                type(value) is str and value in ('', 'null')):
+            return True
+        try:
+            registers = _registers((interface or {}).get('shift_registers', {}))
+            _button_source(value, registers)
+        except (ValueError, TypeError, KeyError):
+            return False
+        return True
     if identifier == 'ui.language':
         return type(value) is str and value in available_languages()
     if identifier in ENUMS:
@@ -246,7 +260,7 @@ def settings_snapshot(*, config_root=None, state_root=None):
     ):
         for identifier in names:
             base = _value(document, identifier)
-            if base is not None and not _valid_config(identifier, base):
+            if base is not None and not _valid_config(identifier, base, interface=interface):
                 # An invalid *individual* setting must never hide otherwise
                 # valid playback settings. Never publish its original value.
                 invalid_keys.append(identifier)
