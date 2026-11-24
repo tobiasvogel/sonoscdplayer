@@ -19,6 +19,7 @@ from .player_client import PlayerClient, PlayerUnavailable, command_payload, met
 from .cover_upload import stage_upload, discard_upload
 from sonoscdplayer.metadata.manual_cover import MAX_UPLOAD_BYTES
 from sonoscdplayer.metadata.cover_preferences import read_cover_preferences
+from .cover_storage import cover_storage_snapshot
 from .state import WebPreferences
 from .dashboard_projection import public_dashboard, public_release_detail
 from .library_projection import public_library
@@ -124,6 +125,13 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                 return self._file((STATIC / 'app.js').read_bytes(), 'text/javascript; charset=utf-8')
             if path == '/api/i18n':
                 return self._json(200, web_catalog(preferences.path.parent))
+            if path == '/api/covers/storage':
+                try:
+                    policy = read_cover_preferences(config_paths.ui_config(),
+                                                    state_dir=preferences.path.parent)
+                    return self._json(200, cover_storage_snapshot(policy.budget_mb))
+                except (OSError, ValueError):
+                    return self._json(503, {'ok': False, 'error': 'web.api.settings_unavailable'})
             if path == '/api/settings':
                 try:
                     return self._json(200, settings_snapshot(state_root=preferences.path.parent))

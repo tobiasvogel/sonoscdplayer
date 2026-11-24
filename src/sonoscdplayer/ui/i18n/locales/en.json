@@ -535,5 +535,9 @@
   "web.metadata_origin.manual": "Manually corrected",
   "web.metadata_origin.automatic": "Automatic · exact field source not recorded",
   "web.metadata_origin.unknown": "Source unknown",
+  "web.cover_storage.title": "Cover cache storage",
+  "web.cover_storage.loading": "Loading storage usage …",
+  "web.cover_storage.unavailable": "Storage usage unavailable",
+  "web.cover_storage.summary": "{used} / {budget} MiB · {count} covers, {manual} manual",
   "web.api.settings_conflict": "The settings were changed elsewhere. Reload and try again."
 }

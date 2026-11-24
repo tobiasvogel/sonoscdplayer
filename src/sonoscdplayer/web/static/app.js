@@ -105,7 +105,10 @@
     document.querySelectorAll('.screen').forEach(screen => screen.classList.toggle('active', screen.id === name));
     $('#pagetitle').textContent = name === 'playback' ? tr('web.text.now_playing') : tr('web.text.settings');
     $('#eyebrow').textContent = name === 'playback' ? tr('web.text.listen_to_music') : tr('web.text.manage_device');
-    if (name === 'settings') loadSettings();
+    if (name === 'settings') {
+      loadSettings();
+      if ($('#metadata').classList.contains('active')) loadCoverStorage();
+    }
   }
   function showPanel(panel) {
     document.querySelectorAll('.settings-nav button').forEach(button => button.classList.toggle('active', button.dataset.panel === panel));
@@ -433,6 +436,7 @@
   $('#input-settings-save').addEventListener('click', () => editInputSettings('save'));
   $('#input-settings-reset').addEventListener('click', () => editInputSettings('reset'));
   $('#edit-metadata').addEventListener('click', () => showPanel('metadata'));
+  $('#cover-storage-refresh').addEventListener('click', loadCoverStorage);
 
   function formattedTime(number) {
     if (typeof number !== 'number' || !Number.isFinite(number) || number < 0) return '—';
@@ -563,6 +567,28 @@
       !countSpeakers ? tr('web.text.no_sonos_target_selected') :
       names.length ? names.join(' · ') + (missing ? tr('web.dynamic.more_speakers', {count: missing}) : '') :
       countSpeakers === 1 ? tr('web.text.1_speaker_selected') : tr('web.dynamic.speakers_selected', {count: countSpeakers});
+  }
+
+  function formatMiB(bytes) {
+    return (bytes / (1024 * 1024)).toFixed(1);
+  }
+  async function loadCoverStorage() {
+    const target = $('#cover-storage-status');
+    target.textContent = tr('web.cover_storage.loading');
+    try {
+      const data = await request('/api/covers/storage');
+      if (!Number.isSafeInteger(data.used_bytes) || data.used_bytes < 0 ||
+          !Number.isSafeInteger(data.budget_bytes) || data.budget_bytes <= 0 ||
+          !Number.isSafeInteger(data.cover_count) || data.cover_count < 0 ||
+          !Number.isSafeInteger(data.manual_count) || data.manual_count < 0 ||
+          data.manual_count > data.cover_count) throw new Error('invalid cover storage response');
+      target.textContent = tr('web.cover_storage.summary', {
+        used: formatMiB(data.used_bytes), budget: formatMiB(data.budget_bytes),
+        count: data.cover_count, manual: data.manual_count
+      });
+    } catch (_) {
+      target.textContent = tr('web.cover_storage.unavailable');
+    }
   }
 
   // WEB-03c: upload bytes only after a matching, current-disc dashboard read.

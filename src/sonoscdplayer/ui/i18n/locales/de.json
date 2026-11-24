@@ -535,5 +535,9 @@
   "web.metadata_origin.manual": "Manuell korrigiert",
   "web.metadata_origin.automatic": "Automatisch · genaue Feldquelle nicht erfasst",
   "web.metadata_origin.unknown": "Herkunft unbekannt",
+  "web.cover_storage.title": "Covercache-Speicher",
+  "web.cover_storage.loading": "Speicherbelegung wird geladen …",
+  "web.cover_storage.unavailable": "Speicherbelegung nicht verfügbar",
+  "web.cover_storage.summary": "{used} / {budget} MiB · {count} Covers, davon {manual} manuell",
   "web.api.settings_conflict": "Die Einstellungen wurden zwischenzeitlich geändert. Bitte neu laden."
 }
