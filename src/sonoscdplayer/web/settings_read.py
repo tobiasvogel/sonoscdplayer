@@ -16,7 +16,8 @@ from sonoscdplayer.system.state_files import default_state_dir
 from sonoscdplayer.ui.i18n.translator import available_languages
 from sonoscdplayer.ui.language_state import UiState
 from sonoscdplayer.ui.cover_state import read_cover_mode
-from sonoscdplayer.hardware.inputs.event_engine import _button_source, _registers
+from sonoscdplayer.hardware.inputs.event_engine import _button_source, _registers, load_config as load_input_config
+from sonoscdplayer.hardware.inputs.input_settings import FIELDS as INPUT_FIELDS, read_settings as read_input_settings
 from sonoscdplayer.player.playback_settings import FIELDS as PLAYBACK_FIELDS, read_overrides, base_values
 
 MAX_CONFIG_BYTES = 65536
@@ -234,6 +235,26 @@ def settings_snapshot(*, config_root=None, state_root=None):
     cover_override, cover_revision = read_cover_mode(state)
     web_state = _state_document(state / 'web.json')
     playback_overrides, playback_revision = read_overrides(state)
+    input_editable = False
+    input_revision = 'invalid'
+    input_values = {}
+    input_overrides = {}
+    try:
+        # Full production parser: do not stage edits on invalid or absent wiring.
+        input_cfg = load_input_config(root / 'interface.toml')
+        input_overrides, input_revision = read_input_settings(state)
+        input_values = {
+            'gpio.poll_interval_ms': input_cfg.poll_interval_ms,
+            'volume.repeat_delay_ms': input_cfg.volume_repeat_delay_ms,
+            'volume.repeat_interval_ms': input_cfg.volume_repeat_interval_ms,
+            'encoder_input.button_debounce_ms': input_cfg.encoder.switch.debounce_ms,
+            'encoder_input.steps_per_detent': input_cfg.encoder.steps_per_detent,
+            'encoder_input.invert_direction': input_cfg.encoder.invert_direction,
+        }
+        input_values.update(input_overrides)
+        input_editable = True
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
     # Invalid base values are shown as invalid, not silently concealed by a
     # stored override. No writes are performed by this read-only endpoint.
     playable = True
@@ -289,11 +310,30 @@ def settings_snapshot(*, config_root=None, state_root=None):
                 rows[-1]['origin_file'] = 'player-settings.json'
             else:
                 rows.append(_row(filename, identifier, base))
+    # The settings overview shows staged values, never claims runtime application.
+    if input_editable:
+        seen = set()
+        for row in rows:
+            if row['file'] == 'interface.toml' and row['key'] in INPUT_FIELDS:
+                seen.add(row['key'])
+                if row['key'] in input_overrides and row['source'] != 'invalid':
+                    row.update(value=input_overrides[row['key']], source='state',
+                               origin_file='input-settings.json', stored_override=True)
+        for key, value in input_values.items():
+            if key not in seen:
+                row = _row('interface.toml', key, None,
+                           override=value, has_override=True)
+                row['source'] = 'state' if key in input_overrides else 'default'
+                row['origin_file'] = 'input-settings.json' if key in input_overrides else None
+                row['stored_override'] = key in input_overrides
+                rows.append(row)
     rows.append(_row('web.json', 'web.appearance.theme', None,
                      override=theme, has_override=theme is not None))
     return {'ok': True, 'settings': rows, 'read_only': True,
             'runtime_verified': False, 'invalid_keys': invalid_keys,
             'display': {'language_revision': language_revision,
                         'cover_revision': cover_revision},
+            'input': {'editable': input_editable, 'revision': input_revision,
+                      'values': input_values},
             'playback': {'editable': playable, 'revision': playback_revision,
                          'runtime': None, 'restart_required': None}}

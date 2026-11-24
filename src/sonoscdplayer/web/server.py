@@ -26,6 +26,10 @@ from .settings_read import settings_snapshot, SettingsUnavailable, _document, MA
 from sonoscdplayer.system import config_paths
 from sonoscdplayer.ui.language_state import UiState, LanguageConflict
 from sonoscdplayer.ui.cover_state import save_cover_mode, CoverConflict
+from sonoscdplayer.hardware.inputs.event_engine import load_config as load_input_config
+from sonoscdplayer.hardware.inputs.input_settings_write import (
+    update_input_settings, InputSettingsConflict,
+)
 from sonoscdplayer.player.playback_settings import (FIELDS as PLAYBACK_FIELDS, valid as playback_valid,
                                                     update as update_playback, SettingsConflict)
 from .i18n import (web_catalog, web_message, metadata_error_message,
@@ -228,7 +232,7 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                             '/api/library/query', '/api/library/detail',
                             '/api/library/manage', '/api/library/maintenance',
                             '/api/settings/playback', '/api/settings/language',
-                            '/api/settings/cover'):
+                            '/api/settings/cover', '/api/settings/input'):
                 return self._json(404, {'error': 'web.api.not_found'})
             origin = self.headers.get('Origin')
             if origin:
@@ -293,6 +297,12 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                         read_cover_preferences(config_paths.ui_config())
                         revision = save_cover_mode(preferences.path.parent, data['mode'], data['revision'])
                     return self._json(200, {'ok': True, 'revision': revision})
+                if path == '/api/settings/input':
+                    with settings_write_lock:
+                        # Validate the complete installed wiring with the production parser.
+                        base = load_input_config(config_paths.interface_config())
+                        revision = update_input_settings(preferences.path.parent, base, data)
+                    return self._json(200, {'ok': True, 'revision': revision})
                 if path == '/api/theme':
                     if set(data) != {'theme'}:
                         raise ValueError('theme is required')
@@ -312,7 +322,7 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                     request = release_payload(data, path.rsplit('/', 1)[1])
                 else:
                     request = command_payload(data)
-            except (SettingsConflict, LanguageConflict, CoverConflict):
+            except (SettingsConflict, LanguageConflict, CoverConflict, InputSettingsConflict):
                 return self._json(409, {'ok': False, 'error': 'web.api.settings_conflict'})
             except (OSError, SettingsUnavailable):
                 return self._json(503, {'ok': False, 'error': 'web.api.setting_unsaved'})
