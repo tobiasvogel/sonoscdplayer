@@ -5,7 +5,9 @@ snapshot of the overlay at startup; the web service may only stage values.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from copy import deepcopy
+import fcntl
 from hashlib import sha256
 import json
 import os
@@ -19,6 +21,7 @@ FILE_NAME = 'player-settings.json'
 FIELDS = ('sonos.use_queue', 'playback.continue', 'streaming.max_buffer_mib')
 VERSION = 1
 MAX_BYTES = 4096
+LOCK_FILE = '.player-settings.lock'
 
 
 class SettingsConflict(ValueError):
@@ -127,10 +130,27 @@ def _atomic_write(path, payload):
         Path(temporary).unlink(missing_ok=True)
 
 
+
+@contextmanager
+def _write_lock(state_dir):
+    """Serialize revision checks and writes across web server processes."""
+    root = Path(state_dir)
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd = os.open(root / LOCK_FILE,
+                 os.O_CREAT | os.O_RDWR | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError('invalid playback settings lock')
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
 def update(config, state_dir, request):
     """Atomically stage a full three-field selection or reset all overrides.
 
-    The caller serializes updates using a lock. Revision conflicts are
+    An interprocess file lock serializes updates. Revision conflicts are
     rejected; a bad base config is not silently replaced by new state.
     """
     if type(request) is not dict or set(request) != {'action', 'revision', 'values'}:
@@ -144,26 +164,27 @@ def update(config, state_dir, request):
     elif type(values) is not dict or set(values) != set(FIELDS) or any(not valid(k, v) for k, v in values.items()):
         raise ValueError('invalid playback settings values')
     base = base_values(config)
-    current, current_revision = read_overrides(state_dir)
-    if revision != current_revision:
-        raise SettingsConflict('settings changed by another client')
-    if current_revision == 'invalid':
-        # Never clobber a corrupt state file on an ordinary save.
-        if action != 'reset':
-            raise ValueError('invalid stored settings; reset required')
-    path = Path(state_dir) / FILE_NAME
-    if action == 'reset':
-        if path.is_symlink():
-            raise OSError('invalid settings state path')
-        path.unlink(missing_ok=True)
-    else:
-        delta = {key: values[key] for key in FIELDS if values[key] != base[key]}
-        if delta:
-            payload = (json.dumps({'version': VERSION, 'values': delta},
-                                  ensure_ascii=False, sort_keys=True, separators=(',', ':')) + '\n').encode('utf-8')
-            _atomic_write(path, payload)
-        else:
+    with _write_lock(state_dir):
+        current, current_revision = read_overrides(state_dir)
+        if revision != current_revision:
+            raise SettingsConflict('settings changed by another client')
+        if current_revision == 'invalid':
+            # Never clobber a corrupt state file on an ordinary save.
+            if action != 'reset':
+                raise ValueError('invalid stored settings; reset required')
+        path = Path(state_dir) / FILE_NAME
+        if action == 'reset':
             if path.is_symlink():
                 raise OSError('invalid settings state path')
             path.unlink(missing_ok=True)
-    return read_overrides(state_dir)[1]
+        else:
+            delta = {key: values[key] for key in FIELDS if values[key] != base[key]}
+            if delta:
+                payload = (json.dumps({'version': VERSION, 'values': delta},
+                                      ensure_ascii=False, sort_keys=True, separators=(',', ':')) + '\n').encode('utf-8')
+                _atomic_write(path, payload)
+            else:
+                if path.is_symlink():
+                    raise OSError('invalid settings state path')
+                path.unlink(missing_ok=True)
+        return read_overrides(state_dir)[1]
