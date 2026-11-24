@@ -21,7 +21,9 @@ def test_bounded_storage_counts_only_regular_jpegs(tmp_path):
     (tmp_path / 'linked.jpg').symlink_to(tmp_path / 'other.png')
     info = cover_storage_snapshot(1, tmp_path)
     assert info == {'ok': True, 'cover_count': 2, 'manual_count': 1,
-                    'used_bytes': 120, 'budget_bytes': 1024 * 1024}
+                    'automatic_count': 1, 'used_bytes': 120,
+                    'manual_bytes': 20, 'automatic_bytes': 100,
+                    'budget_bytes': 1024 * 1024}
     assert 'a.jpg' not in json.dumps(info)
     assert cover_storage_snapshot(1, tmp_path / 'absent')['cover_count'] == 0
     with pytest.raises(ValueError):

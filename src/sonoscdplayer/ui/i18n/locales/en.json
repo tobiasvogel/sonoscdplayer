@@ -539,5 +539,6 @@
   "web.cover_storage.loading": "Loading storage usage …",
   "web.cover_storage.unavailable": "Storage usage unavailable",
   "web.cover_storage.summary": "{used} / {budget} MiB · {count} covers, {manual} manual",
+  "web.cover_storage.breakdown": "Automatic: {automatic} ({automatic_mib} MiB) · Manual: {manual_mib} MiB",
   "web.api.settings_conflict": "The settings were changed elsewhere. Reload and try again."
 }

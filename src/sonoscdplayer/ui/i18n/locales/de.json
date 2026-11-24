@@ -539,5 +539,6 @@
   "web.cover_storage.loading": "Speicherbelegung wird geladen …",
   "web.cover_storage.unavailable": "Speicherbelegung nicht verfügbar",
   "web.cover_storage.summary": "{used} / {budget} MiB · {count} Covers, davon {manual} manuell",
+  "web.cover_storage.breakdown": "Automatisch: {automatic} ({automatic_mib} MiB) · Manuell: {manual_mib} MiB",
   "web.api.settings_conflict": "Die Einstellungen wurden zwischenzeitlich geändert. Bitte neu laden."
 }

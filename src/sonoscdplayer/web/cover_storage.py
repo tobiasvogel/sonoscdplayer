@@ -18,7 +18,7 @@ def cover_storage_snapshot(budget_mb, directory=None):
     if type(budget_mb) is not int or not 1 <= budget_mb <= 10000:
         raise ValueError('invalid cover budget')
     root = Path(DEFAULT_COVER_DIR if directory is None else directory)
-    count = manual = used = 0
+    count = manual = used = manual_bytes = 0
     try:
         with os.scandir(root) as entries:
             for entry in entries:
@@ -31,9 +31,13 @@ def cover_storage_snapshot(budget_mb, directory=None):
                 if count > MAX_COVERS:
                     raise OSError('too many cover files')
                 used += info.st_size
-                manual += entry.name.startswith('manual-')
+                if entry.name.startswith('manual-'):
+                    manual += 1
+                    manual_bytes += info.st_size
     except FileNotFoundError:
         # No cache directory has been created yet.
         pass
     return {'ok': True, 'cover_count': count, 'manual_count': manual,
-            'used_bytes': used, 'budget_bytes': budget_mb * 1024 * 1024}
+            'automatic_count': count - manual, 'used_bytes': used,
+            'manual_bytes': manual_bytes, 'automatic_bytes': used - manual_bytes,
+            'budget_bytes': budget_mb * 1024 * 1024}

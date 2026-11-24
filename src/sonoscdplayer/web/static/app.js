@@ -581,10 +581,20 @@
           !Number.isSafeInteger(data.budget_bytes) || data.budget_bytes <= 0 ||
           !Number.isSafeInteger(data.cover_count) || data.cover_count < 0 ||
           !Number.isSafeInteger(data.manual_count) || data.manual_count < 0 ||
-          data.manual_count > data.cover_count) throw new Error('invalid cover storage response');
+          data.manual_count > data.cover_count ||
+          !Number.isSafeInteger(data.automatic_count) ||
+          data.automatic_count !== data.cover_count - data.manual_count ||
+          !Number.isSafeInteger(data.manual_bytes) || data.manual_bytes < 0 ||
+          !Number.isSafeInteger(data.automatic_bytes) || data.automatic_bytes < 0 ||
+          data.manual_bytes + data.automatic_bytes !== data.used_bytes) {
+        throw new Error('invalid cover storage response');
+      }
       target.textContent = tr('web.cover_storage.summary', {
         used: formatMiB(data.used_bytes), budget: formatMiB(data.budget_bytes),
         count: data.cover_count, manual: data.manual_count
+      }) + ' · ' + tr('web.cover_storage.breakdown', {
+        automatic: data.automatic_count, automatic_mib: formatMiB(data.automatic_bytes),
+        manual_mib: formatMiB(data.manual_bytes)
       });
     } catch (_) {
       target.textContent = tr('web.cover_storage.unavailable');
