@@ -15,6 +15,7 @@ from sonoscdplayer.system import config_paths
 from sonoscdplayer.system.state_files import default_state_dir
 from sonoscdplayer.ui.i18n.translator import available_languages
 from sonoscdplayer.ui.language_state import UiState
+from sonoscdplayer.ui.cover_state import read_cover_mode
 from sonoscdplayer.player.playback_settings import FIELDS as PLAYBACK_FIELDS, read_overrides, base_values
 
 MAX_CONFIG_BYTES = 65536
@@ -216,6 +217,7 @@ def settings_snapshot(*, config_root=None, state_root=None):
     ui = _document(root / 'ui.toml', limit=MAX_CONFIG_BYTES)
     display_state = _state_document(state / 'ui.json')
     language_revision = UiState(state, log=lambda *_: None).revision()
+    cover_override, cover_revision = read_cover_mode(state)
     web_state = _state_document(state / 'web.json')
     playback_overrides, playback_revision = read_overrides(state)
     # Invalid base values are shown as invalid, not silently concealed by a
@@ -263,6 +265,10 @@ def settings_snapshot(*, config_root=None, state_root=None):
             if identifier == 'ui.language' and saved_language is not None:
                 rows.append(_row(filename, identifier, base, override=saved_language,
                                  has_override=True))
+            elif identifier == 'ui.cover.mode' and cover_override is not None:
+                rows.append(_row(filename, identifier, base, override=cover_override,
+                                 has_override=True))
+                rows[-1]['origin_file'] = 'cover-settings.json'
             elif filename == 'player.toml' and identifier in PLAYBACK_FIELDS and playable and identifier in playback_overrides:
                 rows.append(_row(filename, identifier, base,
                                  override=playback_overrides[identifier], has_override=True))
@@ -273,6 +279,7 @@ def settings_snapshot(*, config_root=None, state_root=None):
                      override=theme, has_override=theme is not None))
     return {'ok': True, 'settings': rows, 'read_only': True,
             'runtime_verified': False, 'invalid_keys': invalid_keys,
-            'display': {'language_revision': language_revision},
+            'display': {'language_revision': language_revision,
+                        'cover_revision': cover_revision},
             'playback': {'editable': playable, 'revision': playback_revision,
                          'runtime': None, 'restart_required': None}}

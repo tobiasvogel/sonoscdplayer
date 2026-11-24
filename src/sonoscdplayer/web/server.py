@@ -18,12 +18,14 @@ from urllib.parse import urlsplit, parse_qs
 from .player_client import PlayerClient, PlayerUnavailable, command_payload, metadata_edit_payload, release_payload, cover_payload, library_payload, library_manage_payload, library_maintenance_payload
 from .cover_upload import stage_upload, discard_upload
 from sonoscdplayer.metadata.manual_cover import MAX_UPLOAD_BYTES
+from sonoscdplayer.metadata.cover_preferences import read_cover_preferences
 from .state import WebPreferences
 from .dashboard_projection import public_dashboard, public_release_detail
 from .library_projection import public_library
 from .settings_read import settings_snapshot, SettingsUnavailable, _document, MAX_CONFIG_BYTES
 from sonoscdplayer.system import config_paths
 from sonoscdplayer.ui.language_state import UiState, LanguageConflict
+from sonoscdplayer.ui.cover_state import save_cover_mode, CoverConflict
 from sonoscdplayer.player.playback_settings import (FIELDS as PLAYBACK_FIELDS, valid as playback_valid,
                                                     update as update_playback, SettingsConflict)
 from .i18n import (web_catalog, web_message, metadata_error_message,
@@ -225,7 +227,8 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                             '/api/cover/upload', '/api/cover/remove',
                             '/api/library/query', '/api/library/detail',
                             '/api/library/manage', '/api/library/maintenance',
-                            '/api/settings/playback', '/api/settings/language'):
+                            '/api/settings/playback', '/api/settings/language',
+                            '/api/settings/cover'):
                 return self._json(404, {'error': 'web.api.not_found'})
             origin = self.headers.get('Origin')
             if origin:
@@ -282,6 +285,14 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                     revision = UiState(preferences.path.parent, log=lambda *_: None).save_if_revision(
                         data['language'], data['revision'])
                     return self._json(200, {'ok': True, 'revision': revision})
+                if path == '/api/settings/cover':
+                    if set(data) != {'mode', 'revision'}:
+                        raise ValueError('invalid cover settings fields')
+                    with settings_write_lock:
+                        # Never stage an override over an invalid base configuration.
+                        read_cover_preferences(config_paths.ui_config())
+                        revision = save_cover_mode(preferences.path.parent, data['mode'], data['revision'])
+                    return self._json(200, {'ok': True, 'revision': revision})
                 if path == '/api/theme':
                     if set(data) != {'theme'}:
                         raise ValueError('theme is required')
@@ -301,7 +312,7 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                     request = release_payload(data, path.rsplit('/', 1)[1])
                 else:
                     request = command_payload(data)
-            except (SettingsConflict, LanguageConflict):
+            except (SettingsConflict, LanguageConflict, CoverConflict):
                 return self._json(409, {'ok': False, 'error': 'web.api.settings_conflict'})
             except (OSError, SettingsUnavailable):
                 return self._json(503, {'ok': False, 'error': 'web.api.setting_unsaved'})

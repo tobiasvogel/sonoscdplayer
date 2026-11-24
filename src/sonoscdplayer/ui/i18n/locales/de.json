@@ -493,5 +493,9 @@
   "web.settings.save_language": "Displaysprache speichern",
   "web.settings.language_saved": "Sprache gespeichert. Das Display übernimmt sie bei geschlossenem Gerätemenü; kein Neustart.",
   "web.settings.language_scope": "Die Displaysprache wird in ui.json gespeichert. Ein geöffnetes Gerätemenü wird nicht unterbrochen.",
+  "web.settings.save_cover": "Covermodus speichern",
+  "web.settings.reset_cover": "Cover-Grundwert verwenden",
+  "web.settings.cover_scope": "Der Covermodus steuert auch das Herunterladen von Covern, nicht nur die Darstellung. Übernahme erst nach kontrolliertem Neustart von Player- und Displaydienst; kein automatischer Neustart.",
+  "web.settings.cover_saved": "Covermodus gespeichert. Neustart von Player und Display zur Übernahme erforderlich.",
   "web.api.settings_conflict": "Die Einstellungen wurden zwischenzeitlich geändert. Bitte neu laden."
 }

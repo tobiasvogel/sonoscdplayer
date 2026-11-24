@@ -367,7 +367,10 @@ def main(argv=None):
         ui_config = load_ui_config(args.ui_config)
     except (ValueError, OSError) as exc:
         p.error('invalid UI configuration: '+str(exc))
-    cover_mode = args.cover if args.cover is not None else ui_config.cover_mode
+    from sonoscdplayer.ui.cover_state import read_cover_mode
+    saved_cover, _ = read_cover_mode(args.state_dir)
+    cover_mode = (args.cover if args.cover is not None else
+                  saved_cover if saved_cover is not None else ui_config.cover_mode)
     from sonoscdplayer.ui.i18n import available_languages
     from sonoscdplayer.ui.language_state import UiState
     ui_state = UiState(args.state_dir)

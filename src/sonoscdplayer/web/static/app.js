@@ -118,6 +118,7 @@
   let playbackRevision = null;
   let playbackEditable = false;
   let languageRevision = null;
+  let coverRevision = null;
   const playbackKeys = ['sonos.use_queue', 'playback.continue', 'streaming.max_buffer_mib'];
   function settingsText(value) {
     if (value === null || value === undefined) return tr('web.settings.unknown');
@@ -208,6 +209,21 @@
     }
     await loadSettings();
   }
+  async function saveCoverMode(reset = false) {
+    if (coverRevision === null || coverRevision === 'invalid') return;
+    const mode = reset ? null : $('#cover').value;
+    if (mode !== null && !['auto', 'on', 'off'].includes(mode)) return;
+    $('#save-cover-mode').disabled = true;
+    $('#reset-cover-mode').disabled = true;
+    try {
+      await request('/api/settings/cover', {mode, revision: coverRevision});
+      toast(tr('web.settings.cover_saved'));
+    } catch (error) {
+      toast(tr('web.settings.save_failed') + error.message);
+    } finally {
+      await loadSettings();
+    }
+  }
   function settingsOrigin(row) {
     const source = ({config: 'web.settings.config', state: 'web.settings.state',
       default: 'web.settings.default', invalid: 'web.settings.invalid',
@@ -255,6 +271,7 @@
     playbackEditable = data.playback?.editable === true && playbackRevision !== null &&
       playbackKeys.every(key => byKey.get(key)?.value !== null && byKey.has(key));
     languageRevision = typeof data.display?.language_revision === 'string' ? data.display.language_revision : null;
+    coverRevision = typeof data.display?.cover_revision === 'string' ? data.display.cover_revision : null;
     settingsField('#queue', byKey.get('sonos.use_queue'), ['true', 'false']);
     settingsField('#continue', byKey.get('playback.continue'), ['true', 'false']);
     settingsField('#buffer', byKey.get('streaming.max_buffer_mib'));
@@ -262,6 +279,11 @@
     $('#lang').disabled = languageRevision === null || !['de', 'en'].includes(byKey.get('ui.language')?.value);
     $('#save-display-language').disabled = $('#lang').disabled;
     settingsField('#cover', byKey.get('ui.cover.mode'), ['auto', 'off', 'on']);
+    const coverEditable = coverRevision !== null && coverRevision !== 'invalid' &&
+      ['auto', 'on', 'off'].includes(byKey.get('ui.cover.mode')?.value);
+    $('#cover').disabled = !coverEditable;
+    $('#save-cover-mode').disabled = !coverEditable;
+    $('#reset-cover-mode').disabled = !coverEditable;
     installPlaybackControls();
     let box = $('#settings-readonly');
     if (!box) {
@@ -311,7 +333,10 @@
         settingsField(id, null);
       }
       languageRevision = null;
+      coverRevision = null;
       $('#save-display-language').disabled = true;
+      $('#save-cover-mode').disabled = true;
+      $('#reset-cover-mode').disabled = true;
       for (const sectionId of ['audio', 'display']) {
         const section = $('#' + sectionId);
         let status = section.querySelector('.settings-load-error');
@@ -336,6 +361,8 @@
   $('#theme-setting').addEventListener('change', event => saveTheme(event.target.value));
   $('#save-theme').addEventListener('click', () => saveTheme($('#theme-setting').value));
   $('#save-display-language').addEventListener('click', saveDisplayLanguage);
+  $('#save-cover-mode').addEventListener('click', () => saveCoverMode(false));
+  $('#reset-cover-mode').addEventListener('click', () => saveCoverMode(true));
   $('#edit-metadata').addEventListener('click', () => showPanel('metadata'));
 
   function formattedTime(number) {

@@ -1066,7 +1066,8 @@ def run(argv=None):
                     online=online, timeout=timeout,
                     matching_policy=matching_policy_from_config(meta),
                     # The OLED shows no covers yet; Sonos shows album art.
-                    display_supports_cover=False, sonos_uses_cover=True)
+                    display_supports_cover=False, sonos_uses_cover=True,
+                    cover_state_dir=ns.state_dir)
                 # With CD-TEXT the lookup starts once the monitor has read it.
                 metadata_worker.observe(toc if cdtext_reader is None else None, None)
         except (OSError, ValueError) as exc:

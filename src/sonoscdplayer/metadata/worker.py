@@ -254,6 +254,7 @@ class MetadataWorker(LibraryMaintenanceWorkflow, LibraryManageWorkflow, LibraryW
     def __init__(self, *, cache_path=DEFAULT_DB_PATH, cover_dir=DEFAULT_COVER_DIR,
                  online=True, timeout=8, matching_policy=None,
                  ui_path=None, display_supports_cover=False, sonos_uses_cover=False,
+                 cover_state_dir=None,
                  identify=identity_from_toc, lookup=lookup_disc,
                  executor=None, clock=time.monotonic, retry_delays=RETRY_DELAYS,
                  gnudb_enabled=False, gnudb_timeout=5,
@@ -269,7 +270,8 @@ class MetadataWorker(LibraryMaintenanceWorkflow, LibraryManageWorkflow, LibraryW
         self._init_library_manage(cache_path)
         self._init_library_maintenance(cache_path, cover_dir, ui_path)
         self._policy = matching_policy or MatchingPolicy()
-        self._cover_policy = read_cover_preferences(ui_path).download_policy(
+        self._cover_policy = read_cover_preferences(
+            ui_path, state_dir=cover_state_dir).download_policy(
             display_supports_cover=display_supports_cover,
             sonos_uses_cover=sonos_uses_cover)
         if type(gnudb_enabled) is not bool or type(gnudb_timeout) is not int or not 1 <= gnudb_timeout <= 30:

@@ -5,11 +5,12 @@ In auto mode an explicit caller-supplied display capability is required.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 import tomllib
 
 from sonoscdplayer.system.config_paths import ui_config
+from sonoscdplayer.ui.cover_state import read_cover_mode
 from sonoscdplayer.metadata.cover_store import DEFAULT_BUDGET_MB, CoverPolicy
 
 
@@ -41,14 +42,14 @@ class CoverPreferences:
         return self._policy(enabled)
 
 
-def read_cover_preferences(path: Path | None = None) -> CoverPreferences:
-    """UI config is optional; missing file means auto with 512px limit."""
+def read_cover_preferences(path: Path | None = None, *, state_dir=None) -> CoverPreferences:
+    """Read TOML and optionally overlay the service-owned cover mode."""
     filename = ui_config() if path is None else Path(path)
     try:
         with filename.open('rb') as handle:
             data = tomllib.load(handle)
     except FileNotFoundError:
-        return CoverPreferences()
+        data = {}
     if not isinstance(data, dict):
         raise ValueError('ui.toml must be a table')
     ui = data.get('ui', {})
@@ -57,7 +58,13 @@ def read_cover_preferences(path: Path | None = None) -> CoverPreferences:
     cover = ui.get('cover', {})
     if not isinstance(cover, dict):
         raise ValueError('[ui.cover] must be a table')
-    return CoverPreferences(mode=cover.get('mode', 'auto'),
-                            max_dimension_px=cover.get('max_dimension_px', 512),
-                            jpeg_quality=cover.get('jpeg_quality', 85),
-                            budget_mb=cover.get('budget_mb', DEFAULT_BUDGET_MB))
+    preferences = CoverPreferences(mode=cover.get('mode', 'auto'),
+                                   max_dimension_px=cover.get('max_dimension_px', 512),
+                                   jpeg_quality=cover.get('jpeg_quality', 85),
+                                   budget_mb=cover.get('budget_mb', DEFAULT_BUDGET_MB))
+    # Explicit configuration paths in tests/tools remain isolated by default.
+    if state_dir is not None or path is None:
+        override, _ = read_cover_mode(state_dir)
+        if override is not None:
+            return replace(preferences, mode=override)
+    return preferences
