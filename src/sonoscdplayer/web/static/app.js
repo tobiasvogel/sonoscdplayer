@@ -119,6 +119,16 @@
   let playbackEditable = false;
   let languageRevision = null;
   let coverRevision = null;
+  let inputRevision = null;
+  let inputEditable = false;
+  const inputSpecs = [
+    ['gpio.poll_interval_ms', 'input-poll', 1, 1000],
+    ['volume.repeat_delay_ms', 'input-repeat-delay', 100, 5000],
+    ['volume.repeat_interval_ms', 'input-repeat-interval', 50, 2000],
+    ['encoder_input.button_debounce_ms', 'input-debounce', 0, 250],
+    ['encoder_input.steps_per_detent', 'input-steps', 1, 4],
+    ['encoder_input.invert_direction', 'input-invert', null, null]
+  ];
   const playbackKeys = ['sonos.use_queue', 'playback.continue', 'streaming.max_buffer_mib'];
   function settingsText(value) {
     if (value === null || value === undefined) return tr('web.settings.unknown');
@@ -224,6 +234,55 @@
       await loadSettings();
     }
   }
+  function renderInputSettings(snapshot) {
+    const section = snapshot.input;
+    const values = section && section.values;
+    inputRevision = typeof section?.revision === 'string' ? section.revision : null;
+    inputEditable = section?.editable === true && inputRevision !== null &&
+      inputRevision !== 'invalid' && values && typeof values === 'object' &&
+      !Array.isArray(values) && inputSpecs.every(([key]) =>
+        Object.prototype.hasOwnProperty.call(values, key));
+    for (const [key, id] of inputSpecs) {
+      const field = $('#' + id);
+      field.disabled = !inputEditable;
+      field.value = inputEditable ? String(values[key]) : '';
+    }
+    $('#input-settings-save').disabled = !inputEditable;
+    $('#input-settings-reset').disabled = !inputEditable;
+  }
+  async function editInputSettings(action) {
+    if (!inputEditable || inputRevision === null) return;
+    if (action === 'reset' && !window.confirm(tr('web.settings.input_reset_confirm'))) return;
+    const values = {};
+    if (action === 'save') {
+      for (const [key, id, low, high] of inputSpecs) {
+        const raw = $('#' + id).value;
+        if (key === 'encoder_input.invert_direction') {
+          if (raw !== 'true' && raw !== 'false') {
+            toast(tr('web.settings.input_invalid')); return;
+          }
+          values[key] = raw === 'true';
+        } else {
+          if (!/^[0-9]+$/.test(raw) || !Number.isSafeInteger(Number(raw)) ||
+              Number(raw) < low || Number(raw) > high ||
+              (key === 'encoder_input.steps_per_detent' && ![1, 2, 4].includes(Number(raw)))) {
+            toast(tr('web.settings.input_invalid')); return;
+          }
+          values[key] = Number(raw);
+        }
+      }
+    }
+    $('#input-settings-save').disabled = true;
+    $('#input-settings-reset').disabled = true;
+    try {
+      await request('/api/settings/input', {action, revision: inputRevision, values});
+      toast(tr(action === 'reset' ? 'web.settings.input_reset' : 'web.settings.input_saved'));
+    } catch (error) {
+      toast(tr('web.settings.save_failed') + error.message);
+    } finally {
+      await loadSettings();
+    }
+  }
   function settingsOrigin(row) {
     const source = ({config: 'web.settings.config', state: 'web.settings.state',
       default: 'web.settings.default', invalid: 'web.settings.invalid',
@@ -284,6 +343,7 @@
     $('#cover').disabled = !coverEditable;
     $('#save-cover-mode').disabled = !coverEditable;
     $('#reset-cover-mode').disabled = !coverEditable;
+    renderInputSettings(data);
     installPlaybackControls();
     let box = $('#settings-readonly');
     if (!box) {
@@ -337,7 +397,8 @@
       $('#save-display-language').disabled = true;
       $('#save-cover-mode').disabled = true;
       $('#reset-cover-mode').disabled = true;
-      for (const sectionId of ['audio', 'display']) {
+      renderInputSettings({input: null});
+      for (const sectionId of ['audio', 'display', 'inputs']) {
         const section = $('#' + sectionId);
         let status = section.querySelector('.settings-load-error');
         if (!status) {
@@ -363,6 +424,8 @@
   $('#save-display-language').addEventListener('click', saveDisplayLanguage);
   $('#save-cover-mode').addEventListener('click', () => saveCoverMode(false));
   $('#reset-cover-mode').addEventListener('click', () => saveCoverMode(true));
+  $('#input-settings-save').addEventListener('click', () => editInputSettings('save'));
+  $('#input-settings-reset').addEventListener('click', () => editInputSettings('reset'));
   $('#edit-metadata').addEventListener('click', () => showPanel('metadata'));
 
   function formattedTime(number) {
