@@ -8,6 +8,7 @@ import os
 import re
 from pathlib import Path
 import stat
+from typing import NamedTuple
 
 from sonoscdplayer.metadata.cover_store import DEFAULT_COVER_DIR
 
@@ -29,31 +30,52 @@ def cover_kind(name):
     return None
 
 
+class CoverEntry(NamedTuple):
+    """Private scan result; never serialize filenames or filesystem identity to HTTP."""
+    name: str
+    kind: str
+    size: int
+    device: int
+    inode: int
+
+
+def cover_inventory(directory=None):
+    """Bounded inventory of recognized, regular covers without following links.
+
+    The inode/device are observation data, NOT authorization to delete: any
+    future removal must revalidate against an open directory descriptor.
+    """
+    root = Path(DEFAULT_COVER_DIR if directory is None else directory)
+    found = []
+    try:
+        scan = os.scandir(root)
+    except FileNotFoundError:
+        # Only a missing cache root means empty; vanished entries are errors.
+        return ()
+    with scan as entries:
+        for entry in entries:
+            kind = cover_kind(entry.name)
+            if kind is None:
+                continue
+            info = entry.stat(follow_symlinks=False)
+            if not stat.S_ISREG(info.st_mode):
+                continue
+            if len(found) >= MAX_COVERS:
+                raise OSError('too many cover files')
+            found.append(CoverEntry(entry.name, kind, info.st_size,
+                                    info.st_dev, info.st_ino))
+    return tuple(sorted(found, key=lambda item: item.name))
+
+
 def cover_storage_snapshot(budget_mb, directory=None):
     """Report recognized store files only; fail on I/O errors."""
     if type(budget_mb) is not int or not 1 <= budget_mb <= 10000:
         raise ValueError('invalid cover budget')
-    root = Path(DEFAULT_COVER_DIR if directory is None else directory)
-    count = manual = used = manual_bytes = 0
-    try:
-        with os.scandir(root) as entries:
-            for entry in entries:
-                kind = cover_kind(entry.name)
-                if kind is None:
-                    continue
-                info = entry.stat(follow_symlinks=False)
-                if not stat.S_ISREG(info.st_mode):
-                    continue
-                count += 1
-                if count > MAX_COVERS:
-                    raise OSError('too many cover files')
-                used += info.st_size
-                if kind == 'manual':
-                    manual += 1
-                    manual_bytes += info.st_size
-    except FileNotFoundError:
-        # No cache directory has been created yet.
-        pass
+    entries = cover_inventory(directory)
+    count = len(entries)
+    manual = sum(entry.kind == 'manual' for entry in entries)
+    used = sum(entry.size for entry in entries)
+    manual_bytes = sum(entry.size for entry in entries if entry.kind == 'manual')
     return {'ok': True, 'cover_count': count, 'manual_count': manual,
             'automatic_count': count - manual, 'used_bytes': used,
             'manual_bytes': manual_bytes, 'automatic_bytes': used - manual_bytes,

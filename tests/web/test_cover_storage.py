@@ -9,7 +9,7 @@ from urllib.request import urlopen
 import pytest
 
 from sonoscdplayer.web import cover_storage
-from sonoscdplayer.web.cover_storage import cover_storage_snapshot, cover_kind
+from sonoscdplayer.web.cover_storage import cover_storage_snapshot, cover_kind, cover_inventory
 from sonoscdplayer.web.server import make_handler
 from sonoscdplayer.web.state import WebPreferences
 
@@ -30,6 +30,29 @@ def test_bounded_storage_counts_only_regular_jpegs(tmp_path):
     assert cover_storage_snapshot(1, tmp_path / 'absent')['cover_count'] == 0
     with pytest.raises(ValueError):
         cover_storage_snapshot(0, tmp_path)
+
+
+
+def test_private_inventory_has_stable_order_and_never_follows_symlinks(tmp_path):
+    manual = 'manual-' + 'b' * 32 + '.jpg'
+    automatic = 'a' * 64 + '.jpg'
+    (tmp_path / manual).write_bytes(b'm' * 19)
+    (tmp_path / automatic).write_bytes(b'a' * 23)
+    (tmp_path / ('c' * 64 + '.jpg')).symlink_to(tmp_path / automatic)
+    (tmp_path / 'unmanaged.jpg').write_bytes(b'x')
+    found = cover_inventory(tmp_path)
+    assert [(item.name, item.kind, item.size) for item in found] == [
+        (automatic, 'automatic', 23), (manual, 'manual', 19)]
+    assert all(item.inode > 0 and item.device >= 0 for item in found)
+    assert cover_inventory(tmp_path / 'missing') == ()
+    assert 'a' * 64 not in json.dumps(cover_storage_snapshot(1, tmp_path))
+
+
+def test_private_inventory_rejects_non_directory(tmp_path):
+    path = tmp_path / 'not-a-directory'
+    path.write_text('x')
+    with pytest.raises(NotADirectoryError):
+        cover_inventory(path)
 
 
 def test_only_known_store_filenames_are_classified():
