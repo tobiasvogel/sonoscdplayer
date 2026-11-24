@@ -14,6 +14,7 @@ import tomllib
 from sonoscdplayer.system import config_paths
 from sonoscdplayer.system.state_files import default_state_dir
 from sonoscdplayer.ui.i18n.translator import available_languages
+from sonoscdplayer.ui.language_state import UiState
 from sonoscdplayer.player.playback_settings import FIELDS as PLAYBACK_FIELDS, read_overrides, base_values
 
 MAX_CONFIG_BYTES = 65536
@@ -214,6 +215,7 @@ def settings_snapshot(*, config_root=None, state_root=None):
     interface = _document(root / 'interface.toml', limit=MAX_CONFIG_BYTES)
     ui = _document(root / 'ui.toml', limit=MAX_CONFIG_BYTES)
     display_state = _state_document(state / 'ui.json')
+    language_revision = UiState(state, log=lambda *_: None).revision()
     web_state = _state_document(state / 'web.json')
     playback_overrides, playback_revision = read_overrides(state)
     # Invalid base values are shown as invalid, not silently concealed by a
@@ -271,5 +273,6 @@ def settings_snapshot(*, config_root=None, state_root=None):
                      override=theme, has_override=theme is not None))
     return {'ok': True, 'settings': rows, 'read_only': True,
             'runtime_verified': False, 'invalid_keys': invalid_keys,
+            'display': {'language_revision': language_revision},
             'playback': {'editable': playable, 'revision': playback_revision,
                          'runtime': None, 'restart_required': None}}

@@ -490,5 +490,8 @@
   "web.settings.playback_saved": "Wiedergabeeinstellungen gespeichert. Kein automatischer Neustart.",
   "web.settings.playback_reset": "Gespeicherte Wiedergabeeinstellungen zurückgesetzt.",
   "web.settings.save_failed": "Speichern fehlgeschlagen: ",
+  "web.settings.save_language": "Displaysprache speichern",
+  "web.settings.language_saved": "Sprache gespeichert. Das Display übernimmt sie bei geschlossenem Gerätemenü; kein Neustart.",
+  "web.settings.language_scope": "Die Displaysprache wird in ui.json gespeichert. Ein geöffnetes Gerätemenü wird nicht unterbrochen.",
   "web.api.settings_conflict": "Die Einstellungen wurden zwischenzeitlich geändert. Bitte neu laden."
 }

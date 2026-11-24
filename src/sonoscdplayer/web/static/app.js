@@ -113,10 +113,11 @@
     showPage('settings');
     if (panel === 'library') openLibrary();
   }
-  // WEB-05b: edit only the three validated playback preferences.
+  // WEB-05b/05c: playback and display language use separate revisions.
   let settingsBusy = false;
   let playbackRevision = null;
   let playbackEditable = false;
+  let languageRevision = null;
   const playbackKeys = ['sonos.use_queue', 'playback.continue', 'streaming.max_buffer_mib'];
   function settingsText(value) {
     if (value === null || value === undefined) return tr('web.settings.unknown');
@@ -194,6 +195,19 @@
       await loadSettings();
     }
   }
+  async function saveDisplayLanguage() {
+    if (languageRevision === null || !['de', 'en'].includes($('#lang').value)) return;
+    const selected = $('#lang').value;
+    $('#save-display-language').disabled = true;
+    try {
+      await request('/api/settings/language', {language: selected, revision: languageRevision});
+      await loadLanguage();
+      toast(tr('web.settings.language_saved'));
+    } catch (error) {
+      toast(tr('web.settings.save_failed') + error.message);
+    }
+    await loadSettings();
+  }
   function settingsOrigin(row) {
     const source = ({config: 'web.settings.config', state: 'web.settings.state',
       default: 'web.settings.default', invalid: 'web.settings.invalid',
@@ -240,10 +254,13 @@
     playbackRevision = typeof data.playback?.revision === 'string' ? data.playback.revision : null;
     playbackEditable = data.playback?.editable === true && playbackRevision !== null &&
       playbackKeys.every(key => byKey.get(key)?.value !== null && byKey.has(key));
+    languageRevision = typeof data.display?.language_revision === 'string' ? data.display.language_revision : null;
     settingsField('#queue', byKey.get('sonos.use_queue'), ['true', 'false']);
     settingsField('#continue', byKey.get('playback.continue'), ['true', 'false']);
     settingsField('#buffer', byKey.get('streaming.max_buffer_mib'));
     settingsField('#lang', byKey.get('ui.language'), ['de', 'en']);
+    $('#lang').disabled = languageRevision === null || !['de', 'en'].includes(byKey.get('ui.language')?.value);
+    $('#save-display-language').disabled = $('#lang').disabled;
     settingsField('#cover', byKey.get('ui.cover.mode'), ['auto', 'off', 'on']);
     installPlaybackControls();
     let box = $('#settings-readonly');
@@ -293,6 +310,8 @@
       for (const id of ['#queue', '#continue', '#buffer', '#lang', '#cover']) {
         settingsField(id, null);
       }
+      languageRevision = null;
+      $('#save-display-language').disabled = true;
       for (const sectionId of ['audio', 'display']) {
         const section = $('#' + sectionId);
         let status = section.querySelector('.settings-load-error');
@@ -316,6 +335,7 @@
   document.querySelectorAll('[data-theme-choice]').forEach(button => button.addEventListener('click', () => saveTheme(button.dataset.themeChoice)));
   $('#theme-setting').addEventListener('change', event => saveTheme(event.target.value));
   $('#save-theme').addEventListener('click', () => saveTheme($('#theme-setting').value));
+  $('#save-display-language').addEventListener('click', saveDisplayLanguage);
   $('#edit-metadata').addEventListener('click', () => showPanel('metadata'));
 
   function formattedTime(number) {

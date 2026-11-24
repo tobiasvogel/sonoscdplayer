@@ -490,5 +490,8 @@
   "web.settings.playback_saved": "Playback settings saved. No automatic restart.",
   "web.settings.playback_reset": "Saved playback settings reset.",
   "web.settings.save_failed": "Could not save settings: ",
+  "web.settings.save_language": "Save display language",
+  "web.settings.language_saved": "Language saved. The display adopts it when the device menu is closed; no restart.",
+  "web.settings.language_scope": "The display language uses ui.json; an open device menu is not interrupted.",
   "web.api.settings_conflict": "The settings were changed elsewhere. Reload and try again."
 }

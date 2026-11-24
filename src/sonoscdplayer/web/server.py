@@ -23,6 +23,7 @@ from .dashboard_projection import public_dashboard, public_release_detail
 from .library_projection import public_library
 from .settings_read import settings_snapshot, SettingsUnavailable, _document, MAX_CONFIG_BYTES
 from sonoscdplayer.system import config_paths
+from sonoscdplayer.ui.language_state import UiState, LanguageConflict
 from sonoscdplayer.player.playback_settings import (FIELDS as PLAYBACK_FIELDS, valid as playback_valid,
                                                     update as update_playback, SettingsConflict)
 from .i18n import (web_catalog, web_message, metadata_error_message,
@@ -224,7 +225,7 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                             '/api/cover/upload', '/api/cover/remove',
                             '/api/library/query', '/api/library/detail',
                             '/api/library/manage', '/api/library/maintenance',
-                            '/api/settings/playback'):
+                            '/api/settings/playback', '/api/settings/language'):
                 return self._json(404, {'error': 'web.api.not_found'})
             origin = self.headers.get('Origin')
             if origin:
@@ -275,6 +276,12 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                                            limit=MAX_CONFIG_BYTES, required=True)
                         revision = update_playback(config, preferences.path.parent, data)
                     return self._json(200, {'ok': True, 'revision': revision})
+                if path == '/api/settings/language':
+                    if set(data) != {'language', 'revision'}:
+                        raise ValueError('invalid language settings fields')
+                    revision = UiState(preferences.path.parent, log=lambda *_: None).save_if_revision(
+                        data['language'], data['revision'])
+                    return self._json(200, {'ok': True, 'revision': revision})
                 if path == '/api/theme':
                     if set(data) != {'theme'}:
                         raise ValueError('theme is required')
@@ -294,7 +301,7 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                     request = release_payload(data, path.rsplit('/', 1)[1])
                 else:
                     request = command_payload(data)
-            except SettingsConflict:
+            except (SettingsConflict, LanguageConflict):
                 return self._json(409, {'ok': False, 'error': 'web.api.settings_conflict'})
             except (OSError, SettingsUnavailable):
                 return self._json(503, {'ok': False, 'error': 'web.api.setting_unsaved'})
