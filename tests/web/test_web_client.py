@@ -104,7 +104,8 @@ def test_status_projection_never_exposes_private_ids_or_paths():
     response = {'ok': True, 'state': {
         'player': {'mode': 'PLAYING', 'track': 1, 'track_count': 2},
         'sonos': {'target_uid': 'RINCON_REAL', 'owned': True, 'transport': 'PLAYING'},
-        'metadata': {'album': 'Example', 'cover_file': '/fixture-private/cover.jpg'},
+        'metadata': {'album': 'Example', 'cover_file': '/fixture-private/cover.jpg',
+                     'cdtext_status': 'available', 'private_provider_key': 'secret'},
         'last_rejection': {'seq': 1, 'reason': 'RINCON_ABC at 192.0.2.10'},
     }}
     result = public_status(response)
@@ -114,6 +115,8 @@ def test_status_projection_never_exposes_private_ids_or_paths():
     assert '192.0.2.10' not in serialized
     assert result['has_cover'] is True
     assert result['metadata']['album'] == 'Example'
+    assert result['metadata']['cdtext_status'] == 'available'
+    assert 'private_provider_key' not in serialized
 
 
 def test_theme_is_atomic_and_only_in_state_dir(tmp_path):
