@@ -532,5 +532,8 @@
   "web.metadata_status.majority": "Majority agreement",
   "web.metadata_status.no_disc": "No CD",
   "web.metadata_status.unknown": "Status unknown",
+  "web.metadata_origin.manual": "Manually corrected",
+  "web.metadata_origin.automatic": "Automatic · exact field source not recorded",
+  "web.metadata_origin.unknown": "Source unknown",
   "web.api.settings_conflict": "The settings were changed elsewhere. Reload and try again."
 }

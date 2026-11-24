@@ -619,6 +619,24 @@
   let lastEditSeq = 0;
   const editInputs = ['#album', '#artist', '#title2', '#meta-track-artist'];
 
+  // Only manual corrections are proven at field level. For other fields the
+  // exact automatic provider is not recorded in the current metadata schema.
+  function renderFieldOrigins(details, track) {
+    const manual = Array.isArray(details?.manual_fields) ? details.manual_fields : [];
+    const entry = details?.tracks?.find(item => item.number === track) || {};
+    for (const [id, key, value] of [
+      ['album', 'album', details?.album],
+      ['artist', 'artist', details?.artist],
+      ['track-title', `${track}:track_title`, entry.title],
+      ['track-artist', `${track}:track_artist`, entry.artist]
+    ]) {
+      const kind = !details || typeof value !== 'string' || !value.trim() ? 'unknown' :
+        manual.includes(key) ? 'manual' : 'automatic';
+      const translationKey = 'web.metadata_origin.' + kind;
+      $('#meta-origin-' + id).textContent = tr(translationKey);
+    }
+  }
+
   function populateEditor() {
     const info = editSnapshot;
     if (!info) return;
@@ -630,6 +648,7 @@
     editDirty = false;
     $('#meta-save').disabled = false;
     $('#meta-discard').disabled = true;
+    renderFieldOrigins(info.details, editTrack);
   }
 
   function renderEditor(status, details) {
@@ -641,6 +660,7 @@
       $('#meta-save').disabled = true;
       $('#meta-discard').disabled = true;
       $('#meta-edit-status').textContent = tr('web.text.metadata_temporarily_unavailable');
+      renderFieldOrigins(null, 0);
       return;
     }
     const token = typeof details?.edit_token === 'string' ? details.edit_token : null;
@@ -659,6 +679,7 @@
       $('#meta-save').disabled = true;
       $('#meta-discard').disabled = true;
       $('#meta-edit-status').textContent = tr('web.text.synchronizing_metadata');
+      renderFieldOrigins(null, 0);
       return;
     }
     const available = !!token && count > 0 && status?.player?.track_count === count;
@@ -686,6 +707,7 @@
       $('#album').placeholder = status?.player?.mode === 'NO_DISC' || status?.disc?.mode === 'NO_DISC' ? tr('web.text.no_cd_inserted') : tr('web.text.album_title');
       $('#meta-track-select').replaceChildren();
       editInputs.forEach(selector => { $(selector).value = ''; });
+      renderFieldOrigins(null, 0);
       return;
     }
     $('#album').placeholder = tr('web.text.album_title');
@@ -702,6 +724,7 @@
       select.value = String(editTrack);
     }
     if (!editDirty && !editBusy) populateEditor();
+    renderFieldOrigins(details, editTrack);
     const manual = Array.isArray(details.manual_fields) ? details.manual_fields : [];
     $('#meta-source').textContent = manual.length ? tr('web.text.manually_corrected') :
       (details.metadata_source || status.metadata?.match_status || 'TOC');

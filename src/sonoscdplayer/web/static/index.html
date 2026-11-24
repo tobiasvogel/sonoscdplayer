@@ -214,11 +214,11 @@ input[readonly],select:disabled,input:disabled{opacity:.7;cursor:not-allowed}
   <div class="record"><strong data-i18n="web.metadata_status.match"></strong><span id="metadata-match" role="status" aria-live="polite">—</span></div>
 </div>
 <div class="fieldgrid">
-<div class="field"><label for="album"><span data-i18n="web.text.album_title"></span> <span class="tag" id="meta-source" data-i18n="web.text.loading_source"></span></label><input id="album" maxlength="160" autocomplete="off" disabled></div>
-<div class="field"><label for="artist" data-i18n="web.text.album_artist"></label><input id="artist" maxlength="160" autocomplete="off" disabled></div>
+<div class="field"><label for="album"><span data-i18n="web.text.album_title"></span> <span class="tag" id="meta-source" data-i18n="web.text.loading_source"></span></label><input id="album" maxlength="160" autocomplete="off" disabled><small class="help" id="meta-origin-album" role="status">—</small></div>
+<div class="field"><label for="artist" data-i18n="web.text.album_artist"></label><input id="artist" maxlength="160" autocomplete="off" disabled><small class="help" id="meta-origin-artist" role="status">—</small></div>
 <div class="field span"><label for="meta-track-select" data-i18n="web.text.track_to_edit"></label><select id="meta-track-select" disabled><option data-i18n="web.text.no_cd"></option></select></div>
-<div class="field"><label for="title2" data-i18n="web.text.track_title"></label><input id="title2" maxlength="160" autocomplete="off" disabled></div>
-<div class="field"><label for="meta-track-artist" data-i18n="web.text.track_artist"></label><input id="meta-track-artist" maxlength="160" autocomplete="off" disabled></div>
+<div class="field"><label for="title2" data-i18n="web.text.track_title"></label><input id="title2" maxlength="160" autocomplete="off" disabled><small class="help" id="meta-origin-track-title" role="status">—</small></div>
+<div class="field"><label for="meta-track-artist" data-i18n="web.text.track_artist"></label><input id="meta-track-artist" maxlength="160" autocomplete="off" disabled><small class="help" id="meta-origin-track-artist" role="status">—</small></div>
 </div>
 <div class="pill-note" data-i18n="web.text.empty_fields_remove_a_manual_correction_automatically_retrieved"></div>
 <div class="panel-footer"><span id="meta-edit-status" role="status" data-i18n="web.text.waiting_for_cd_metadata"></span><div class="twoactions"><button class="btn secondary" id="meta-discard" disabled data-i18n="web.text.discard"></button><button class="btn" id="meta-save" disabled data-i18n="web.text.save_changes"></button></div></div>

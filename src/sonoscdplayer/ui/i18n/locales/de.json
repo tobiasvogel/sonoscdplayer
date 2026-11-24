@@ -532,5 +532,8 @@
   "web.metadata_status.majority": "Mehrheitlich übereinstimmend",
   "web.metadata_status.no_disc": "Keine CD",
   "web.metadata_status.unknown": "Status nicht bekannt",
+  "web.metadata_origin.manual": "Manuell korrigiert",
+  "web.metadata_origin.automatic": "Automatisch · genaue Feldquelle nicht erfasst",
+  "web.metadata_origin.unknown": "Herkunft unbekannt",
   "web.api.settings_conflict": "Die Einstellungen wurden zwischenzeitlich geändert. Bitte neu laden."
 }
