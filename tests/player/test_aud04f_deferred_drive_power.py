@@ -10,7 +10,8 @@ from sonoscdplayer.player.state import PlayerState
 
 class Controller:
     def __init__(self, mode):
-        self.disc_status = DiscStatus(mode, '/dev/sr0')
+        self.disc_status = DiscStatus(mode, '/dev/sr0',
+                                      track_count=2 if mode is DiscMode.READY else 0)
         self.state = (PlayerState().disc_loaded((1, 2))
                       if mode is DiscMode.READY else PlayerState())
         self.owned_url = None
