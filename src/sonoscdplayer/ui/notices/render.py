@@ -52,7 +52,8 @@ class NoticeRenderer:
         if not (isinstance(width, int) and isinstance(height, int)
                 and width >= 64 and height >= 64):
             raise ValueError("notice display must be at least 64x64")
-        image = Image.new("RGB", (width, height), self.theme.background)
+        # Keep background OLED pixels off, including behind icon/text rows.
+        image = Image.new("RGB", (width, height), "#000000")
         draw = ImageDraw.Draw(image)
         tone = getattr(self.theme, COLOR[severity])
         margin = max(4, width // 24)
