@@ -20,6 +20,11 @@ import threading
 import re
 import time
 
+from requests.exceptions import (
+    ConnectionError as RequestsConnectionError,
+    Timeout as RequestsTimeout,
+)
+
 from sonoscdplayer.audio.track_server_process import (forward_server_output, track_stream_url,
                                                       wait_for_reader_start)
 from sonoscdplayer.player.state import Mode
@@ -551,7 +556,8 @@ class Controller:
             # refresh sees the new state. UID, group and URI are still checked
             # on every refresh, so nothing foreign is adopted here.
             print(f'[player] transport changed during check ({exc}); rechecking', flush=True)
-        except (TimeoutError, ConnectionError) as exc:
+        except (TimeoutError, ConnectionError,
+                RequestsTimeout, RequestsConnectionError) as exc:
             now = time.monotonic()
             if self._sonos_read_failure_since is None:
                 self._sonos_read_failure_since = now
