@@ -514,15 +514,26 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
         raise FileExistsError(f'refusing existing socket/path: {path}')
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     original_umask = os.umask(0o177)
+    bound_inode = None
     try:
         server.bind(str(path))
+        bound_inode = os.lstat(path).st_ino
         # Listen at once: clients wait for the socket file, and a connect
         # between bind() and listen() would be refused. Requests queue in the
         # backlog until the loop below accepts them.
         server.listen(16)
+    except BaseException:
+        server.close()
+        if bound_inode is not None:
+            try:
+                current = os.lstat(path)
+                if stat.S_ISSOCK(current.st_mode) and current.st_ino == bound_inode:
+                    path.unlink()
+            except FileNotFoundError:
+                pass
+        raise
     finally:
         os.umask(original_umask)
-    bound_inode = os.lstat(path).st_ino
     dashboard = None
     pending = []
     try:
