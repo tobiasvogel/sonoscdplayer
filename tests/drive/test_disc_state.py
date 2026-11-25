@@ -120,7 +120,8 @@ class DiscStateTests(unittest.TestCase):
             config = pathlib.Path(temp) / 'config.toml'
             config.write_text('[service]\nshutdown_policy = "stop_owned"\n'
                               '[audio_startup]\nprebuffer_before_sonos = true\n'
-                              'pcm_timeout_seconds = 45\n')
+                              'pcm_timeout_seconds = 45\n'
+                              '[streaming]\nmax_buffer_mib = 16\n')
             socket_path = pathlib.Path(temp) / 'control.sock'
             observed = []
 
@@ -133,7 +134,8 @@ class DiscStateTests(unittest.TestCase):
                  patch.object(player_service, 'DrivePowerManager') as power, \
                  patch.object(player_service, 'serve', side_effect=fake_serve):
                 result = player_service.run(['--config', str(config),
-                                             '--socket', str(socket_path)])
+                                             '--socket', str(socket_path),
+                                             '--state-dir', temp])
             self.assertEqual(result, 0)
             power.assert_not_called()
             self.assertEqual(len(observed), 1)

@@ -221,7 +221,7 @@ class SetupSession:
         worker = threading.Thread(target=target, args=args, name='netsetup', daemon=True)
         with self._lock:
             self._worker = worker
-        worker.start()
+            worker.start()
 
     def _current(self, generation):
         with self._lock:

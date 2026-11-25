@@ -28,6 +28,28 @@ DEFAULT_LOGO = SCREEN_IMAGES / 'start_screen.png'
 SHUTDOWN_PRESERVE_MARKER = Path('/run/sonoscdplayer-oled-shutdown-preserve')
 
 
+def refresh_saved_language(menu, ui_state):
+    """Adopt an externally saved menu language only while the menu is idle.
+
+    This is a read-only synchronization point. The local menu remains the
+    owner of its current interaction; an external change must not move a
+    language picker or interrupt an open device menu.
+    """
+    if (menu is None or not hasattr(menu, 'languages') or
+            getattr(menu, 'active', True) or getattr(menu, 'power_menu', False) or
+            getattr(menu, 'language_picker', False) or
+            getattr(menu, 'shutdown_screen', None) is not None):
+        return False
+    saved = ui_state.language(menu.languages)
+    if saved is None or saved == menu.language:
+        return False
+    from sonoscdplayer.ui.renderers.oled_128_speakers import MultiRenderer
+    menu.language = saved
+    menu.language_focus = menu.languages.index(saved)
+    menu.renderer = MultiRenderer(language=saved)
+    return True
+
+
 def preserve_display_on_exit(flag=False, environ=None):
     """Opt-in handover. Exact '1' is used for a systemd Environment drop-in."""
     if environ is None:
@@ -345,7 +367,10 @@ def main(argv=None):
         ui_config = load_ui_config(args.ui_config)
     except (ValueError, OSError) as exc:
         p.error('invalid UI configuration: '+str(exc))
-    cover_mode = args.cover if args.cover is not None else ui_config.cover_mode
+    from sonoscdplayer.ui.cover_state import read_cover_mode
+    saved_cover, _ = read_cover_mode(args.state_dir)
+    cover_mode = (args.cover if args.cover is not None else
+                  saved_cover if saved_cover is not None else ui_config.cover_mode)
     from sonoscdplayer.ui.i18n import available_languages
     from sonoscdplayer.ui.language_state import UiState
     ui_state = UiState(args.state_dir)
@@ -468,6 +493,7 @@ def main(argv=None):
         end=time.monotonic()+args.seconds if args.seconds else None
         previous=None
         previous_label=None
+        next_language_check_at=0.0
         next_status_at=0.0
         hold=StatusHold(args.offline_grace_seconds)
         ready_state=None
@@ -492,6 +518,11 @@ def main(argv=None):
             hold.success(ready_state,time.monotonic())
         with receiver_context as ui_events:
             while end is None or time.monotonic()<end:
+                if menu is not None and time.monotonic() >= next_language_check_at:
+                    # Never interpret a state-file change as a menu button press.
+                    # Poll at most once a second; no player or drive RPC.
+                    next_language_check_at = time.monotonic() + 1.0
+                    refresh_saved_language(menu, ui_state)
                 menu_quick = False
                 if menu is not None:
                     menu.poll()

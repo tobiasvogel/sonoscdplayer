@@ -24,7 +24,7 @@ Run from any directory within a local checkout. Example for an unattended **prev
 ```sh
 bash scripts/setup.sh --dry-run --service-user <account> --venv <absolute-venv-path> \
     --packages yes --spi yes --i2c yes --config yes --sensor yes \
-    --services yes --early-led yes --power-actions yes \
+    --services yes --web yes --early-led yes --power-actions yes \
     --drive-activity-events yes --connect-gestures yes --network-setup yes \
     --enable-services no --start-services no --screens no --color never
 ```
@@ -43,6 +43,8 @@ The setup calls the existing project helpers:
 - `tools/render_runtime_units.py` for rendering services and Polkit rules.
 - `tools/install_runtime_services.py` for reviewing and installing rendered
   units/rules (without implicit service start or enable).
+- `--web yes` explicitly includes the local HTTP web service (port 8081) in
+  installation, boot enablement and optional immediate start; the default suggestion is no.
 - The APDS9306 `service/Makefile` (`make service`) to build both C programs;
   binaries are installed separately, not with `make install` (which would
   implicitly enable and start the sensor service).
@@ -70,6 +72,27 @@ separate from building the C renderer and installing the final shutdown hook.
 Existing differing units or drop-ins are still refused. The renderer and hook
 are built and installed before any selected services are started.
 Selecting the APDS9306 sensor also requires selecting systemd service installation.
+
+## Installing just the web service on an existing player
+
+`scripts/setup.sh` is an initial installer, not an upgrade tool. To avoid
+reinstalling or replacing existing local units, render the current templates
+and install only `sonoscdplayer-web.service`:
+
+```sh
+python3 tools/render_runtime_units.py --output-dir /tmp/sonoscdplayer-web-rendered \
+    --checkout "$(pwd)/src" --python-venv <existing-venv>/bin/python \
+    --service-user <existing-service-user>
+sudo python3 tools/install_runtime_services.py \
+    --rendered-dir /tmp/sonoscdplayer-web-rendered --web-only --apply --enable --start
+```
+
+Run these commands from the repository root and replace the placeholders with
+the values in your **installed player unit** (`systemctl cat
+sonoscdplayer-player.service`). The web service uses the same non-root account
+as the player because the Unix control socket is mode 0600. The installer
+refuses to overwrite an existing differing web unit or bypass an existing
+drop-in. It does not restart the player or modify the other installed units.
 
 Before running `--start-services`, verify your actual GPIO wiring and display,
 configuration, Sonos target and intended ownership. Setup does not start a CD

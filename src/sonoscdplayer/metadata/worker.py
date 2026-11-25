@@ -24,6 +24,12 @@ from sonoscdplayer.metadata.cover_preferences import read_cover_preferences
 from sonoscdplayer.metadata.gnudb import (ENDPOINT as GNUDB_ENDPOINT,
     query_disc as query_gnudb, read_entry as read_gnudb)
 from sonoscdplayer.metadata.gnudb_fallback import resolve_fallback
+from sonoscdplayer.metadata.manual_edits import ManualEdits, apply_edits, disc_token, validate_edit
+from sonoscdplayer.metadata.release_workflow import ReleaseWorkflow
+from sonoscdplayer.metadata.manual_cover import ManualCoverWorkflow, DEFAULT_STAGING
+from sonoscdplayer.metadata.library_index import LibraryWorkflow
+from sonoscdplayer.metadata.library_manage import LibraryManageWorkflow
+from sonoscdplayer.metadata.library_maintenance import LibraryMaintenanceWorkflow
 
 
 def gnudb_settings_from_config(metadata):
@@ -171,7 +177,7 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
     if cached is not None and cached_gnudb is None:
         effective = _prefer_cdtext(local, cached.local)
         release_id = cached.release_id
-        match = 'cached'
+        match = 'manual' if cached.confirmed_by_user else 'cached'
         score = cached.confidence_score
     else:
         effective, release_id, match, score = local, None, 'toc', None
@@ -248,7 +254,7 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                 except Exception:
                     pass
                 break
-    return {
+    snapshot = {
         'disc_id': identity.disc_id,
         'album': effective.album,
         'artist': effective.artist,
@@ -266,24 +272,41 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
         'cdtext_status': local.cdtext_status,
         'lookup_status': lookup_status,
         'lookup_error': lookup_error,
+        'edit_token': disc_token(identity),
     }
+    try:
+        edits = ManualEdits(cache.path).get(identity)
+    except Exception:
+        # Manual cache corruption must not hide verified CD-TEXT or music data.
+        edits = {}
+    return apply_edits(snapshot, edits)
 
 
-class MetadataWorker:
+class MetadataWorker(LibraryMaintenanceWorkflow, LibraryManageWorkflow, LibraryWorkflow, ManualCoverWorkflow, ReleaseWorkflow):
     """One in-flight metadata job. Stale completions can never change display."""
 
     def __init__(self, *, cache_path=DEFAULT_DB_PATH, cover_dir=DEFAULT_COVER_DIR,
                  online=True, timeout=8, matching_policy=None,
                  ui_path=None, display_supports_cover=False, sonos_uses_cover=False,
+                 cover_state_dir=None,
                  identify=identity_from_toc, lookup=lookup_disc,
                  executor=None, clock=time.monotonic, retry_delays=RETRY_DELAYS,
                  gnudb_enabled=False, gnudb_timeout=5,
                  gnudb_query=query_gnudb, gnudb_read=read_gnudb,
-                 gnudb_endpoint=GNUDB_ENDPOINT):
+                 gnudb_endpoint=GNUDB_ENDPOINT,
+                 cover_staging_dir=DEFAULT_STAGING):
         self._cache = DiscCache(cache_path)
+        self._manual = ManualEdits(cache_path)
+        self._edit_jobs = []
+        self._init_releases()
         self._cover = CoverStore(cover_dir)
+        self._init_manual_covers(cover_dir, ui_path, cover_staging_dir)
+        self._init_library(cache_path, cover_dir)
+        self._init_library_manage(cache_path)
+        self._init_library_maintenance(cache_path, cover_dir, ui_path)
         self._policy = matching_policy or MatchingPolicy()
-        self._cover_policy = read_cover_preferences(ui_path).download_policy(
+        self._cover_policy = read_cover_preferences(
+            ui_path, state_dir=cover_state_dir).download_policy(
             display_supports_cover=display_supports_cover,
             sonos_uses_cover=sonos_uses_cover)
         if type(gnudb_enabled) is not bool or type(gnudb_timeout) is not int or not 1 <= gnudb_timeout <= 30:
@@ -300,6 +323,10 @@ class MetadataWorker:
         self._owns_executor = executor is None
         self._pending = None
         self._pending_toc = None
+        self._reset_job = None
+        self._reset_toc = None
+        self._reset_generation = None
+        self._disc_generation = 0
         self._last_toc = None
         self._last_cdtext = None
         self._result = None
@@ -316,7 +343,10 @@ class MetadataWorker:
         """
         if toc == self._last_toc:
             return False
+        self._disc_generation += 1
         self._last_toc = toc
+        self._reset_manual_covers()
+        self._reset_releases()
         self._last_cdtext = cdtext
         self._result = None
         self._retry_at = None
@@ -333,7 +363,7 @@ class MetadataWorker:
 
     def _run(self, toc, cdtext=None):
         try:
-            return _safe_result(
+            value = _safe_result(
                 toc, cdtext, cache=self._cache, cover_cache=self._cover,
                 cover_policy=self._cover_policy, online=self._online,
                 timeout=self._timeout, policy=self._policy,
@@ -341,53 +371,166 @@ class MetadataWorker:
                 gnudb_enabled=self._gnudb_enabled, gnudb_timeout=self._gnudb_timeout,
                 gnudb_query=self._gnudb_query, gnudb_read=self._gnudb_read,
                 gnudb_endpoint=self._gnudb_endpoint)
+            if value is not None:
+                path = self._manual_covers.find(self._identify(toc))
+                value['_manual_cover_file'] = str(path) if path is not None else None
+            return value
         except Exception:
             # Even corrupt caches or inaccessible services must not block PLAY.
             return None
 
+    def enqueue_edit(self, *, token, field, track=None, value=None):
+        """Queue a disc-qualified edit without blocking player or audio control."""
+        field, track, value = validate_edit(field, track, value)
+        if not isinstance(token, str) or len(token) != 32:
+            raise ValueError('invalid disc token')
+        if self._last_toc is None or self._result is None:
+            raise ValueError('no identified disc ready for editing')
+        identity = self._identify(self._last_toc)  # cached TOC only; no drive I/O
+        if disc_token(identity) != token or self._result.get('edit_token') != token:
+            raise ValueError('disc changed; reload metadata')
+        if track is not None and track not in {entry['number'] for entry in self._result.get('tracks', ())}:
+            raise ValueError('track not on this disc')
+        if len(self._edit_jobs) >= 8:
+            raise RuntimeError('too many pending metadata edits')
+        toc = self._last_toc
+        generation = getattr(self, '_disc_generation', 0)
+        def current():
+            return self._last_toc == toc and getattr(self, '_disc_generation', 0) == generation
+        def work():
+            return self._manual.set(identity, field=field, track=track, value=value,
+                                    current=current)
+        future = self._executor.submit(work)
+        self._edit_jobs.append((token, generation, future))
+
+    def _consume_edits(self):
+        changed = False
+        pending = []
+        for token, generation, future in self._edit_jobs:
+            if not future.done():
+                pending.append((token, generation, future))
+                continue
+            # A stale job must not update even a reinserted copy of the same CD.
+            if generation != getattr(self, '_disc_generation', 0):
+                continue
+            try:
+                fields = future.result()
+            except Exception as exc:
+                print(f'[metadata] manual edit failed: {type(exc).__name__}', flush=True)
+                if self._result is not None and self._result.get('edit_token') == token:
+                    self._result['edit_error'] = 'metadata.error.edit_save_failed'
+                    self._result['edit_seq'] = self._result.get('edit_seq', 0) + 1
+                    changed = True
+                continue
+            if self._result is not None and self._result.get('edit_token') == token:
+                self._result = apply_edits(self._result, fields)
+                self._result['edit_seq'] = self._result.get('edit_seq', 0) + 1
+                self._result['edit_error'] = None
+                changed = True
+        self._edit_jobs = pending
+        return changed
+
+    @staticmethod
+    def _delete_reset_entry(manual, cache, identity, current):
+        """Skip a reset superseded before this executor task starts."""
+        if not current():
+            return
+        manual.delete(identity)
+        cache.delete(identity)
+
+    def _poll_reset(self, toc):
+        job = self._reset_job
+        if job is None or not job.done():
+            return False
+        self._reset_job = None
+        expected = self._reset_toc
+        generation = self._reset_generation
+        self._reset_toc = self._reset_generation = None
+        try:
+            job.result()
+        except Exception as exc:
+            print(f'[metadata] disc reset failed: {type(exc).__name__}', flush=True)
+        # Whether deletion succeeded or not, reload the current disc to
+        # recover a valid snapshot. Never resurrect an obsolete CD session.
+        if (toc == expected and toc == self._last_toc
+                and generation == self._disc_generation):
+            self._submit(toc)
+            return True
+        return False
+
     def poll(self, toc):
         """Never waits. Consume the result only for the currently verified TOC."""
+        reset_changed = self._poll_reset(toc)
+        self._poll_library()
+        self._poll_library_manage()
+        self._poll_library_maintenance()
+        covered = self._poll_manual_covers()
+        edited = self._consume_edits() or covered or reset_changed
+        edited = self._poll_releases(toc) or edited
         if (self._pending is None and self._retry_at is not None
                 and toc == self._last_toc and self._clock() >= self._retry_at):
             self._retry_at = None
             self._submit(toc)
-            return False
+            return edited
         if self._pending is None or not self._pending.done():
-            return False
+            return edited
         pending, expected = self._pending, self._pending_toc
         self._pending, self._pending_toc = None, None
         if toc != expected or toc != self._last_toc:
-            return False
+            return edited
         value = pending.result()
         if value is None:
-            return False
+            return edited
         if (value.get('lookup_status') in _RETRY_STATUSES
                 and self._retries < len(self._retry_delays)):
             # A few later attempts per disc, further apart; never a loop.
             self._retry_at = self._clock() + self._retry_delays[self._retries]
             self._retries += 1
+        if not covered:
+            self._cover_path = value.get('_manual_cover_file')
+        value.pop('_manual_cover_file', None)
         self._result = value
         return True
 
     def reset_current(self):
-        """Forget the stored entry of the inserted CD and look it up again.
+        """Queue deletion of this CD's metadata; never block player control.
 
-        Only this disc's metadata entry is removed; covers stay (they belong
-        to a release and may be shared). CD-TEXT read at insertion is kept.
+        Covers are shared and remain untouched. The metadata reload starts
+        only after the SQLite deletions have completed.
         """
         toc = self._last_toc
         if toc is None:
             raise ValueError('no disc inserted')
-        self._cache.delete(self._identify(toc))
+        if self._reset_job is not None:
+            raise RuntimeError('disc reset still pending')
+        if self._edit_jobs:
+            raise RuntimeError('manual edits still pending')
+        if self._release_selection is not None:
+            raise RuntimeError('release selection still pending')
+        if self._cover_pending is not None:
+            raise RuntimeError('cover operation still pending')
+        if self._maintenance_job is not None or self._library_manage_job is not None:
+            raise RuntimeError('library write still pending')
+        identity = self._identify(toc)
+        self._reset_releases()
+        self._reset_toc = toc
+        self._reset_generation = self._disc_generation
+        generation = self._reset_generation
+        def still_current():
+            return self._last_toc == toc and self._disc_generation == generation
+        self._reset_job = self._executor.submit(
+            self._delete_reset_entry, self._manual, self._cache, identity, still_current)
+        # A previously queued lookup may have already persisted old values,
+        # but the reset job runs after it on the single metadata executor.
+        self._pending = self._pending_toc = None
         self._result = None
         self._retry_at, self._retries = None, 0
-        self._submit(toc)
         return True
 
     @property
     def snapshot(self):
         """Current metadata state for the status reply."""
-        return self._result.copy() if self._result is not None else None
+        return self._manual_cover_snapshot(self._release_snapshot())
 
     def close(self):
         """Stop the background worker."""
