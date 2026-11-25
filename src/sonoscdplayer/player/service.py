@@ -959,19 +959,23 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 except (ValueError, UnicodeError, socket.timeout, OSError) as exc:
                     send_reply(conn, {'ok': False, 'error': f'bad request: {type(exc).__name__}'})
     finally:
-        if dashboard is not None:
-            dashboard.close()
-        if hasattr(controller, 'status_hook'):
-            controller.status_hook = None
-        for conn, _ in pending:
-            conn.close()
-        server.close()
         try:
-            current = os.lstat(path)
-            if stat.S_ISSOCK(current.st_mode) and current.st_ino == bound_inode:
-                path.unlink()
-        except FileNotFoundError:
-            pass
+            if dashboard is not None:
+                dashboard.close()
+        finally:
+            try:
+                if hasattr(controller, 'status_hook'):
+                    controller.status_hook = None
+                for conn, _ in pending:
+                    conn.close()
+            finally:
+                server.close()
+                try:
+                    current = os.lstat(path)
+                    if stat.S_ISSOCK(current.st_mode) and current.st_ino == bound_inode:
+                        path.unlink()
+                except FileNotFoundError:
+                    pass
 
 
 #: Commands that may wait for the single worker; more are answered "busy".
