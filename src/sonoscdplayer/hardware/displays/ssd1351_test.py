@@ -71,7 +71,10 @@ def main(argv=None):
     parser.add_argument('--color-order', choices=('rgb', 'bgr'), default='rgb')
     parser.add_argument('--brightness', type=int, default=8, help='C7 master current 0..15; 0 is not OFF')
     parser.add_argument('--seconds', type=float, default=3, help='duration per pattern/brightness step')
-    parser.add_argument('--pattern', choices=('all',)+PATTERNS, default='all')
+    scenes = parser.add_mutually_exclusive_group()
+    scenes.add_argument('--pattern', choices=('all',)+PATTERNS, default='all')
+    scenes.add_argument('--demo', choices=('overview', 'menu', 'all'),
+                        help='synthetic RGB UI preview; no live player or input binding')
     parser.add_argument('--preview-dir', type=Path, default=None)
     args = parser.parse_args(argv)
     if args.gpio != args.execute:
@@ -84,10 +87,17 @@ def main(argv=None):
                                rst_pin=args.rst_pin, spi_hz=args.spi_hz)
     except ValueError as exc:
         parser.error(str(exc))
-    names = PATTERNS if args.pattern == 'all' else (args.pattern,)
+    if args.demo:
+        # Render before opening hardware, including the required Unicode fonts.
+        from sonoscdplayer.hardware.displays.ssd1351_preview import demo_images
+        images = demo_images(args.demo)
+        steps = [(name, args.brightness) for name, _ in images]
+    else:
+        names = PATTERNS if args.pattern == 'all' else (args.pattern,)
+        images = [(name, pattern_image(name, config)) for name in names]
+        steps = pattern_steps(args.pattern, args.brightness)
     frames = {}
-    for name in names:
-        image = pattern_image(name, config)
+    for name, image in images:
         frames[name] = image_to_frame(image, config)
         if args.preview_dir is not None:
             args.preview_dir.mkdir(parents=True, exist_ok=True)
@@ -98,7 +108,7 @@ def main(argv=None):
     try:
         if driver:
             driver.open()
-        for name, brightness in pattern_steps(args.pattern, args.brightness):
+        for name, brightness in steps:
             frame = frames[name]
             print(json.dumps(dict(pattern=name, brightness=brightness, rotation=args.rotation,
                                   color_order=args.color_order, width=128, height=128,

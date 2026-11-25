@@ -2,7 +2,7 @@
 
 RGB565 frames, software rotation and 16-step master current control. Hardware
 I/O is injected through the shared SPI transport. No luma or backlight GPIO.
-Register settings are referenced in docs/SSD1351.md. Physical test pending.
+Register settings and hardware verification are documented in docs/SSD1351.md.
 """
 from __future__ import annotations
 
