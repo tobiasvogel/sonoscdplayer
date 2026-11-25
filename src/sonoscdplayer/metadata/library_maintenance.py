@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 from hashlib import sha256
+import os
 from pathlib import Path
 import re
 import stat
@@ -140,19 +141,36 @@ class LibraryMaintenance:
                     references = self._references(db)
                 finally:
                     db.close()
-            candidates = [(p, size) for p, size, manual in self._files()
-                          if not manual and p.name not in references]
-            removed = 0
-            for path, _ in candidates:
-                if not current():
-                    raise ValueError('disc or playback state changed')
-                # Do not follow or remove a symlink substituted after the scan.
+            # Capture identity before acquiring the directory descriptor. A
+            # replacement between inventory and deletion must fail closed.
+            candidates = []
+            for path, _, manual in self._files():
+                if manual or path.name in references:
+                    continue
                 try:
-                    if stat.S_ISREG(path.lstat().st_mode):
-                        path.unlink()
-                        removed += 1
+                    info = path.lstat()
                 except FileNotFoundError:
-                    pass
+                    continue
+                if stat.S_ISREG(info.st_mode):
+                    candidates.append((path.name, info.st_dev, info.st_ino))
+            removed = 0
+            if candidates:
+                fd = os.open(self.cover_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                try:
+                    for name, device, inode in candidates:
+                        if not current():
+                            raise ValueError('disc or playback state changed')
+                        try:
+                            info = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                        except FileNotFoundError:
+                            continue
+                        if (not stat.S_ISREG(info.st_mode) or
+                                (info.st_dev, info.st_ino) != (device, inode)):
+                            raise ValueError('cover changed during cleanup')
+                        os.unlink(name, dir_fd=fd)
+                        removed += 1
+                finally:
+                    os.close(fd)
             return {'changed_count': removed, 'stats': self.stats()}
         if not self.cache.path.is_file():
             if action == 'bulk-delete':
