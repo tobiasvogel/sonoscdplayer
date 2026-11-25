@@ -284,6 +284,10 @@ class MetadataWorker(LibraryMaintenanceWorkflow, LibraryManageWorkflow, LibraryW
         self._owns_executor = executor is None
         self._pending = None
         self._pending_toc = None
+        self._reset_job = None
+        self._reset_toc = None
+        self._reset_generation = None
+        self._disc_generation = 0
         self._last_toc = None
         self._last_cdtext = None
         self._result = None
@@ -300,6 +304,7 @@ class MetadataWorker(LibraryMaintenanceWorkflow, LibraryManageWorkflow, LibraryW
         """
         if toc == self._last_toc:
             return False
+        self._disc_generation += 1
         self._last_toc = toc
         self._reset_manual_covers()
         self._reset_releases()
@@ -376,13 +381,42 @@ class MetadataWorker(LibraryMaintenanceWorkflow, LibraryManageWorkflow, LibraryW
         self._edit_jobs = pending
         return changed
 
+    @staticmethod
+    def _delete_reset_entry(manual, cache, identity, current):
+        """Skip a reset superseded before this executor task starts."""
+        if not current():
+            return
+        manual.delete(identity)
+        cache.delete(identity)
+
+    def _poll_reset(self, toc):
+        job = self._reset_job
+        if job is None or not job.done():
+            return False
+        self._reset_job = None
+        expected = self._reset_toc
+        generation = self._reset_generation
+        self._reset_toc = self._reset_generation = None
+        try:
+            job.result()
+        except Exception as exc:
+            print(f'[metadata] disc reset failed: {type(exc).__name__}', flush=True)
+        # Whether deletion succeeded or not, reload the current disc to
+        # recover a valid snapshot. Never resurrect an obsolete CD session.
+        if (toc == expected and toc == self._last_toc
+                and generation == self._disc_generation):
+            self._submit(toc)
+            return True
+        return False
+
     def poll(self, toc):
         """Never waits. Consume the result only for the currently verified TOC."""
+        reset_changed = self._poll_reset(toc)
         self._poll_library()
         self._poll_library_manage()
         self._poll_library_maintenance()
         covered = self._poll_manual_covers()
-        edited = self._consume_edits() or covered
+        edited = self._consume_edits() or covered or reset_changed
         edited = self._poll_releases(toc) or edited
         if (self._pending is None and self._retry_at is not None
                 and toc == self._last_toc and self._clock() >= self._retry_at):
@@ -410,14 +444,16 @@ class MetadataWorker(LibraryMaintenanceWorkflow, LibraryManageWorkflow, LibraryW
         return True
 
     def reset_current(self):
-        """Forget the stored entry of the inserted CD and look it up again.
+        """Queue deletion of this CD's metadata; never block player control.
 
-        Only this disc's metadata entry is removed; covers stay (they belong
-        to a release and may be shared). CD-TEXT read at insertion is kept.
+        Covers are shared and remain untouched. The metadata reload starts
+        only after the SQLite deletions have completed.
         """
         toc = self._last_toc
         if toc is None:
             raise ValueError('no disc inserted')
+        if self._reset_job is not None:
+            raise RuntimeError('disc reset still pending')
         if self._edit_jobs:
             raise RuntimeError('manual edits still pending')
         if self._release_selection is not None:
@@ -426,13 +462,20 @@ class MetadataWorker(LibraryMaintenanceWorkflow, LibraryManageWorkflow, LibraryW
             raise RuntimeError('cover operation still pending')
         if self._maintenance_job is not None or self._library_manage_job is not None:
             raise RuntimeError('library write still pending')
-        self._reset_releases()
         identity = self._identify(toc)
-        self._manual.delete(identity)
-        self._cache.delete(identity)
+        self._reset_releases()
+        self._reset_toc = toc
+        self._reset_generation = self._disc_generation
+        generation = self._reset_generation
+        def still_current():
+            return self._last_toc == toc and self._disc_generation == generation
+        self._reset_job = self._executor.submit(
+            self._delete_reset_entry, self._manual, self._cache, identity, still_current)
+        # A previously queued lookup may have already persisted old values,
+        # but the reset job runs after it on the single metadata executor.
+        self._pending = self._pending_toc = None
         self._result = None
         self._retry_at, self._retries = None, 0
-        self._submit(toc)
         return True
 
     @property

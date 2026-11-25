@@ -108,10 +108,46 @@ class ResetDiscTests(unittest.TestCase):
         self.assertIsNotNone(DiscCache(self.db).get(DiscIdentity('A' * 28, 'disc')))
         self.assertTrue(self.worker.reset_current())
         self.assertIsNone(self.worker.snapshot)
-        self.executor.finish(1)
+        # No SQLite deletion or lookup is executed on the caller's thread.
+        self.assertIsNotNone(DiscCache(self.db).get(DiscIdentity('A' * 28, 'disc')))
+        self.assertEqual(len(self.executor.jobs), 2)
+        with self.assertRaisesRegex(RuntimeError, 'reset still pending'):
+            self.worker.reset_current()
+        self.executor.finish(1)  # SQLite deletion on the metadata executor
+        self.assertTrue(self.worker.poll(toc))
+        self.assertIsNone(DiscCache(self.db).get(DiscIdentity('A' * 28, 'disc')))
+        self.executor.finish(2)  # Reload only after deletion
         self.assertTrue(self.worker.poll(toc))
         self.assertEqual(self.worker.snapshot['match_status'], 'unique')   # not 'cached'
         self.assertEqual(self.lookup.call_count, 2)
+
+    def test_reset_completion_does_not_restore_old_disc(self):
+        old, new = FakeToc('old'), FakeToc('new')
+        self.worker.observe(old)
+        self.executor.finish(0)
+        self.worker.poll(old)
+        self.worker.reset_current()
+        self.worker.observe(new)
+        self.executor.finish(1)
+        self.assertFalse(self.worker.poll(new))
+        self.assertIsNotNone(DiscCache(self.db).get(DiscIdentity('A' * 28, 'old')))
+        self.assertEqual(len(self.executor.jobs), 3)
+        self.executor.finish(2)
+        self.assertTrue(self.worker.poll(new))
+        self.assertIsNotNone(self.worker.snapshot)
+        self.assertEqual(self.worker._last_toc, new)
+
+    def test_reinserted_same_toc_does_not_activate_stale_reset(self):
+        first, second = FakeToc('first'), FakeToc('second')
+        self.worker.observe(first)
+        self.executor.finish(0)
+        self.worker.poll(first)
+        self.worker.reset_current()
+        self.worker.observe(second)
+        self.worker.observe(first)
+        self.executor.finish(1)
+        self.assertFalse(self.worker.poll(first))
+        self.assertIsNotNone(DiscCache(self.db).get(DiscIdentity('A' * 28, 'first')))
 
     def test_reset_without_disc_is_refused(self):
         with self.assertRaises(ValueError):

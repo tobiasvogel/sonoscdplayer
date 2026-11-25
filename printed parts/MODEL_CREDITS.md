@@ -23,3 +23,12 @@ https://grabcad.com/library/5-5-x-2-1mm-dc-power-plug-and-jack-1
 
 RJ45 Panel Mount Connector:
 https://grabcad.com/library/rj45-panel-mount-connector-1
+
+RJ45 Ethernet Connector:
+https://grabcad.com/library/rj45-ethernet-connector-cable-assembly-1
+
+USB C-Type Connector:
+https://grabcad.com/library/usb-c-type-c-male-connector-cable-1
+
+USB A-Type Connector:
+https://grabcad.com/library/usb-type-a-male-connector-cable-1
