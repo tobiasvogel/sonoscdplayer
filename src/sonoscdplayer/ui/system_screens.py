@@ -34,7 +34,7 @@ SCREENS = {
 }
 
 
-def load_artwork(path):
+def load_artwork(path, *, grayscale=True):
     """Load a system screen image and check its size."""
     with Image.open(path) as source:
         source.load()
@@ -42,9 +42,10 @@ def load_artwork(path):
             raise ValueError('invalid source image dimensions')
         rgba = source.convert('RGBA')
     backdrop = Image.new('RGBA', rgba.size, (0, 0, 0, 255))
-    mono = Image.alpha_composite(backdrop, rgba).convert('L')
-    fitted = ImageOps.contain(mono, (SCREEN, SCREEN), method=Image.Resampling.LANCZOS)
-    canvas = Image.new('L', (SCREEN, SCREEN), 0)
+    mode = 'L' if grayscale else 'RGB'
+    artwork = Image.alpha_composite(backdrop, rgba).convert(mode)
+    fitted = ImageOps.contain(artwork, (SCREEN, SCREEN), method=Image.Resampling.LANCZOS)
+    canvas = Image.new(mode, (SCREEN, SCREEN), 0)
     canvas.paste(fitted, ((SCREEN - fitted.width) // 2, (SCREEN - fitted.height) // 2))
     return canvas
 
@@ -78,9 +79,9 @@ def layout_text(text):
     raise ValueError('system screen text does not fit the display: ' + text)
 
 
-def compose_image(artwork, text):
-    """Grayscale 128x128 image: artwork icon plus centered text."""
-    image = load_artwork(artwork)
+def compose_image(artwork, text, *, grayscale=True):
+    """128x128 artwork and centered text; preserve RGB for color outputs."""
+    image = load_artwork(artwork, grayscale=grayscale)
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, ICON_BOTTOM, SCREEN - 1, SCREEN - 1), fill=0)
     fnt, lines = layout_text(text)
@@ -91,7 +92,7 @@ def compose_image(artwork, text):
     for line in lines:
         left, _, right, _ = draw.textbbox((0, 0), line, font=fnt)
         x = (SCREEN - (right - left)) // 2 - left
-        draw.text((x, y), line, font=fnt, fill=255)
+        draw.text((x, y), line, font=fnt, fill=255 if grayscale else (255, 255, 255))
         y += line_height + LINE_GAP
     return image
 
@@ -104,8 +105,8 @@ def screen_text(name, language):
     return text + '…' if progress else text
 
 
-def screen_image(name, language, artwork=None):
+def screen_image(name, language, artwork=None, *, grayscale=True):
     """Localized system screen; artwork defaults to the standard PNG."""
     if artwork is None:
         artwork = DATA_DIR / SCREENS[name][0]
-    return compose_image(artwork, screen_text(name, language))
+    return compose_image(artwork, screen_text(name, language), grayscale=grayscale)

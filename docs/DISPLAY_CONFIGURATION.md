@@ -127,3 +127,33 @@ protocol tests. One native transport build test was skipped on macOS. Tests
 requiring Unix socket binding, unavailable pytest modules or Linux system
 facilities were excluded; this is not a claim that the entire Linux suite ran.
 Shell syntax checks for all four modified build/install scripts also passed.
+
+## Startup and shutdown logo
+
+The start, shutdown, restart and please-wait artwork uses the geometry of
+`docs/logo_new.svg`. Its colored display source is packaged as
+`src/sonoscdplayer/assets/screens/logo.svg`, using the supplied palette:
+
+| Logo element | RGB color |
+|---|---|
+| Speaker enclosure and ring | `#eee9e1` |
+| CD and sound waves | `#f5a94a` |
+| CD details | `#1a1816` |
+| Screen background | `#000000` |
+
+The 128x128 PNG artwork is packaged with the application. RGB outputs preserve
+its colors through runtime startup, menu shutdown screens, firmware splash and
+native shutdown frame generation. Grayscale outputs retain their monochrome
+path. Localized text remains white. The safe-screen power symbol is unchanged.
+
+After updating this artwork, run the same configuration apply command to rebuild
+installed firmware/shutdown artifacts. A frontend restart alone does not change
+previously compiled firmware or shutdown frames. The new boot image appears on
+the next boot; the apply command does not reboot the Pi.
+
+Developers can regenerate the packaged PNGs with `python3 tools/build_logo_screens.py`
+using CairoSVG, or supply a transparent square PNG export of the colored SVG
+with `--rasterized-logo /path/to/export.png`. SVG rasterization is a development
+step; normal deployment and the Pi runtime do not need CairoSVG or an SVG renderer.
+The source geometry and exact palette are checked alongside runtime and compiled
+frame payloads; 116 focused notice/runtime/system-screen tests passed locally.

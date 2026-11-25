@@ -893,7 +893,8 @@ class InteractiveMenu:
         if self.shutdown_screen is not None:
             if self._shutdown_frame is None:
                 from sonoscdplayer.ui.system_screens import screen_image
-                self._shutdown_frame = image_to_frame(screen_image(self.shutdown_screen, self.language))
+                self._shutdown_frame = image_to_frame(screen_image(
+                    self.shutdown_screen, self.language, grayscale=gray))
             return self._shutdown_frame
         from sonoscdplayer.ui.renderers.oled_128_screens import graphic_frame_from_menu
         return image_to_frame(graphic_frame_from_menu(self, now=time.monotonic(), gray=gray))

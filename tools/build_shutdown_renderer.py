@@ -134,7 +134,9 @@ def generate(wait: Path, final: Path, reboot: Path, transition: Path, output: Pa
 
     for lang in languages:
         for name, path in sources.items():
-            emit(f'shutdown_frame_{name}_{identifiers[lang]}', pack_image(system_screen.compose_image(path, frame_text(name, lang))))
+            emit(f'shutdown_frame_{name}_{identifiers[lang]}', pack_image(
+                system_screen.compose_image(path, frame_text(name, lang),
+                                            grayscale=not spec.color)))
     if diagnostic:
         data = diagnostic_frame()
         pixels = bytes(shade*17 for byte in data for shade in (byte >> 4, byte & 15))

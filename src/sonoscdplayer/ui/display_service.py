@@ -96,7 +96,7 @@ def start_splash(path, language, *, color=False):
     try:
         if Path(path).resolve() == DEFAULT_LOGO.resolve():
             from sonoscdplayer.ui.system_screens import screen_image
-            return image_to_frame(screen_image('start', language), color=color)
+            return image_to_frame(screen_image('start', language, grayscale=not color), color=color)
     except (OSError, ValueError, KeyError):
         pass  # missing font/artwork: fall back to the plain PNG below
     return load_splash(path, color=color)

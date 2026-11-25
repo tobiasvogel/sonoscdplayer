@@ -65,7 +65,8 @@ def main(argv=None):
         from sonoscdplayer.ui.language_state import UiState
         language = (UiState(log=lambda _: None).language(available_languages())
                     or load_ui_config().language)
-        image = screen_image('start', language)
+        image = screen_image('start', language,
+                             grayscale=not backend_for(config.controller).color)
     args.output.write_text(build(image, config), encoding='ascii')
     print(f'Wrote {args.output}: {config.controller}')
 
