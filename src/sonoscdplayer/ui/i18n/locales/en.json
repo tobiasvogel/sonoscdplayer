@@ -540,5 +540,12 @@
   "web.cover_storage.unavailable": "Storage usage unavailable",
   "web.cover_storage.summary": "{used} / {budget} MiB · {count} covers, {manual} manual",
   "web.cover_storage.breakdown": "Automatic: {automatic} ({automatic_mib} MiB) · Manual: {manual_mib} MiB",
-  "web.api.settings_conflict": "The settings were changed elsewhere. Reload and try again."
+  "web.api.settings_conflict": "The settings were changed elsewhere. Reload and try again.",
+  "netsetup.address": "Address",
+  "netsetup.display_only": "Display only",
+  "netsetup.connecting_unnamed": "Connecting …",
+  "netsetup.connected_unnamed": "Connected",
+  "textinput.input": "Input",
+  "textinput.check": "Check input",
+  "web.page_title": "SonosCDPlayer – web client"
 }

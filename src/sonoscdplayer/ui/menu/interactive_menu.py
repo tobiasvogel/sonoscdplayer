@@ -25,7 +25,7 @@ from sonoscdplayer.ui.menu.menu_catalog import NAVIGATION_PAGES, POWER_ITEMS
 from sonoscdplayer.ui.menu.network_status import NetworkStatus, read_network_status
 
 
-# After a player-acknowledged "Auswahl übernehmen" the menu closes and a
+# After a player-acknowledged "apply selection" (menu.review) the menu closes and a
 # success notice stays visible this long.
 ACCEPTED_NOTICE_SECONDS = 1.0
 SCAN_RESULT_SECONDS = 2.0
@@ -475,7 +475,7 @@ class InteractiveMenu:
             self._power_return = None
         self.power_menu = True
         self.language_picker = False
-        self.power_focus = 0  # "Zurück" is always the default
+        self.power_focus = 0  # "back" (menu.back) is always the default
         self.power_notice = ''
         self.active = True
         return True

@@ -69,7 +69,7 @@ def public_status(response: dict) -> dict:
         'ok': bool(response.get('ok')),
         'player': {'mode': player.get('mode'), 'track': player.get('track'),
                    'track_count': player.get('track_count'),
-                   'error': 'Player error' if player.get('error') else None},
+                   'error': True if player.get('error') else None},  # text added per language
         'disc': {k: disc.get(k) for k in ('mode', 'track_count')},
         'metadata': {k: metadata.get(k) for k in ('album', 'artist', 'track_title',
                      'track_artist', 'match_status', 'cdtext_status',

@@ -6,6 +6,10 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- All texts on the display and in the web client come from the language
+  files: the Wi-Fi setup and Wi-Fi entry screens of the ST7735S preview had
+  their own German and English texts and now use the same wording as the
+  OLED; the web client's page title is translated as well.
 - NEXT and PREVIOUS on the device react at once while the player is
   stopped: the track number counts up or down immediately, the drive is no
   longer woken for it (only PLAY wakes it and reads the chosen track), and

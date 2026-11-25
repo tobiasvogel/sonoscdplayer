@@ -167,5 +167,38 @@ class LocalizationTests(unittest.TestCase):
         self.assertFalse(menu.active)
 
 
+class NoInlineLanguageTextTests(unittest.TestCase):
+    """Every text shown to the user comes from locales/*.json."""
+
+    def test_no_module_switches_texts_on_the_language_itself(self):
+        import pathlib
+        import re
+        import sonoscdplayer
+        root = pathlib.Path(sonoscdplayer.__file__).parent
+        pattern = re.compile(r"""language\s*==\s*['"][a-z]{2}['"]|\bif de else\b""")
+        offenders = [str(path.relative_to(root)) for path in root.rglob('*.py')
+                     if 'i18n' not in path.parts and pattern.search(path.read_text())]
+        self.assertEqual(offenders, [])
+
+    def test_wifi_previews_follow_the_catalog(self):
+        from sonoscdplayer.network_setup.session import SetupSnapshot
+        from sonoscdplayer.ui.displays.special_screens import wifi_setup_screen
+        from sonoscdplayer.ui.i18n import Translator
+        for language in ('de', 'en'):
+            tr = Translator(language).tr
+            with self.subTest(language=language):
+                self.assertEqual(wifi_setup_screen(SetupSnapshot(state='preparing'),
+                                                   language=language).message,
+                                 tr('netsetup.preparing'))
+                self.assertEqual(wifi_setup_screen(SetupSnapshot(state='connected', target='Home'),
+                                                   language=language).message,
+                                 tr('netsetup.connected', ssid='Home'))
+                hotspot = wifi_setup_screen(SetupSnapshot(state='hotspot', hotspot_ssid='X',
+                                                          password='ABCDEFGH'),
+                                            language=language)
+                self.assertEqual(hotspot.heading, tr('netsetup.title'))
+                self.assertEqual(hotspot.status, tr('netsetup.display_only'))
+
+
 if __name__=='__main__':
     unittest.main()

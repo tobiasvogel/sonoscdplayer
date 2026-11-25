@@ -34,7 +34,7 @@ timeout_seconds = 8
 # MusicBrainz remains the primary provider. GnuDB is consulted only on
 # unavailable/not-found MusicBrainz results; no CDDB ID becomes an MB release ID.
 [metadata.gnudb]
-enabled = true
+enabled = false
 timeout_seconds = 5
 endpoint = "https://gnudb.gnudb.org/~cddb/cddb.cgi"
 

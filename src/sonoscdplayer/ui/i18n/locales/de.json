@@ -540,5 +540,12 @@
   "web.cover_storage.unavailable": "Speicherbelegung nicht verfügbar",
   "web.cover_storage.summary": "{used} / {budget} MiB · {count} Covers, davon {manual} manuell",
   "web.cover_storage.breakdown": "Automatisch: {automatic} ({automatic_mib} MiB) · Manuell: {manual_mib} MiB",
-  "web.api.settings_conflict": "Die Einstellungen wurden zwischenzeitlich geändert. Bitte neu laden."
+  "web.api.settings_conflict": "Die Einstellungen wurden zwischenzeitlich geändert. Bitte neu laden.",
+  "netsetup.address": "Adresse",
+  "netsetup.display_only": "Nur Anzeige",
+  "netsetup.connecting_unnamed": "Verbinde …",
+  "netsetup.connected_unnamed": "Verbunden",
+  "textinput.input": "Eingabe",
+  "textinput.check": "Eingabe prüfen",
+  "web.page_title": "SonosCDPlayer – Web-Client"
 }

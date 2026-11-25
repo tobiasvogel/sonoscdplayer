@@ -170,13 +170,13 @@ int main(int argc, char **argv)
                  | ((uint32_t)data[1] << 8)
                  | ((uint32_t)data[2] << 16);
 
-    // Lux-Faktor für 100 ms und Gain 3
-    // Unterschiedliche Empfindlichkeit der Sensorvarianten
+    // Lux factor for 100 ms and gain 3
+    // (the sensor variants differ in sensitivity)
     double base_factor = (id == 0xB3)
                        ? 0.146845
                        : 0.170067;
 
-    // Umrechnung auf die gewählte Integrationszeit
+    // Scale to the chosen integration time
     double lux = raw * base_factor * (100.0 / actual_ms);
 
     printf("%.2f\n", lux);

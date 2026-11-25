@@ -17,7 +17,9 @@ def test_prune_refuses_replaced_inode(tmp_path, monkeypatch):
         nonlocal swapped
         if not swapped and os.fspath(path) == os.fspath(covers):
             swapped = True
-            victim.unlink()
+            # Keep the old file alive elsewhere: a plain unlink lets tmpfs/ext4
+            # hand the freed inode number straight to the new file.
+            victim.rename(tmp_path / 'held-original.jpg')
             victim.write_bytes(b'replacement')
         return original_open(path, flags, *args, **kwargs)
 

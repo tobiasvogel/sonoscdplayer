@@ -7,6 +7,7 @@ it needs its own interactive presenter before live ST7735S support.
 from __future__ import annotations
 
 from sonoscdplayer.network_setup.session import SetupSnapshot
+from sonoscdplayer.ui.i18n import Translator
 from sonoscdplayer.ui.screens.semantic_screen import ScreenItem, SemanticScreen
 from sonoscdplayer.ui.screens.semantic_views import system_screen
 
@@ -24,42 +25,37 @@ def wifi_setup_screen(snapshot, *, language='de') -> SemanticScreen | None:
     """
     if not isinstance(snapshot, SetupSnapshot):
         return None
-    if language not in ('de', 'en'):
-        raise ValueError('unsupported setup preview language')
-    de = language == 'de'
+    tr = Translator(language).tr
     state = snapshot.state
     if state in ('idle', 'scanning', 'choosing') or snapshot.manual:
         return None  # external interactive entry owns these screens
-    titles = {
-        'preparing': ('WLAN wird vorbereitet', 'Preparing Wi-Fi'),
-        'hotspot': ('WLAN einrichten', 'Set up Wi-Fi'),
-        'connecting': ('WLAN verbindet', 'Connecting Wi-Fi'),
-        'connected': ('WLAN verbunden', 'Wi-Fi connected'),
-        'unavailable': ('WLAN nicht verfügbar', 'Wi-Fi unavailable'),
-    }
-    if state not in titles:
-        return None
-    title = titles[state][0 if de else 1]
     if state == 'hotspot':
         # SSID and password are credentials already shown by the existing
         # device setup view. Do not log, persist or transmit them.
         rows = (
             ('ssid', 'SSID', snapshot.hotspot_ssid),
-            ('password', 'Passwort' if de else 'Password', snapshot.password),
-            ('url', 'Adresse' if de else 'Address', snapshot.url),
+            ('password', tr('netsetup.password_title'), snapshot.password),
+            ('url', tr('netsetup.address'), snapshot.url),
         )
         items = tuple(ScreenItem(key, f'{label}: {value}', value=value, focused=i == 0)
                       for i, (key, label, value) in enumerate(
                           (row for row in rows if row[2])))
-        return SemanticScreen('menu', heading=title, view='wifi_setup', items=items,
-                              status=('Nur Anzeige' if de else 'Display only'))
-    if state == 'connecting':
-        detail = snapshot.target or ('Verbindung läuft' if de else 'Connecting')
+        return SemanticScreen('menu', heading=tr('netsetup.title'), view='wifi_setup',
+                              items=items, status=tr('netsetup.display_only'))
+    # The same texts as the setup screens of the OLED.
+    if state == 'preparing':
+        message = tr('netsetup.preparing')
+    elif state == 'connecting':
+        message = (tr('netsetup.connecting', ssid=snapshot.target) if snapshot.target
+                   else tr('netsetup.connecting_unnamed'))
     elif state == 'connected':
-        detail = snapshot.target or ('Verbunden' if de else 'Connected')
+        message = (tr('netsetup.connected', ssid=snapshot.target) if snapshot.target
+                   else tr('netsetup.connected_unnamed'))
     elif state == 'unavailable':
-        detail = 'WLAN nicht verfügbar' if de else 'Wi-Fi unavailable'
+        message = tr({'no_wifi': 'netsetup.no_wifi',
+                      'connect_failed': 'netsetup.failed'}.get(snapshot.error,
+                                                               'netsetup.hotspot_failed'))
     else:
-        detail = 'Bitte warten' if de else 'Please wait'
-    return SemanticScreen('notice', view='wifi_setup', message=f'{title}: {detail}',
+        return None
+    return SemanticScreen('notice', view='wifi_setup', message=message,
                           severity='error' if state == 'unavailable' else 'info')
