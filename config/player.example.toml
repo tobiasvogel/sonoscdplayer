@@ -77,13 +77,23 @@ experimental_safe_screen = false
 
 # Optional OLED hardware pins. Legacy defaults are DC=25, RESET=24.
 # For the revised button PCB, set DC=22 and RESET=27 locally.
-# [display]
-# controller = "ssd1327" # Future controllers require their own driver
-# interface = "spi"    # i2c reserved for future compatible drivers
-# spi_bus = 0
-# spi_device = 0
+# # Controller and output behavior are shared by runtime, boot and shutdown builds.
+[display]
+controller = "ssd1327"   # ssd1327 | ssd1351; one choice for all output paths
+interface = "spi"
+spi_bus = 0
+spi_device = 0
+# Retain the actual wiring; omitted pins default to BCM25/24.
 # dc_pin = 22
 # rst_pin = 27
+rotation = 0
+color_order = "rgb"
+spi_hz = 2000000
+contrast = 128           # 0..255; SSD1351 maps to 16 master-current steps
+ambient_auto = true
+adopt_boot_splash = false # true only after firmware assets match this config
+preserve_on_exit = false
+recover_on_error = false
 
 [gpio]
 # Show RPi.GPIO library warnings such as "This channel is already in use".

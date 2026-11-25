@@ -27,13 +27,13 @@ class DisplayInventoryTests(unittest.TestCase):
 
     def test_experimental_controller_not_misrepresented_as_working(self):
         report = '\n'.join(inventory_lines({'display': {'controller': 'st7735s'}}))
-        self.assertIn('NOT accepted by the current SSD1327 runtime', report)
+        self.assertIn('NOT accepted by the current display runtime', report)
         self.assertIn('not connected to player', report)
         self.assertIn('No display, pins, rotation', report)
 
     def test_invalid_pin_and_unknown_key_reported(self):
         self.assertIn('NOT accepted', '\n'.join(inventory_lines({'display': {'dc_pin': 8}})))
-        self.assertIn('unknown display keys: rotation', '\n'.join(
+        self.assertIn('requires rotation 0', '\n'.join(
             inventory_lines({'display': {'rotation': 270}})))
 
     def test_bad_table_is_rejected(self):
@@ -84,7 +84,7 @@ class DisplayInventoryTests(unittest.TestCase):
             path.write_text('[buttons]\nvolume_dn = 22\n[encoder]\nencoder_a = 6\n')
             report = '\n'.join(full_inventory_lines({'display': {'dc_pin': 22}}, path))
             self.assertIn('WARNING: BCM22: display.dc_pin, buttons.volume_dn', report)
-            self.assertIn('Display switching: BLOCKED', report)
+            self.assertIn('Runtime selection: SSD1327 and SSD1351', report)
 
     def test_missing_interface_is_explicitly_incomplete(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -134,7 +134,7 @@ class DisplayInventoryTests(unittest.TestCase):
                                     text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn('WARNING: BCM22', result.stdout)
-            self.assertIn('Display switching: BLOCKED', result.stdout)
+            self.assertIn('Runtime selection: SSD1327 and SSD1351', result.stdout)
             self.assertEqual(interface.read_text(), '[buttons]\nvolume_dn = 22\n')
 
     def test_cli_report_honors_explicit_interface_path(self):

@@ -234,11 +234,12 @@ class DisplayPinConfigTests(unittest.TestCase):
             self.assertEqual(result.returncode, 2, result.stderr)
             self.assertIn('DISPLAY_CONFIG', result.stderr)
 
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Native transport build requires Linux headers")
     def test_build_replaces_stale_header_from_local_config(self):
         with tempfile.TemporaryDirectory() as directory:
             build = Path(directory)
             config = build / 'local.toml'
-            header = build / 'ssd1327_display_config.h'
+            header = build / 'display_config.h'
             config.write_text('[display]\ndc_pin = 22\nrst_pin = 27\n',
                               encoding='utf-8')
             header.write_text('#define SONOSCDPLAYER_OLED_DC_PIN 25u\n',
@@ -247,7 +248,7 @@ class DisplayPinConfigTests(unittest.TestCase):
             result = subprocess.run(
                 ['sh', str(ROOT / 'tools/build_shutdown_renderer.sh')],
                 env={**os.environ, 'BUILD_DIR': directory,
-                     'DISPLAY_CONFIG': str(config)},
+                     'DISPLAY_CONFIG': str(config), 'PYTHON': sys.executable},
                 capture_output=True, text=True, timeout=40,
             )
             self.assertEqual(result.returncode, 0, result.stderr)

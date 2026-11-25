@@ -9,7 +9,7 @@ from sonoscdplayer.ui.menu.menu_catalog import MAIN_ITEMS, NETWORK_ITEMS, SETTIN
 
 class NavigationRenderer(Renderer):
     """Draws the menu pages (main menu, settings, network) on the 128x128 OLED."""
-    def menu_pixels(self, heading, items, focus, *, status, footer):
+    def menu_pixels(self, heading, items, focus, *, status, footer, gray=True):
         """Navigation page from translated texts: items are (key, label)."""
         t = self.theme
         image = Image.new("RGB", (128, 128), t.background)
@@ -20,7 +20,7 @@ class NavigationRenderer(Renderer):
             self.menu_row(image, slot, label, selected=index == focus,
                           marker=marker)
         self.bottom(image, status=status, footer=footer)
-        return ssd1327_gray(image)
+        return ssd1327_gray(image) if gray else image
 
     def page(self, heading, items, focus, *, language="de"):
         """Navigation page from locale keys."""
@@ -30,7 +30,7 @@ class NavigationRenderer(Renderer):
                                 focus, status=tr("status.local_only"),
                                 footer=tr("footer.select"))
 
-    def status_pixels(self, heading, fields, *, status, footer):
+    def status_pixels(self, heading, fields, *, status, footer, gray=True):
         """Read-only label/value page from translated texts."""
         t = self.theme
         image = Image.new("RGB", (128, 128), t.background)
@@ -42,7 +42,7 @@ class NavigationRenderer(Renderer):
             self.text(image, (9, y + 11), value, fill=t.primary, size=10,
                       bold=True, width=113, height=13)
         self.bottom(image, status=status, footer=footer)
-        return ssd1327_gray(image)
+        return ssd1327_gray(image) if gray else image
 
     def network_status(self, snapshot, *, language="de"):
         """Network status page from a NetworkStatus snapshot."""

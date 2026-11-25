@@ -16,6 +16,7 @@ from PIL import Image, ImageOps, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
+sys.path.insert(0, str(ROOT))
 from sonoscdplayer.ui import system_screens as system_screen  # noqa: E402
 from sonoscdplayer.ui.system_screens import (  # noqa: E402,F401  (re-exported for tests)
     ICON_BOTTOM, TEXT_FONT, TEXT_MARGIN, layout_text)
@@ -82,15 +83,23 @@ def c_identifier(language: str) -> str:
     return re.sub(r'[^A-Za-z0-9]', '_', language)
 
 
-def generate(wait: Path, final: Path, reboot: Path, transition: Path, output: Path, backend: str, safe: Path | None = None, diagnostic: bool = False, language: str | None = None) -> None:
+def generate(wait: Path, final: Path, reboot: Path, transition: Path, output: Path, backend: str, safe: Path | None = None, diagnostic: bool = False, language: str | None = None, display_config=None) -> None:
     """Write frames for every installed locale file plus a language table.
 
     The C programs pick the set at runtime from the UI state file and fall
     back to the default language (ui.toml, or --language). A new language is
     picked up just by adding its locale file; nothing else lists languages.
     """
-    if backend != 'ssd1327':
-        raise ValueError('unsupported backend: ' + backend)
+    from sonoscdplayer.hardware.displays.pins import DisplayPins
+    from sonoscdplayer.hardware.displays.runtime import backend_for
+    config = display_config or DisplayPins(controller=backend)
+    spec = backend_for(config.controller)
+    if backend != config.controller:
+        raise ValueError('backend does not match display configuration')
+    from tools.build_display_splash import frame_bytes
+    def pack_image(image):
+        return frame_bytes(image, config)
+
     from sonoscdplayer.ui.i18n import available_languages
     languages = available_languages()
     default = language if language is not None else configured_language()
@@ -113,8 +122,8 @@ def generate(wait: Path, final: Path, reboot: Path, transition: Path, output: Pa
              '#include <stdint.h>',
              '#define SHUTDOWN_FRAME_WIDTH 128u',
              '#define SHUTDOWN_FRAME_HEIGHT 128u',
-             '#define SHUTDOWN_FRAME_BYTES 8192u',
-             '#define SHUTDOWN_FRAME_FORMAT "gray4-packed"',
+             f'#define SHUTDOWN_FRAME_BYTES {32768 if spec.color else 8192}u',
+             f'#define SHUTDOWN_FRAME_FORMAT "{spec.pixel_format}"',
              f'#define SHUTDOWN_DEFAULT_LANGUAGE "{default}"']
 
     def emit(name, data):
@@ -125,9 +134,11 @@ def generate(wait: Path, final: Path, reboot: Path, transition: Path, output: Pa
 
     for lang in languages:
         for name, path in sources.items():
-            emit(f'shutdown_frame_{name}_{identifiers[lang]}', compose_frame(path, frame_text(name, lang)))
+            emit(f'shutdown_frame_{name}_{identifiers[lang]}', pack_image(system_screen.compose_image(path, frame_text(name, lang))))
     if diagnostic:
-        emit('shutdown_frame_diagnostic', diagnostic_frame())
+        data = diagnostic_frame()
+        pixels = bytes(shade*17 for byte in data for shade in (byte >> 4, byte & 15))
+        emit('shutdown_frame_diagnostic', pack_image(Image.frombytes('L', (128, 128), pixels)))
     lines += ['struct shutdown_frame_set {',
               '    const char *language;',
               '    const uint8_t *wait, *final, *reboot, *transition, *safe;',
@@ -146,7 +157,8 @@ def generate(wait: Path, final: Path, reboot: Path, transition: Path, output: Pa
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--backend', choices=['ssd1327'], default='ssd1327')
+    parser.add_argument('--backend', choices=['ssd1327', 'ssd1351'], default=None, help='compatibility only; normal builds select from --display-config')
+    parser.add_argument('--display-config', type=Path)
     parser.add_argument('--wait', type=Path, required=True)
     parser.add_argument('--final', type=Path, required=True)
     parser.add_argument('--reboot', type=Path, required=True)
@@ -158,7 +170,12 @@ def main():
                         help='fallback language when no language was chosen in the menu '
                              '(default: [ui] language from ui.toml)')
     args = parser.parse_args()
-    generate(args.wait, args.final, args.reboot, args.transition, args.output, args.backend, args.safe, args.diagnostic, args.language)
+    from sonoscdplayer.hardware.displays.pins import load_display_pins
+    config = load_display_pins(args.display_config) if args.display_config else None
+    backend = config.controller if config else (args.backend or 'ssd1327')
+    if config and args.backend and args.backend != config.controller:
+        parser.error('--backend conflicts with --display-config')
+    generate(args.wait, args.final, args.reboot, args.transition, args.output, backend, args.safe, args.diagnostic, args.language, display_config=config)
 
 
 if __name__ == '__main__':

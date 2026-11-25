@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # Build only: never installs, stages, enables, or triggers shutdown.
 set -eu
+PYTHON="${PYTHON:-python3}"
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 DIAGNOSTIC="${EXITRD_DIAGNOSTIC:-0}"
 UNVERIFIED="${EXITRD_UNVERIFIED_SAFE:-0}"
@@ -23,18 +24,17 @@ else
     BUILD_DIR="${BUILD_DIR:-$ROOT/build/exitrd}"
 fi
 CC="${CC:-cc}"
-BACKEND="${BACKEND:-ssd1327}"
-[ "$BACKEND" = ssd1327 ] || { echo "Unsupported backend: $BACKEND" >&2; exit 2; }
 # The player TOML (standard location unless DISPLAY_CONFIG is set) is mandatory;
 # never reuse stale device-specific headers.
 DISPLAY_CONFIG="${DISPLAY_CONFIG:-${SONOSCDPLAYER_CONFIG_DIR:-/etc/sonoscdplayer}/player.toml}"
 [ -f "$DISPLAY_CONFIG" ] || { echo "DISPLAY_CONFIG file not found: $DISPLAY_CONFIG" >&2; exit 2; }
+BACKEND=$("$PYTHON" "$ROOT/tools/display_config.py" --config "$DISPLAY_CONFIG")
 mkdir -p "$BUILD_DIR"
-python3 "$ROOT/tools/generate_ssd1327_display_header.py" \
+"$PYTHON" "$ROOT/tools/display_config.py" \
     --config "$DISPLAY_CONFIG" \
-    --output "$BUILD_DIR/ssd1327_display_config.h"
-python3 "$ROOT/tools/build_shutdown_renderer.py" \
-    --backend "$BACKEND" \
+    --output "$BUILD_DIR/display_config.h"
+"$PYTHON" "$ROOT/tools/build_shutdown_renderer.py" \
+    --display-config "$DISPLAY_CONFIG" \
     --wait "$ROOT/src/sonoscdplayer/assets/screens/shutdown_screen.png" \
     --final "$ROOT/src/sonoscdplayer/assets/screens/pleasewait_screen.png" \
     --reboot "$ROOT/src/sonoscdplayer/assets/screens/reboot_screen.png" \
@@ -47,7 +47,7 @@ python3 "$ROOT/tools/build_shutdown_renderer.py" \
     -DSONOSCD_EXITRD_UNVERIFIED_SAFE="$UNVERIFIED" \
     -I"$BUILD_DIR" -I"$ROOT/src/native/shutdown" \
     "$ROOT/src/native/shutdown/exitrd.c" \
-    "$ROOT/src/native/shutdown/backends/ssd1327.c" \
+    "$ROOT/src/native/shutdown/backends/$BACKEND.c" \
     "$ROOT/src/native/shutdown/transport/linux_spi_gpio.c" \
     -o "$BUILD_DIR/shutdown"
 # Enforce a non-group-writable binary regardless of the invoking user\x27s umask.

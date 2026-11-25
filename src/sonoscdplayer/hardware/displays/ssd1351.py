@@ -46,6 +46,18 @@ def native_bytes(frame, config=DisplayConfig()):
     return rgb565.native_bytes(frame, native_size=(128, 128), rotation=config.rotation)
 
 
+def initialization_commands(config=DisplayConfig()):
+    """Command/parameter vectors shared with the firmware splash generator."""
+    return ((0xFD, b'\x12'), (0xFD, b'\xb1'), (0xAE, b''),
+                (0xB3, b'\xf1'), (0xCA, b'\x7f'),
+                (0xA0, bytes([0x74 if config.color_order == 'rgb' else 0x70])),
+                (0xA1, b'\x00'), (0xA2, b'\x00'),
+                (0xB5, b'\x00'), (0xAB, b'\x01'),
+                (0xB1, b'\x32'), (0xBE, b'\x05'), (0xA6, b''),
+                (0xC1, b'\xc8\x80\xc8'), (0xC7, bytes([config.brightness])),
+                (0xB4, b'\xa0\xb5\x55'), (0xB6, b'\x01'))
+
+
 class SSD1351:
     capabilities = CAPABILITIES
 
@@ -65,26 +77,22 @@ class SSD1351:
         self._cmd(0x5C)
         self.transport.data(data)
 
-    def open(self):
+    def open(self, *, adopt_existing=False):
         if self.opened:
             return
         try:
             self.transport.open()
             self._transport_open = True
+            if adopt_existing:
+                # Firmware/build tools used the same controller configuration.
+                # Do not reset, reinitialize or clear the preserved RAM.
+                self._cmd(0xC7, bytes([self.config.brightness]))
+                self._cmd(0xAF)
+                self.opened = True
+                return
             self.sleep(.3)  # Controller supply settling before commands.
             self.transport.reset()
-            self._cmd(0xFD, b'\x12')  # Unlock command interface.
-            self._cmd(0xFD, b'\xb1')  # Unlock protected setup registers.
-            self._cmd(0xAE)
-            for command, parameters in (
-                (0xB3, b'\xf1'), (0xCA, b'\x7f'),
-                (0xA0, bytes([0x74 if self.config.color_order == 'rgb' else 0x70])),
-                (0xA1, b'\x00'), (0xA2, b'\x00'),
-                (0xB5, b'\x00'), (0xAB, b'\x01'),
-                (0xB1, b'\x32'), (0xBE, b'\x05'), (0xA6, b''),
-                (0xC1, b'\xc8\x80\xc8'), (0xC7, bytes([self.config.brightness])),
-                (0xB4, b'\xa0\xb5\x55'), (0xB6, b'\x01'),
-            ):
+            for command, parameters in initialization_commands(self.config):
                 self._cmd(command, parameters)
             self._show_native(bytes(FRAME_BYTES))
             self._cmd(0xAF)
@@ -110,9 +118,9 @@ class SSD1351:
             raise RuntimeError('SSD1351 not opened')
         self._cmd(0xC7, bytes([value]))
 
-    def close(self):
+    def close(self, *, blank=True):
         try:
-            if self._transport_open:
+            if self._transport_open and blank:
                 self._cmd(0xAE)
         finally:
             self.opened = False

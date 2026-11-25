@@ -35,7 +35,7 @@ class DisplayPreflightTests(unittest.TestCase):
     def test_missing_inputs_never_assumed_free(self):
         text = '\n'.join(preflight.preflight_lines({}, None, 'ssd1327'))
         self.assertIn('UNKNOWN: interface.toml unavailable', text)
-        self.assertIn('Result: BLOCKED', text)
+        self.assertIn('Result: READ-ONLY', text)
 
     def test_disabled_button_not_treated_as_gpio(self):
         text = '\n'.join(preflight.preflight_lines(

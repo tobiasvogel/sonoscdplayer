@@ -6,7 +6,7 @@
 # of the artwork, the texts or the locale files run this script again.
 #   1. Firmware boot splash (start screen): built in the current language and
 #      assembled with splash_assembler.py from the Raspberry Pi utils, installed
-#      as BOOT_DIR/ssd1327.bin.
+#      as BOOT_DIR/display.bin.
 #   2. config.txt: early pin states from player.toml (power LED on, connection
 #      LED off, OLED RESET high) and splash_screen=, in one managed block.
 #      A backup is kept; different manual settings stop the script unchanged.
@@ -17,11 +17,12 @@
 #
 # Usage: sh tools/install_screens.sh [--dry-run]
 set -eu
+PYTHON="${PYTHON:-python3}"
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 DEST=${SHUTDOWN_SCREENS_ROOT:-}            # tests only: prefix for the system paths
 BOOT_DIR="$DEST${BOOT_DIR:-/boot/firmware}"
-SPLASH_NAME=ssd1327.bin
-PLAYER_CONFIG="${SONOSCDPLAYER_CONFIG_DIR:-/etc/sonoscdplayer}/player.toml"
+SPLASH_NAME=display.bin
+PLAYER_CONFIG="${DISPLAY_CONFIG:-${SONOSCDPLAYER_CONFIG_DIR:-/etc/sonoscdplayer}/player.toml}"
 DISPLAY_PROGRAM="$DEST/usr/local/libexec/sonoscdplayer-shutdown-display"
 HOOK_DIR="$DEST/usr/lib/systemd/system-shutdown"
 EXITRD="$DEST/usr/local/libexec/sonoscdplayer-exitrd/shutdown"
@@ -59,15 +60,15 @@ SPLASH_BUILD="$ROOT/build/boot-splash"
 splash_arg=""
 if assembler=$(find_assembler); then
     run mkdir -p "$SPLASH_BUILD"
-    run python3 "$ROOT/tools/build_ssd1327_splash.py" --display-config "$PLAYER_CONFIG" \
-        -o "$SPLASH_BUILD/ssd1327.splash"
-    run python3 "$assembler" "$SPLASH_BUILD/ssd1327.splash" -o "$SPLASH_BUILD/$SPLASH_NAME"
+    run "$PYTHON" "$ROOT/tools/build_display_splash.py" --display-config "$PLAYER_CONFIG" \
+        -o "$SPLASH_BUILD/display.splash"
+    run "$PYTHON" "$assembler" "$SPLASH_BUILD/display.splash" -o "$SPLASH_BUILD/$SPLASH_NAME"
     run sudo install -m 0644 "$SPLASH_BUILD/$SPLASH_NAME" "$BOOT_DIR/$SPLASH_NAME"
     echo "updated: $BOOT_DIR/$SPLASH_NAME"
     splash_arg="--splash $SPLASH_NAME"
-elif [ -e "$BOOT_DIR/$SPLASH_NAME" ]; then
-    echo "boot splash NOT updated: splash_assembler.py not found (set SPLASH_ASSEMBLER=/path/to/splash_assembler.py)" >&2
-    splash_arg="--splash $SPLASH_NAME"
+elif [ -e "$BOOT_DIR/$SPLASH_NAME" ] || [ -e "$BOOT_DIR/ssd1327.bin" ]; then
+    echo "Cannot refresh the installed boot splash without splash_assembler.py; refusing a stale controller program." >&2
+    exit 3
 else
     echo "no boot splash: splash_assembler.py not found (Raspberry Pi utils, splashasm folder)" >&2
 fi
@@ -78,7 +79,7 @@ if [ -f "$CONFIG_TXT" ]; then
     NEW_CONFIG="$ROOT/build/boot-config/config.txt"
     mkdir -p "$(dirname "$NEW_CONFIG")"
     # shellcheck disable=SC2086
-    state=$(python3 "$ROOT/tools/boot_config.py" --player-config "$PLAYER_CONFIG" \
+    state=$("$PYTHON" "$ROOT/tools/boot_config.py" --player-config "$PLAYER_CONFIG" \
         --config-txt "$CONFIG_TXT" $splash_arg --output "$NEW_CONFIG") || exit 3
     if [ "$state" = changed ]; then
         if [ "$DRY_RUN" = 1 ]; then
@@ -130,6 +131,7 @@ if [ -e "$EXITRD" ]; then
     else
         echo "experimental exitrd NOT updated (no terminal): run" >&2
         echo "  sh tools/manage_experimental_exitrd.sh --uninstall && sh tools/manage_experimental_exitrd.sh --install" >&2
+        exit 3
     fi
 fi
 

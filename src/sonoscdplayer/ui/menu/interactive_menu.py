@@ -888,7 +888,7 @@ class InteractiveMenu:
             return screen
         raise ValueError('unknown active menu section')
 
-    def frame(self, image_to_frame):
+    def frame(self, image_to_frame, *, gray=True):
         """The current screen as display frame (via ``image_to_frame``), or None."""
         if self.shutdown_screen is not None:
             if self._shutdown_frame is None:
@@ -896,4 +896,4 @@ class InteractiveMenu:
                 self._shutdown_frame = image_to_frame(screen_image(self.shutdown_screen, self.language))
             return self._shutdown_frame
         from sonoscdplayer.ui.renderers.oled_128_screens import graphic_frame_from_menu
-        return image_to_frame(graphic_frame_from_menu(self, now=time.monotonic()))
+        return image_to_frame(graphic_frame_from_menu(self, now=time.monotonic(), gray=gray))

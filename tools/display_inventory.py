@@ -3,7 +3,7 @@
 
 This report describes *configuration*, not electrically detected hardware.
 Profiles which are not connected to the player must not be offered as a
-working replacement for the installed SSD1327 display service.
+working replacement for the configured display service.
 """
 from __future__ import annotations
 
@@ -90,9 +90,9 @@ def inventory_lines(config: dict, interface: dict | None = None) -> tuple[str, .
             raise ValueError('unknown display keys')
         DisplayPins(**configured)
     except (ValueError, TypeError) as exc:
-        lines.append(f'WARNING: configuration is NOT accepted by the current SSD1327 runtime: {exc}')
+        lines.append(f'WARNING: configuration is NOT accepted by the current display runtime: {exc}')
     else:
-        lines.append('SSD1327 configuration: accepted by current runtime validation.')
+        lines.append('Display configuration: accepted by current runtime validation.')
     lines.append('Known display profiles (catalogue only, not automatic hardware detection):')
     for key, profile in PROFILES.items():
         state = ('player-integrated' if profile.driver_ready else
@@ -136,8 +136,8 @@ def full_inventory_lines(config: dict, interface_path: Path) -> tuple[str, ...]:
     report = list(inventory_lines(config, interface))
     report.insert(2, source_line)
     report.extend((
-        'Display switching: BLOCKED. Only SSD1327 is currently integrated with the player.',
-        'Do not change [display] controller, rotation or pin mapping using this report.',
+        'Runtime selection: SSD1327 and SSD1351; apply [display] with tools/apply_display_config.py.',
+        'This read-only report does not apply configuration or detect wiring.',
     ))
     return tuple(report)
 

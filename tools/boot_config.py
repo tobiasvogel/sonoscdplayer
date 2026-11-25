@@ -84,7 +84,7 @@ def update(text, lines):
         touches = ((match and _pins(match.group(1)) & ours)
                    or (SPLASH_LINE.match(raw) and any(SPLASH_LINE.match(l) for l in lines)))
         if touches and not stripped.startswith('#'):
-            if stripped not in lines:
+            if stripped not in lines and not (stripped == 'splash_screen=ssd1327.bin' and 'splash_screen=display.bin' in lines):
                 conflicts.append(stripped)
             continue  # identical: moved into the managed block
         kept.append(raw)

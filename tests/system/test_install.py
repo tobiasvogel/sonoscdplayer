@@ -388,7 +388,9 @@ class RuntimeUnitRenderTests(unittest.TestCase):
         oled = units['sonoscdplayer-oled.service']
         self.assertIn('RuntimeDirectory=sonoscdplayer-ui', oled)
         self.assertIn('RuntimeDirectoryMode=0700', oled)
-        self.assertIn('--oled-recover-on-error --ui-target-rpc', oled)
+        self.assertIn('--ui-target-rpc', oled)
+        self.assertNotIn('--oled-recover-on-error', oled)
+        self.assertNotIn('--ambient-auto', oled)
         self.assertIn('--display-config /etc/example/player.toml', oled)
         self.assertIn('--ui-config /etc/example/ui.toml', oled)
         self.assertNotIn('--adopt-boot-splash', oled)
