@@ -231,7 +231,8 @@ class LibraryMaintenanceWorkflow:
             raise RuntimeError('maintenance already pending')
         if action != 'stats':
             if (self._library_manage_job is not None or self._edit_jobs or
-                    self._cover_pending is not None or self._release_selection is not None):
+                    self._cover_pending is not None or self._release_selection is not None or
+                    getattr(self, '_reset_job', None) is not None):
                 raise RuntimeError('metadata write pending')
             toc = self._last_toc
             if toc is not None:

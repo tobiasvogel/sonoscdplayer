@@ -153,6 +153,8 @@ class LibraryManageWorkflow:
         token, action, changes = validate_manage(token, action, changes)
         if self._library_manage_job is not None:
             raise RuntimeError('library edit still pending')
+        if getattr(self, '_reset_job', None) is not None:
+            raise RuntimeError('disc reset still pending')
         # WEB-03 is the sole editor for the inserted disc. An offline edit
         # cannot race its current metadata snapshot or ongoing playback.
         if self._last_toc is not None:
