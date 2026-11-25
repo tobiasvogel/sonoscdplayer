@@ -173,7 +173,7 @@ class ManualCoverWorkflow:
             if remove:
                 return self._manual_covers.remove(identity, current=current, guarded_remove=guarded)
             return self._manual_covers.save(identity, upload_id, current=current, guarded_replace=guarded)
-        self._cover_pending = (token, self._executor.submit(work))
+        self._cover_pending = (token, self._executor.submit(work), session)
 
     def _cover_commit(self, session, action):
         with self._cover_gate:
@@ -184,10 +184,12 @@ class ManualCoverWorkflow:
     def _poll_manual_covers(self):
         if self._cover_pending is None or not self._cover_pending[1].done():
             return False
-        token, future = self._cover_pending
+        token, future, session = self._cover_pending
         self._cover_pending = None
-        # Never apply an old CD's completion to the newly inserted disc.
-        if self._result is None or self._result.get('edit_token') != token:
+        # A disc token is identical after eject and reinsertion of the same CD.
+        # Reject results and errors from an earlier cover session as well.
+        if (session != self._cover_session or self._result is None or
+                self._result.get('edit_token') != token):
             return False
         try:
             self._cover_path = future.result()
