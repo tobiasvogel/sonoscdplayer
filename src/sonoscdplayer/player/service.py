@@ -33,7 +33,7 @@ import tomllib
 
 from sonoscdplayer.audio.table_of_contents import read_toc
 from sonoscdplayer.drive.disc_startup import inspect_initial_disc
-from sonoscdplayer.drive.disc_monitor import DiscMonitor
+from sonoscdplayer.drive.disc_monitor import DiscMonitor, idle_for_disc_io
 from sonoscdplayer.metadata.worker import MetadataWorker, matching_policy_from_config
 from sonoscdplayer.metadata.worker import describe as describe_metadata
 from sonoscdplayer.metadata.local_metadata import read_cdtext
@@ -41,6 +41,7 @@ from sonoscdplayer.sonos.track_metadata import album_prefix_from_config, use_que
 from sonoscdplayer.drive.eject import eject_verified_idle
 from sonoscdplayer.player.state import Mode, PlayerState, state_for_disc
 from sonoscdplayer.drive.power import DrivePowerManager, load_config
+from sonoscdplayer.drive.drive_lock import drive_lock
 from sonoscdplayer.drive.wake_validation import wait_for_woken_disc
 from sonoscdplayer.drive.usb_identity import usb_identity, recovered_device
 from sonoscdplayer.player.controller import Controller, TrackServerProcess, routed_source_ip
@@ -482,6 +483,22 @@ def _current_disc(disc_monitor, drive_toc, drive_cdtext):
     return drive_toc, drive_cdtext
 
 
+def _start_power_if_ready(power, controller, disc_monitor):
+    """Start deferred power management after READY, outside drive/CD-TEXT I/O."""
+    if power is None or power._started:
+        return False
+    status = controller.disc_status
+    if (status is None or status.mode.value != 'READY' or
+            not idle_for_disc_io(controller) or
+            (disc_monitor is not None and disc_monitor.cdtext_pending)):
+        return False
+    with drive_lock(power.device, blocking=False) as acquired:
+        if not acquired:
+            return False
+        power.start()
+    return True
+
+
 def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, target_store=None, metadata_worker=None, drive_cdtext=None, stop_event=None):
     """Listen on ``socket_path`` and run the worker until SIGTERM/SIGINT.
 
@@ -860,6 +877,8 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                             print(f'[disc] {controller.disc_status.mode.value}', flush=True)
                     except (OSError, RuntimeError, ValueError) as exc:
                         print(f'[disc] monitor deferred: {type(exc).__name__}: {exc}', flush=True)
+                if power is not None:
+                    _start_power_if_ready(power, controller, disc_monitor)
                 if power is not None and (controller.disc_status is None or
                                           controller.disc_status.mode.value == 'READY'):
                     power.tick(
@@ -1116,11 +1135,12 @@ def run(argv=None):
         except (OSError, ValueError) as exc:
             print(f'[metadata] disabled: {type(exc).__name__}', flush=True)
 
-        # Never issue start/keepalive motor commands when no readable disc was
-        # selected. Disc changes while idle are handled by disc_monitor.
-        if toc is not None:
+        # Prepare the manager for a present drive even with an empty tray.
+        # Defer motor commands until a verified audio TOC is available.
+        if disc_status.device is not None:
             power = DrivePowerManager(device, load_config(conf))
-            power.start()
+            if toc is not None:
+                power.start()
         print(f'[disc] service ready; disc={disc_status.mode.value}; '
               'no Sonos action until explicit PLAY', flush=True)
         def on_verified_rebind(new_device):
