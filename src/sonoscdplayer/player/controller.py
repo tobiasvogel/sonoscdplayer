@@ -599,11 +599,16 @@ class Controller:
             return player                      # nothing changed (no extra Sonos calls)
         # Only our coordinator or a speaker of our group may take over.
         candidates = {}
+        read_failure = None
         if group.coordinator.uid == self.uid:
             candidates[self.uid] = player
         for member in self._joined.values():
             try:
                 coordinator = member.group.coordinator
+            except (TimeoutError, ConnectionError,
+                    RequestsTimeout, RequestsConnectionError) as exc:
+                read_failure = exc
+                continue
             except Exception:
                 continue
             if coordinator.uid in self._joined:
@@ -614,11 +619,19 @@ class Controller:
             try:
                 transport = coordinator.get_current_transport_info()['current_transport_state']
                 uri = coordinator.get_current_track_info().get('uri')
+            except (TimeoutError, ConnectionError,
+                    RequestsTimeout, RequestsConnectionError) as exc:
+                read_failure = exc
+                continue
             except Exception:
                 continue
             if transport in ('PLAYING', 'PAUSED_PLAYBACK', 'TRANSITIONING') and self._is_our_uri(uri):
                 self._adopt_group(coordinator)
                 return coordinator
+        # No candidate proved ownership; do not infer an end or adopt a
+        # different topology from incomplete observations.
+        if read_failure is not None:
+            raise read_failure
         if group.coordinator.uid == self.uid:
             # Our coordinator, but not playing (yet): only take over membership.
             self._adopt_group(player)
