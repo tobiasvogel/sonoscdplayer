@@ -3,6 +3,7 @@ import importlib.util
 import io
 import tempfile
 import unittest
+import pytest
 from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
@@ -32,6 +33,13 @@ from sonoscdplayer.ui.menu.playback_progress import parse_position, verified_pro
 from sonoscdplayer.ui.menu.player_adapter import project_status
 from sonoscdplayer.ui.renderers.oled_128 import Renderer
 URI = 'http://127.0.0.1:8765/track/1.wav'
+
+
+@pytest.fixture(autouse=True)
+def isolated_service_defaults(monkeypatch, tmp_path):
+    """Keep installed display settings and saved UI choices out of unit tests."""
+    monkeypatch.setenv('SONOSCDPLAYER_CONFIG_DIR', str(tmp_path / 'config'))
+    monkeypatch.setenv('STATE_DIRECTORY', str(tmp_path / 'state'))
 
 
 

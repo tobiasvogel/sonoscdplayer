@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import pytest
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
@@ -31,6 +32,13 @@ from sonoscdplayer.system.gpio_settings import apply_gpio_warnings, gpio_warning
 from sonoscdplayer.hardware.leds.led_service import OutputConfig, PwmOutputs
 from tools import early_power_led
 from sonoscdplayer.hardware.displays.ssd1327_recovery import RecoveryBudget
+
+
+@pytest.fixture(autouse=True)
+def isolated_service_defaults(monkeypatch, tmp_path):
+    """Do not let ambient-control tests read the installed display configuration."""
+    monkeypatch.setenv('SONOSCDPLAYER_CONFIG_DIR', str(tmp_path / 'config'))
+    monkeypatch.setenv('STATE_DIRECTORY', str(tmp_path / 'state'))
 
 
 
