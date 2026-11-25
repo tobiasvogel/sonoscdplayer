@@ -20,6 +20,7 @@ from .cover_upload import stage_upload, discard_upload
 from sonoscdplayer.metadata.manual_cover import MAX_UPLOAD_BYTES
 from sonoscdplayer.metadata.cover_preferences import read_cover_preferences
 from .cover_storage import cover_storage_snapshot
+from .cover_file import read_player_cover
 from .state import WebPreferences
 from .dashboard_projection import public_dashboard, public_release_detail
 from .library_projection import public_library
@@ -219,15 +220,8 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                 try:
                     state = (player.request({'command': 'status'}, timeout=3).get('state') or {})
                     cover = (state.get('metadata') or {}).get('cover_file')
-                    from sonoscdplayer.metadata.cover_store import DEFAULT_COVER_DIR
-                    root = Path(DEFAULT_COVER_DIR).resolve()
-                    candidate = Path(cover).resolve() if isinstance(cover, str) else None
-                    if (candidate is None or root not in candidate.parents or
-                            candidate.suffix.lower() not in ('.jpeg', '.jpg', '.png') or
-                            not candidate.is_file() or candidate.stat().st_size > 6 * 1024 * 1024):
-                        return self._json(404, {'error': 'web.api.cover_unavailable'})
-                    kind = 'image/png' if candidate.suffix.lower() == '.png' else 'image/jpeg'
-                    return self._file(candidate.read_bytes(), kind)
+                    data, kind = read_player_cover(cover)
+                    return self._file(data, kind)
                 except (PlayerUnavailable, OSError, ValueError):
                     return self._json(404, {'error': 'web.api.cover_unavailable'})
             self._json(404, {'error': 'web.api.not_found'})
