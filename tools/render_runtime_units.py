@@ -39,8 +39,10 @@ USER_NAME = re.compile(r'[a-z_][a-z0-9_-]{0,31}')
 
 def absolute_path(value):
     path = Path(value)
-    if not path.is_absolute() or any(c.isspace() or ord(c) < 32 for c in value):
-        raise ValueError('Path must be absolute and contain no whitespace/control characters')
+    # Percent is a systemd unit specifier introducer, even in absolute paths.
+    if (not path.is_absolute() or
+            any(c.isspace() or ord(c) < 32 or c == '%' for c in value)):
+        raise ValueError('Path must be absolute and contain no whitespace/control characters or %')
     return str(path)
 
 
