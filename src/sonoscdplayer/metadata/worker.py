@@ -353,16 +353,25 @@ class MetadataWorker(LibraryMaintenanceWorkflow, LibraryManageWorkflow, LibraryW
             raise ValueError('track not on this disc')
         if len(self._edit_jobs) >= 8:
             raise RuntimeError('too many pending metadata edits')
-        future = self._executor.submit(self._manual.set, identity,
-                                       field=field, track=track, value=value)
-        self._edit_jobs.append((token, future))
+        toc = self._last_toc
+        generation = getattr(self, '_disc_generation', 0)
+        def current():
+            return self._last_toc == toc and getattr(self, '_disc_generation', 0) == generation
+        def work():
+            return self._manual.set(identity, field=field, track=track, value=value,
+                                    current=current)
+        future = self._executor.submit(work)
+        self._edit_jobs.append((token, generation, future))
 
     def _consume_edits(self):
         changed = False
         pending = []
-        for token, future in self._edit_jobs:
+        for token, generation, future in self._edit_jobs:
             if not future.done():
-                pending.append((token, future))
+                pending.append((token, generation, future))
+                continue
+            # A stale job must not update even a reinserted copy of the same CD.
+            if generation != getattr(self, '_disc_generation', 0):
                 continue
             try:
                 fields = future.result()

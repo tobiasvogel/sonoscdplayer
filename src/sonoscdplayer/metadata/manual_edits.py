@@ -94,8 +94,10 @@ class ManualEdits:
             raise ValueError('invalid manual metadata entry')
         return value
 
-    def set(self, identity, *, field, track=None, value=None):
+    def set(self, identity, *, field, track=None, value=None, current=lambda: True):
         field, track, value = validate_edit(field, track, value)
+        if not current():
+            raise ValueError('disc changed before manual edit')
         db = self.cache._connect(write=True)
         try:
             db.execute('BEGIN IMMEDIATE')
@@ -121,6 +123,8 @@ class ManualEdits:
             else:
                 db.execute('DELETE FROM manual_metadata WHERE disc_id=? AND toc=?',
                            (identity.disc_id, identity.toc))
+            if not current():
+                raise ValueError('disc changed during manual edit')
             db.commit()
             return fields
         except Exception:
