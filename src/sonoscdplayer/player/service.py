@@ -1007,6 +1007,16 @@ def _close_runtime(ctrl, power, shutdown_policy):
             power.close()
 
 
+def _metadata_switches(meta):
+    """Validate TOML feature switches instead of silently treating typos as off."""
+    if not isinstance(meta, dict):
+        raise ValueError('metadata must be a TOML table')
+    for key in ('enabled', 'online_lookup', 'read_cd_text'):
+        if type(meta.get(key, True)) is not bool:
+            raise ValueError(f'metadata.{key} must be true or false')
+    return meta
+
+
 def run(argv=None):
     """Command line of the service: read the configuration, find the drive, serve."""
     ap = argparse.ArgumentParser(description=__doc__)
@@ -1076,13 +1086,13 @@ def run(argv=None):
         cdtext_reader = None
         startup_cdtext = None
         try:
-            meta = settings.get('metadata', {})
-            if not isinstance(meta, dict):
-                raise ValueError('metadata must be a TOML table')
-            if meta.get('enabled', True) is True:
+            meta = _metadata_switches(settings.get('metadata', {}))
+            if meta.get('enabled', True):
                 musicbrainz = meta.get('musicbrainz', {})
                 if not isinstance(musicbrainz, dict):
                     raise ValueError('metadata.musicbrainz must be a table')
+                if type(musicbrainz.get('enabled', True)) is not bool:
+                    raise ValueError('metadata.musicbrainz.enabled must be true or false')
                 timeout = musicbrainz.get('timeout_seconds', 8)
                 if type(timeout) not in (int, float) or not 1 <= timeout <= 30:
                     raise ValueError('invalid metadata.musicbrainz.timeout_seconds')
