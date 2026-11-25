@@ -115,6 +115,16 @@ def test_cleanup_refuses_bad_release_and_symlink(tmp_path):
     assert (cover / ('a'*64+'.jpg')).exists()
 
 
+def test_prune_refuses_missing_library_without_deleting_covers(tmp_path):
+    obj, _tokens, database, cover = setup(tmp_path)
+    automatic = cover / ('a' * 64 + '.jpg')
+    database.unlink()
+    with pytest.raises(ValueError, match='database unavailable'):
+        obj.apply(action='prune-auto', confirmation=CONFIRM_COVERS)
+    assert automatic.read_bytes() == b'unused'
+    assert any(path.name.startswith('manual-') for path in cover.iterdir())
+
+
 def test_current_guard_prevents_write(tmp_path):
     obj, _, path, _ = setup(tmp_path)
     with pytest.raises(ValueError):

@@ -136,12 +136,12 @@ class LibraryMaintenance:
             # Never prune manually uploaded covers or an unknown filename.
             db = self.cache._connect()
             if db is None:
-                references = set()
-            else:
-                try:
-                    references = self._references(db)
-                finally:
-                    db.close()
+                # Missing/corrupt library state cannot prove a cover is unused.
+                raise ValueError('metadata database unavailable; cover cleanup refused')
+            try:
+                references = self._references(db)
+            finally:
+                db.close()
             # Capture identity before acquiring the directory descriptor. A
             # replacement between inventory and deletion must fail closed.
             candidates = []
