@@ -17,3 +17,6 @@ https://grabcad.com/library/m3-heat-set-screw-inserts-for-3d-printing-1
 
 40 Pin IDC Cable:
 https://grabcad.com/library/cable-idc-40-position-rectangular-socket-to-socket-1
+
+DC Panel Socket:
+https://grabcad.com/library/5-5-x-2-1mm-dc-power-plug-and-jack-1

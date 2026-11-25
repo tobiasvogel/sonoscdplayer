@@ -82,6 +82,26 @@ def public_status(response: dict) -> dict:
     }
 
 
+def allowed_browser_write(headers):
+    """Reject cross-origin browser writes; keep non-browser REST clients working.
+
+    This is browser CSRF hardening, not authentication of LAN clients.
+    """
+    site = headers.get('Sec-Fetch-Site')
+    if site is not None and site not in ('same-origin', 'none'):
+        return False
+    origin = headers.get('Origin')
+    if origin is None:
+        return True
+    try:
+        parsed = urlsplit(origin)
+        return (parsed.scheme == 'http' and parsed.netloc == headers.get('Host')
+                and not parsed.path and not parsed.query and not parsed.fragment
+                and parsed.username is None and parsed.password is None)
+    except ValueError:
+        return False
+
+
 def make_handler(player: PlayerClient, preferences: WebPreferences):
     """Build an HTTP handler that can be exercised against a fake player."""
     settings_write_lock = threading.Lock()
@@ -236,11 +256,8 @@ def make_handler(player: PlayerClient, preferences: WebPreferences):
                             '/api/settings/playback', '/api/settings/language',
                             '/api/settings/cover', '/api/settings/input'):
                 return self._json(404, {'error': 'web.api.not_found'})
-            origin = self.headers.get('Origin')
-            if origin:
-                url = urlsplit(origin)
-                if url.scheme not in ('http', 'https') or url.netloc != self.headers.get('Host'):
-                    return self._json(403, {'error': 'web.api.cross_origin'})
+            if not allowed_browser_write(self.headers):
+                return self._json(403, {'error': 'web.api.cross_origin'})
             if path == '/api/cover/upload':
                 if self.headers.get_content_type() != 'application/octet-stream':
                     return self._json(415, {'ok': False, 'error': 'web.api.image_required'})
