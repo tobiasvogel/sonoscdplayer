@@ -1,4 +1,4 @@
-"""The display service (sonoscdplayer-oled.service) for the SSD1327 OLED.
+"""The display service (sonoscdplayer-oled.service) for the configured OLED backend.
 
 Started with ``python3 -m sonoscdplayer.ui.display_service``. It polls the
 player service for its status, receives button and encoder events from the
@@ -10,6 +10,8 @@ never talks to Sonos.
 from __future__ import annotations
 import argparse
 from contextlib import nullcontext
+from dataclasses import replace
+from functools import partial
 import math
 import json
 import os
@@ -19,7 +21,8 @@ import socket
 import time
 from PIL import Image, ImageOps
 from sonoscdplayer.system.package_paths import SCREEN_IMAGES
-from sonoscdplayer.hardware.displays.ssd1327 import SSD1327, DisplayConfig, Framebuffer
+from sonoscdplayer.hardware.displays.frames import image_to_frame
+from sonoscdplayer.hardware.displays.runtime import backend_for
 from sonoscdplayer.hardware.displays.pins import load_display_pins, DisplayPins
 from sonoscdplayer.hardware.displays.ambient_contrast import OLEDAmbientConfig, OLEDContrastControl
 
@@ -100,39 +103,25 @@ def request_status(path=DEFAULT_SOCKET, timeout=1.5):
     return payload['state']
 
 
-def image_to_frame(im):
-    """Convert RGBA/RGB/greyscale to a centered 128px 4-bit framebuffer."""
-    if im.width < 1 or im.height < 1 or im.width > 4096 or im.height > 4096:
-        raise ValueError('invalid image dimensions')
-    rgba=im.convert('RGBA')
-    backdrop=Image.new('RGBA', rgba.size,(0,0,0,255))
-    rgba=Image.alpha_composite(backdrop,rgba).convert('L')
-    fitted=ImageOps.contain(rgba,(128,128),method=Image.Resampling.LANCZOS)
-    canvas=Image.new('L',(128,128),0)
-    canvas.paste(fitted,((128-fitted.width)//2,(128-fitted.height)//2))
-    fb=Framebuffer(); fb.data[:]=bytes(((canvas.getpixel((x,y))*15+127)//255<<4) | ((canvas.getpixel((x+1,y))*15+127)//255) for y in range(128) for x in range(0,128,2))
-    return fb
-
-
-def load_splash(path):
+def load_splash(path, *, color=False):
     """The start screen image as display frame, or None if it cannot be read."""
     try:
         with Image.open(path) as im:
             im.load()
-            return image_to_frame(im)
+            return image_to_frame(im, color=color)
     except (FileNotFoundError, OSError, ValueError):
         return None
 
 
-def start_splash(path, language):
+def start_splash(path, language, *, color=False):
     """Localized start screen for the standard artwork; custom PNGs as-is."""
     try:
         if Path(path).resolve() == DEFAULT_LOGO.resolve():
             from sonoscdplayer.ui.system_screens import screen_image
-            return image_to_frame(screen_image('start', language))
+            return image_to_frame(screen_image('start', language, grayscale=not color), color=color)
     except (OSError, ValueError, KeyError):
         pass  # missing font/artwork: fall back to the plain PNG below
-    return load_splash(path)
+    return load_splash(path, color=color)
 
 
 def drive_waking(state):
@@ -164,60 +153,60 @@ def drive_fault_details(state):
     return retry, power.get('idle_wake_retries_exhausted') is True
 
 
-def notice_frame(key, *, severity='info', params=None, language='de'):
+def notice_frame(key, *, severity='info', params=None, language='de', color=False):
     """One Modern Hi-Fi rendering pipeline for transient and persistent notices."""
     from sonoscdplayer.ui.notices.notice import Notice
     from sonoscdplayer.ui.notices.render import NoticeRenderer
     notice = Notice(key, severity=severity, params=params or {})
     return image_to_frame(NoticeRenderer().render(
-        notice, language=language, grayscale=True))
+        notice, language=language, grayscale=not color), color=color)
 
 
-def drive_notice_frame(state, *, language='de'):
+def drive_notice_frame(state, *, language='de', color=False):
     """Represent verified drive state without changing or retrying drive actions."""
     if drive_fault(state):
         retry, exhausted = drive_fault_details(state)
         if exhausted:
             return notice_frame('status.drive_wake_exhausted',
-                                severity='error', language=language)
+                                severity='error', language=language, color=color)
         if retry is None:
             return notice_frame('status.drive_wake_fault',
-                                severity='error', language=language)
+                                severity='error', language=language, color=color)
         if retry > 0:
             return notice_frame('status.drive_wake_retry',
                                 severity='error', params={'seconds': retry},
-                                language=language)
+                                language=language, color=color)
         return notice_frame('status.drive_wake_retry_ready',
-                            severity='error', language=language)
+                            severity='error', language=language, color=color)
     if drive_waking(state):
-        return notice_frame('status.drive_waking', language=language)
+        return notice_frame('status.drive_waking', language=language, color=color)
     return None
 
 
-def modern_status_frame(state=None, error=None, *, cover_mode='auto', language='de'):
+def modern_status_frame(state=None, error=None, *, cover_mode='auto', language='de', color=False):
     """Render the player or a localized Modern Hi-Fi status notice."""
     if error is not None or state is None:
         return notice_frame('status.player_offline', severity='error',
-                            language=language)
-    notice = drive_notice_frame(state, language=language)
+                            language=language, color=color)
+    notice = drive_notice_frame(state, language=language, color=color)
     if notice is not None:
         return notice
     from sonoscdplayer.ui.menu.player_adapter import project_status
     from sonoscdplayer.ui.renderers.oled_128 import Renderer
     display = project_status(state)
     image = Renderer(cover_mode=cover_mode, language=language).render(
-        display, grayscale=True)
-    return image_to_frame(image)
+        display, grayscale=not color)
+    return image_to_frame(image, color=color)
 
 
-def safe_modern_status_frame(state, *, cover_mode='auto', language='de'):
+def safe_modern_status_frame(state, *, cover_mode='auto', language='de', color=False):
     """Use the notice renderer, never a recursive legacy fallback, on bad data."""
     try:
         return modern_status_frame(
-            state, cover_mode=cover_mode, language=language)
+            state, cover_mode=cover_mode, language=language, color=color)
     except (ValueError, TypeError, KeyError):
         return notice_frame('status.invalid_player_status',
-                            severity='error', language=language)
+                            severity='error', language=language, color=color)
 
 
 # While a scrolling text overflows its viewport, redraw this often so the
@@ -251,23 +240,26 @@ def menu_overlay_active(menu):
 
 
 def selected_status_frame(state, *, menu=None, ui_modern=False,
-                          cover_mode='auto', language='de', cached=False):
+                          cover_mode='auto', language='de', cached=False, color=False):
     """All runtime views use Modern Hi-Fi, including drive and error notices.
 
     Retain the historical ui_modern/cached arguments for compatible callers,
     but neither option can re-enable a Legacy rendering branch.
     """
+    converter = partial(image_to_frame, color=True) if color else image_to_frame
+    def menu_frame():
+        return menu.frame(converter, gray=False) if color else menu.frame(converter)
     if menu is not None and (getattr(menu, 'power_menu', False) is True
                              or isinstance(getattr(menu, 'shutdown_screen', None), str)
                              or netsetup_shown(menu)):
-        return menu.frame(image_to_frame)
-    drive_frame = drive_notice_frame(state, language=language)
+        return menu_frame()
+    drive_frame = drive_notice_frame(state, language=language, color=color)
     if drive_frame is not None:
         return drive_frame
     if menu is not None and (menu.active or menu_overlay_active(menu)):
-        return menu.frame(image_to_frame)
+        return menu_frame()
     return safe_modern_status_frame(
-        state, cover_mode=cover_mode, language=language)
+        state, cover_mode=cover_mode, language=language, color=color)
 
 
 class StatusHold:
@@ -313,7 +305,7 @@ def wait_for_player_ready(status_request, socket_path, *, max_wait_seconds=30.0,
 
 def main(argv=None):
     """Command line of the display service (sonoscdplayer-oled.service)."""
-    p=argparse.ArgumentParser(description='SSD1327 OLED status and menu service')
+    p=argparse.ArgumentParser(description='Configured OLED status and menu service')
     p.add_argument('--gpio',action='store_true')
     from sonoscdplayer.system.state_files import default_state_dir
     p.add_argument('--state-dir',type=Path,default=default_state_dir(),
@@ -338,8 +330,8 @@ def main(argv=None):
                    help='private encoder event socket; requires --ui-modern')
     p.add_argument('--socket',default=DEFAULT_SOCKET)
     p.add_argument('--splash',default=str(DEFAULT_LOGO))
-    p.add_argument('--adopt-boot-splash',action='store_true',help='Adopt firmware-initialized OLED without reset; requires verified firmware splash')
-    p.add_argument('--preserve-display-on-exit',action='store_true',
+    p.add_argument('--adopt-boot-splash',action='store_true',default=None,help='Adopt firmware-initialized OLED without reset; requires verified firmware splash')
+    p.add_argument('--preserve-display-on-exit',action='store_true',default=None,
                    help='On renderer exit, release SPI/GPIO without DISPLAY OFF; '
                         'requires an explicitly coordinated display handover')
     p.add_argument('--splash-seconds',type=float,default=None,help='fixed splash duration; default waits for a valid player status')
@@ -350,11 +342,11 @@ def main(argv=None):
     p.add_argument('--display-config',type=Path,default=None,
                    help='TOML with optional [display] SPI/DC/RESET pins '
                         '(default: player.toml in the standard config directory)')
-    p.add_argument('--spi-hz',type=int,default=2_000_000)
-    p.add_argument('--contrast',type=int,default=128)
-    p.add_argument('--oled-recover-on-error',action='store_true',
+    p.add_argument('--spi-hz',type=int,default=None)
+    p.add_argument('--contrast',type=int,default=None)
+    p.add_argument('--oled-recover-on-error',action='store_true',default=None,
                    help='opt-in: one full reinitialization after a reported SPI OSError')
-    p.add_argument('--ambient-auto',action='store_true',help='Enable independent APDS9306 OLED contrast control')
+    p.add_argument('--ambient-auto',action='store_true',default=None,help='Enable independent APDS9306 OLED contrast control')
     p.add_argument('--ambient-socket',default='/run/apds9306.sock')
     p.add_argument('--ambient-timeout-ms',type=int,default=150)
     p.add_argument('--ambient-poll-ms',type=int,default=1000)
@@ -388,6 +380,27 @@ def main(argv=None):
         gpio_warnings = gpio_warnings_enabled(display_path) if args.execute else False
     except (OSError, ValueError) as exc:
         p.error(f'invalid display configuration: {exc}')
+    overrides = {key: value for key, value in dict(
+        spi_hz=args.spi_hz, contrast=args.contrast, ambient_auto=args.ambient_auto,
+        adopt_boot_splash=args.adopt_boot_splash,
+        preserve_on_exit=args.preserve_display_on_exit,
+        recover_on_error=args.oled_recover_on_error).items() if value is not None}
+    try:
+        display_pins = replace(display_pins, **overrides)
+    except ValueError as exc:
+        p.error(str(exc))
+    backend = backend_for(display_pins.controller)
+    args.spi_hz, args.contrast = display_pins.spi_hz, display_pins.contrast
+    args.ambient_auto = display_pins.ambient_auto
+    args.adopt_boot_splash = display_pins.adopt_boot_splash
+    args.preserve_display_on_exit = display_pins.preserve_on_exit
+    args.oled_recover_on_error = display_pins.recover_on_error
+    converter = partial(image_to_frame, color=True) if backend.color else image_to_frame
+    render_status = (partial(selected_status_frame, color=True) if backend.color
+                     else selected_status_frame)
+    render_notice = partial(notice_frame, color=True) if backend.color else notice_frame
+    def render_menu():
+        return menu.frame(converter, gray=False) if backend.color else menu.frame(converter)
     if args.ui_target_rpc and not (args.ui_events_socket and args.ui_modern):
         p.error('--ui-target-rpc requires --ui-modern and --ui-events-socket')
     if args.ui_power_actions and not (args.ui_events_socket and args.ui_modern):
@@ -399,9 +412,6 @@ def main(argv=None):
             timeout_ms=args.ambient_timeout_ms,poll_ms=args.ambient_poll_ms,
             stale_ms=args.ambient_stale_ms,smoothing_ms=args.ambient_smoothing_ms,
             fallback_contrast=args.ambient_fallback_contrast)
-        DisplayConfig(bus=display_pins.spi_bus, device=display_pins.spi_device,
-                      dc_pin=display_pins.dc_pin, rst_pin=display_pins.rst_pin,
-                      spi_hz=args.spi_hz, contrast=args.contrast)
     except ValueError as exc: p.error(str(exc))
     if ((args.splash_seconds is not None and (not math.isfinite(args.splash_seconds) or not 0 <= args.splash_seconds <= 30))
             or not math.isfinite(args.splash_ready_timeout) or not 0 < args.splash_ready_timeout <= 300
@@ -409,17 +419,14 @@ def main(argv=None):
         p.error('invalid duration')
     if not 200 <= args.refresh_ms <= 10000: p.error('refresh-ms must be 200..10000')
     if not 0 <= args.offline_grace_seconds <= 30: p.error('offline grace must be 0..30 seconds')
-    display_config = DisplayConfig(bus=display_pins.spi_bus, device=display_pins.spi_device,
-                                   dc_pin=display_pins.dc_pin, rst_pin=display_pins.rst_pin,
-                                   spi_hz=args.spi_hz, contrast=args.contrast)
-    driver=SSD1327(display_config, gpio_warnings=gpio_warnings) if args.execute else None
-    splash=start_splash(args.splash, language)
+    driver = backend.create(display_pins, gpio_warnings=gpio_warnings) if args.execute else None
+    splash = start_splash(args.splash, language, color=backend.color)
     ambient=OLEDContrastControl(ambient_config) if args.ambient_auto else None
     last_contrast=args.contrast
     recovery = None
     last_frame = None
     if args.oled_recover_on_error and args.execute:
-        from sonoscdplayer.hardware.displays.ssd1327_recovery import RecoveryBudget
+        from sonoscdplayer.hardware.displays.recovery import RecoveryBudget
         recovery = RecoveryBudget(attempts=1)
 
     def write_frame(frame, *, force=False):
@@ -541,12 +548,12 @@ def main(argv=None):
                         try:
                             # Same priorities as below (drive notices first),
                             # with the last known player status.
-                            quick=(selected_status_frame(
+                            quick=(render_status(
                                        hold.last_state, menu=menu, ui_modern=args.ui_modern,
                                        cover_mode=cover_mode, language=menu.language)
-                                   if hold.last_state is not None else menu.frame(image_to_frame))
+                                   if hold.last_state is not None else render_menu())
                         except (ValueError, TypeError, KeyError):
-                            quick=menu.frame(image_to_frame)
+                            quick=render_menu()
                         if bytes(quick.data)!=previous:
                             write_frame(quick)
                             previous=bytes(quick.data)
@@ -572,7 +579,7 @@ def main(argv=None):
                         menu.player_status(state)
                     elif menu is not None and hasattr(menu, 'player_mode'):
                         menu.player_mode = (state.get('player') or {}).get('mode')
-                    frame=selected_status_frame(
+                    frame=render_status(
                         state, menu=menu, ui_modern=args.ui_modern,
                         cover_mode=cover_mode,
                         language=(menu.language if menu is not None else language))
@@ -589,21 +596,21 @@ def main(argv=None):
                     # previously cached state may itself be invalid.
                     if busy and state is not None:
                         try:
-                            frame=selected_status_frame(
+                            frame=render_status(
                                 state, menu=menu, ui_modern=args.ui_modern,
                                 cover_mode=cover_mode, cached=True,
                                 language=(menu.language if menu is not None else language))
                             label={'screen':'status_cached','mode':(state.get('player') or {}).get('mode'),'hardware':args.execute}
                         except (ValueError, TypeError, KeyError):
-                            frame=notice_frame('status.invalid_player_status', severity='error',
+                            frame=render_notice('status.invalid_player_status', severity='error',
                                                language=(menu.language if menu is not None else language))
                             label={'screen':'status_invalid','hardware':args.execute}
                     else:
                         # Menu input is still processed while the player service is
                         # down, so an open menu must stay visible instead of being
                         # replaced by the error screen (it is the Wi-Fi fallback).
-                        frame=(menu.frame(image_to_frame) if menu is not None and menu.active
-                               else notice_frame('status.player_offline', severity='error',
+                        frame=(render_menu() if menu is not None and menu.active
+                               else render_notice('status.player_offline', severity='error',
                                                  language=(menu.language if menu is not None else language)))
                         label={'screen':'status_unavailable','error':type(exc).__name__,'hardware':args.execute}
                 current=bytes(frame.data)

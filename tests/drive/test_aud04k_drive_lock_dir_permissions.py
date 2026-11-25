@@ -37,6 +37,9 @@ assert root.stat().st_mode & 0o777 == 0o700
 """
     env = dict(os.environ, AUD04K_TMP=str(tmp_path))
     env.pop('XDG_RUNTIME_DIR', None)
+    # pytest.ini adds src to pytest's sys.path, not to child interpreters.
+    source = str(Path(drive_locks.__file__).resolve().parents[2])
+    env['PYTHONPATH'] = os.pathsep.join(filter(None, (source, env.get('PYTHONPATH'))))
     proc = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
 

@@ -8,10 +8,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 import time
 
-from sonoscdplayer.ui.displays.backend import GraphicFrame, validate_frame
 from sonoscdplayer.ui.displays.capabilities import DisplayCapabilities
 from sonoscdplayer.hardware.displays.transport import DisplayTransport
 from sonoscdplayer.hardware.displays.backlight import Backlight
+from sonoscdplayer.hardware.displays import rgb565
 
 NATIVE_WIDTH, NATIVE_HEIGHT = 128, 160
 FRAME_BYTES = 40960
@@ -50,35 +50,13 @@ class DisplayConfig:
 
 def image_to_frame(image, config=DisplayConfig()):
     """Canonical RGB565: row-major, red bits 15..11, high byte first."""
-    if image.size != config.size:
-        raise ValueError('image does not match logical display size')
-    data = bytearray(FRAME_BYTES)
-    pixels = image.convert('RGB').tobytes()
-    for offset in range(0, len(pixels), 3):
-        red, green, blue = pixels[offset:offset+3]
-        index = offset // 3
-        value = ((red >> 3) << 11) | ((green >> 2) << 5) | (blue >> 3)
-        data[2*index:2*index+2] = value.to_bytes(2, 'big')
-    return GraphicFrame(*config.size, 'rgb565', bytes(data))
+    return rgb565.image_to_frame(image, config.size)
 
 
 def native_bytes(frame, config=DisplayConfig()):
     """RGB565 bytes in the panel's native orientation for a frame."""
-    validate_frame(config.capabilities, frame)
-    if config.rotation == 0:
-        return frame.data
-    result = bytearray(FRAME_BYTES)
-    for y in range(frame.height):
-        for x in range(frame.width):
-            if config.rotation == 90:
-                nx, ny = 127-y, x
-            elif config.rotation == 180:
-                nx, ny = 127-x, 159-y
-            else:
-                nx, ny = y, 159-x
-            source, target = 2*(y*frame.width+x), 2*(ny*128+nx)
-            result[target:target+2] = frame.data[source:source+2]
-    return bytes(result)
+    return rgb565.native_bytes(frame, native_size=(NATIVE_WIDTH, NATIVE_HEIGHT),
+                               rotation=config.rotation)
 
 
 # Frame-rate and power register values follow the common ST7735 R/S setup;

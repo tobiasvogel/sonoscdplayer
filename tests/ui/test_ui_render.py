@@ -109,10 +109,10 @@ class CoverAndRecoveryTests(unittest.TestCase):
 
 
 class DisplayProfileTests(unittest.TestCase):
-    def test_three_player_display_candidates(self):
-        self.assertEqual(len(PROFILES),3)
+    def test_four_player_display_candidates(self):
+        self.assertEqual(len(PROFILES),4)
         self.assertEqual({p.controller for p in PROFILES.values()},
-                         {'SSD1327','ST7735S','SH1107'})
+                         {'SSD1327','SSD1351','ST7735S','SH1107'})
 
     def test_existing_oled_stays_text_focused(self):
         p=profile_for('ssd1327_128x128')

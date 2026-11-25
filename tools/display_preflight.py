@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read-only display change preflight. Never probes hardware or authorizes switching.
 
-The current live display service only implements SSD1327. Other candidates are
+The live display service implements SSD1327 and SSD1351. Other candidates are
 informational, even if their standalone test-pattern drivers work on hardware.
 """
 from __future__ import annotations
@@ -11,6 +11,7 @@ from pathlib import Path
 import tomllib
 
 CANDIDATES = {
+    'ssd1351': ('128x128', 'live RGB OLED runtime', 0),
     'ssd1327': ('128x128', 'current live player runtime', None),
     'st7735s': ('160x128', 'standalone driver only', 270),
     'sh1107': ('128x64', 'standalone driver only', 270),
@@ -86,9 +87,10 @@ def preflight_lines(player: dict, interface: dict | None, target: str,
              f'  Candidate: {size}, {state}',
              f'  Current configured controller: {display.get("controller", "ssd1327")}',
              f'  Current DC/RESET: BCM{dc}/BCM{reset} (configuration, not detection)',
+             '  Result: READ-ONLY - use the configuration apply path.' if target in ('ssd1327', 'ssd1351') else
              '  Result: BLOCKED - this report does not enable display switching.']
-    if target == 'ssd1327':
-        lines.append('  SSD1327 is the only controller supported by the current live player display service.')
+    if target in ('ssd1327', 'ssd1351'):
+        lines.append('  SSD1327 and SSD1351 are supported by the live display service; apply [display] with tools/apply_display_config.py.')
     else:
         lines.append('  BLOCKER: no live player/UI, service and shutdown integration for this controller.')
         lines.append(f'  Standalone project test orientation: rotation {rotation} degrees.')
@@ -127,7 +129,9 @@ def preflight_lines(player: dict, interface: dict | None, target: str,
         lines.append('  UNKNOWN: ' + message)
     lines.extend(('  NOTE: config overlaps do not prove physical wiring or ownership.',
                   '  NOTE: no GPIO, SPI, boot configuration, systemd or TOML file was changed.',
-                  '  Next: finish runtime integration and verify physical wiring before allowing selection.'))
+                  ('  Next: apply [display] with tools/apply_display_config.py after verifying wiring.'
+                   if target in ('ssd1327', 'ssd1351') else
+                   '  Next: finish runtime integration and verify physical wiring before allowing selection.')))
     return tuple(lines)
 
 

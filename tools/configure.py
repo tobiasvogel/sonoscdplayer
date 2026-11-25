@@ -534,8 +534,8 @@ def interactive_choices(current, recommendation, *, parsed=None, ui_current=None
             show_display_inventory(parsed or {}, interface_path=interface_path, out=out)
             continue
         if choice.lower() == 'p':
-            candidate = read('Display candidate [ssd1327/st7735s/sh1107]: ').strip().lower()
-            if candidate not in ('ssd1327', 'st7735s', 'sh1107'):
+            candidate = read('Display candidate [ssd1327/ssd1351/st7735s/sh1107]: ').strip().lower()
+            if candidate not in ('ssd1327', 'ssd1351', 'st7735s', 'sh1107'):
                 out('Unknown display candidate; no action taken.')
                 continue
             bl = None
@@ -703,8 +703,8 @@ def main(argv=None) -> int:
     p.add_argument('--ui-config', type=Path, help='ui.toml (default: same directory as player.toml)')
     p.add_argument('--display-report', action='store_true',
                    help='print read-only display inventory and exit (no wizard or writes)')
-    p.add_argument('--display-preflight', choices=('ssd1327', 'st7735s', 'sh1107'),
-                   help='read-only prerequisites for a display candidate; switching remains blocked')
+    p.add_argument('--display-preflight', choices=('ssd1327', 'ssd1351', 'st7735s', 'sh1107'),
+                   help='read-only prerequisites for a display candidate; no configuration changes')
     p.add_argument('--backlight-pin', type=int,
                    help='proposed ST7735S backlight BCM pin, for read-only conflict checking')
     p.add_argument('--interface-config', type=Path,

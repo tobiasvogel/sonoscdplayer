@@ -27,6 +27,7 @@ def to_frame(image):
 
 def build(frame,*,hz=2_000_000,contrast=128,chunk=128,pins=None):
     pins = pins if pins is not None else DisplayPins()
+    if pins.controller != 'ssd1327': raise ValueError('Use build_display_splash.py for the configured backend')
     if len(frame)!=8192: raise ValueError('expected 8192 framebuffer bytes')
     if not 100000<=hz<=8000000 or not 0<=contrast<=255 or not 1<=chunk<=4096:
         raise ValueError('invalid splash parameters')
@@ -72,7 +73,7 @@ def main():
             im.load()
             framebuffer=to_frame(im)
     if a.display_config is None:
-        from src import config_paths
+        from sonoscdplayer.system import config_paths
         a.display_config = config_paths.player_config()
     pins = load_display_pins(a.display_config)
     a.output.write_text(build(framebuffer,hz=a.spi_hz,contrast=a.contrast,pins=pins),encoding='utf-8')

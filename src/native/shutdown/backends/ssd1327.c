@@ -5,12 +5,15 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#if defined(__has_include)
-# if !__has_include("ssd1327_display_config.h")
-#  error "Missing ssd1327_display_config.h: run python3 tools/generate_ssd1327_display_header.py --config YOUR_PLAYER_TOML --output BUILD_DIR/ssd1327_display_config.h"
-# endif
-#endif
+#if defined(__has_include) && __has_include("display_config.h")
+#include "display_config.h"
+#else
+/* Compatibility for existing external build callers. */
 #include "ssd1327_display_config.h"
+#endif
+#ifndef SONOSCDPLAYER_DISPLAY_SPI_HZ
+#define SONOSCDPLAYER_DISPLAY_SPI_HZ 2000000u
+#endif
 
 #define SSD1327_WIDTH 128u
 #define SSD1327_HEIGHT 128u
@@ -19,7 +22,7 @@
 static int ssd1327_show(const uint8_t *frame, size_t length) {
     if (frame == NULL || length != SSD1327_FRAME_BYTES) return -1;
     display_io_t io;
-    if (display_io_open(&io, "/dev/gpiochip0", SONOSCDPLAYER_OLED_DC_PIN, "/dev/spidev0.0", 2000000u) != 0) {
+    if (display_io_open(&io, "/dev/gpiochip0", SONOSCDPLAYER_OLED_DC_PIN, "/dev/spidev0.0", SONOSCDPLAYER_DISPLAY_SPI_HZ) != 0) {
         perror("shutdown-display: opening SSD1327 transport");
         return -1;
     }

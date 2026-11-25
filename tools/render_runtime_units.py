@@ -112,10 +112,10 @@ def render(source_dir, *, checkout, python_venv, user, power_actions=True,
             f'{python_venv} -u -m sonoscdplayer.ui.display_service '
             f'--socket /run/sonoscdplayer/control.sock '
             f'--display-config {player_config} --gpio --execute --seconds 0 '
-            f'--ambient-auto --ui-modern --ui-config {ui_config} '
+            f'--ui-modern --ui-config {ui_config} '
             # No --cover here: [ui.cover] mode in ui.toml decides (auto/on/off).
             '--ui-events-socket /run/sonoscdplayer-ui/events.sock '
-            f'--oled-recover-on-error --ui-target-rpc{oled_power}'
+            f'--ui-target-rpc{oled_power}'
         ),
         UNITS[3]: (
             f'{python_venv} -u -m sonoscdplayer.hardware.inputs.button_service '

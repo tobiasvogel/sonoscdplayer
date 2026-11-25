@@ -3,8 +3,8 @@
 This guide shows how a new display module gets into the player: a driver,
 a test program for the hardware, a renderer for the player's screens, and
 finally the connection to the display service. The SH1107 (128×64, mono)
-and ST7735S (160×128, color) went through the first steps and are good
-examples to copy; see [Displays](DISPLAYS.md).
+and ST7735S (160×128, color) went through the first steps. SSD1351 is a
+complete configuration-selected 128×128 RGB example; see [Displays](DISPLAYS.md).
 
 ## How the display output works
 
@@ -26,16 +26,16 @@ flowchart LR
   status and footer, already translated. A small display may leave out
   optional lines.
 - **How** it looks is the renderer's job, one per display type:
-  `oled_128*.py` for the 128×128 SSD1327, `compact_128x64.py` for 128×64,
+  `oled_128*.py` shared by the 128×128 SSD1327 and SSD1351, `compact_128x64.py` for 128×64,
   `landscape_160x128.py` for 160×128, `character_*.py` for character LCDs.
 - The **driver** only turns an image into bytes and sends them over a
   `DisplayTransport` (SPI or I2C, `hardware/displays/transport.py`).
 
-**Current limit:** the display service (`ui/display_service.py`) still
-creates the SSD1327 driver directly, and `[display] controller` in
-player.toml accepts only `ssd1327`. Steps 1 to 5 below work today and are
-tested without the player; step 6 is the remaining work to make the display
-selectable.
+**Runtime selection:** `hardware/displays/runtime.py` explicitly registers
+SSD1327 and SSD1351. The service reads `[display]` and shares the 128×128
+rendering pipeline, while backend adapters provide pixel packing, current
+control and I/O recovery. A new geometry also needs its renderer connected;
+a standalone diagnostic or catalog profile alone does not make it selectable.
 
 ## 1. Driver
 
@@ -133,13 +133,13 @@ No test may need the real display.
 
 ## 6. Connecting it to the display service
 
-This is the open part. It needs:
+SSD1351 implements this step for the shared 128×128 layout. For another module:
 
 1. `[display] controller` (and its options) accepted for the new module in
    `hardware/displays/pins.py`.
-2. In `ui/display_service.py`: create the driver and renderer for the
-   configured controller instead of the fixed SSD1327, and draw the menu's
-   `semantic_screen()` with the new renderer.
+2. Register its backend factory in `hardware/displays/runtime.py`. Reuse the
+   shared 128×128 image path where possible; connect a geometry-specific
+   renderer for other sizes, including every menu/notice/setup screen.
 3. Contrast or backlight brightness from the ambient light, if the module
    supports it.
 4. The shutdown screens (`src/native/shutdown/backends/`) for the new

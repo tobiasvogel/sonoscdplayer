@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -167,7 +168,7 @@ class InstallScreensTests(unittest.TestCase):
             (hooks / 'sonoscdplayer-script').write_text('#!/bin/sh\nexit 0\n')
             (hooks / 'other-vendor-hook').write_bytes(b'\x7fELF')
         env = os.environ | {'SHUTDOWN_SCREENS_ROOT': str(root), 'HOME': str(home),
-                            'SONOSCDPLAYER_CONFIG_DIR': str(config)}
+                            'SONOSCDPLAYER_CONFIG_DIR': str(config), 'PYTHON': sys.executable}
         env.pop('SPLASH_ASSEMBLER', None)
         return root, env
 
@@ -182,11 +183,11 @@ class InstallScreensTests(unittest.TestCase):
             config_txt = (root / 'boot/firmware/config.txt').read_text()
         self.assertEqual(result.returncode, 0, result.stderr)
         out = result.stdout
-        self.assertIn('build_ssd1327_splash.py', out)
+        self.assertIn('build_display_splash.py', out)
         self.assertIn('splashasm/splash_assembler.py', out)
-        self.assertIn(f'{root}/boot/firmware/ssd1327.bin', out)
+        self.assertIn(f'{root}/boot/firmware/display.bin', out)
         # gpio=13 was already set by hand: it moves into the block unchanged (diff context)
-        for line in ('+[all]', ' gpio=13=op,dh', '+gpio=12=op,dl', '+gpio=27=op,dh', '+splash_screen=ssd1327.bin'):
+        for line in ('+[all]', ' gpio=13=op,dh', '+gpio=12=op,dl', '+gpio=27=op,dh', '+splash_screen=display.bin'):
             self.assertIn(line, out)
         self.assertEqual(config_txt, 'dtparam=spi=on\ngpio=13=op,dh\n')  # dry run: untouched
         self.assertIn('build_shutdown_renderer.sh', out)
@@ -224,7 +225,7 @@ class InstallScreensTests(unittest.TestCase):
 class BootConfigTests(unittest.TestCase):
     """tools/boot_config.py keeps one managed block in config.txt."""
 
-    LINES = ['gpio=13=op,dh', 'gpio=12=op,dl', 'gpio=27=op,dh', 'splash_screen=ssd1327.bin']
+    LINES = ['gpio=13=op,dh', 'gpio=12=op,dl', 'gpio=27=op,dh', 'splash_screen=display.bin']
 
     def update(self, text, lines=None):
         import sys
@@ -234,13 +235,13 @@ class BootConfigTests(unittest.TestCase):
 
     def test_manual_lines_move_into_one_block_and_rerun_is_stable(self):
         text = '[pi4]\narm_boost=1\n[all]\ndtparam=spi=on\ngpio=13=op,dh\ngpio=12=op,dl\n' \
-               'gpio=27=op,dh\nsplash_screen=ssd1327.bin\n'
+               'gpio=27=op,dh\nsplash_screen=display.bin\n'
         first = self.update(text)
         self.assertEqual(first.count('gpio=13=op,dh'), 1)
         self.assertEqual(first.count('splash_screen='), 1)
         self.assertIn('[pi4]\narm_boost=1\n[all]\ndtparam=spi=on\n', first)
         self.assertTrue(first.rstrip().endswith('# END sonoscdplayer'))
-        self.assertIn('[all]\ngpio=13=op,dh\ngpio=12=op,dl\ngpio=27=op,dh\nsplash_screen=ssd1327.bin\n', first)
+        self.assertIn('[all]\ngpio=13=op,dh\ngpio=12=op,dl\ngpio=27=op,dh\nsplash_screen=display.bin\n', first)
         self.assertEqual(self.update(first), first)
 
     def test_changed_pins_replace_the_old_block(self):

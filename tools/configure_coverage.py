@@ -26,6 +26,11 @@ PIN_AND_BUS_FIELDS = frozenset({
 # workflow, or is managed outside the current running services.
 SPECIAL_FIELDS = frozenset({
     'service.experimental_safe_screen', 'gpio.warnings',
+    # Applied through the dedicated display configuration path, not the
+    # general player settings wizard.
+    'display.rotation', 'display.color_order', 'display.spi_hz',
+    'display.contrast', 'display.ambient_auto', 'display.adopt_boot_splash',
+    'display.preserve_on_exit', 'display.recover_on_error',
     'led_outputs.ambient.socket_path', 'led_outputs.ambient.request',
 })
 
@@ -103,7 +108,7 @@ def report_lines(data=None) -> tuple[str, ...]:
             for field in groups[category]:
                 lines.append(f'  {label}: {field}')
     lines.extend((
-        '\nDisplay switching: BLOCKED; SSD1327 alone is player-integrated.',
+        '\nDisplay selection: SSD1327 and SSD1351 via [display] and apply_display_config.py.',
         'APDS9306 calibration and timing are editable; socket transport remains guarded.',
         'This report is an inventory, NOT permission to change live hardware.',
     ))

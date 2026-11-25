@@ -85,7 +85,7 @@ class CoverageTests(unittest.TestCase):
         after = [path.read_bytes() for path in paths]
         self.assertEqual(before, after)
         self.assertIn('READ-ONLY', report)
-        self.assertIn('Display switching: BLOCKED', report)
+        self.assertIn('Display selection: SSD1327 and SSD1351', report)
 
 
 if __name__ == '__main__':

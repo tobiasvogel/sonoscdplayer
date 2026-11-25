@@ -33,13 +33,15 @@ def render_screen(screen: SemanticScreen, *, renderer, navigation_renderer=None,
         nav = navigation_renderer or NavigationRenderer(language=renderer.translator.language)
         return nav.menu_pixels(screen.heading,
                                [(item.key, item.label) for item in screen.items],
-                               _focus(screen), status=screen.status, footer=screen.footer)
+                               _focus(screen), status=screen.status, footer=screen.footer,
+                               **({} if gray else {'gray': False}))
     if view == "network_status":
         from sonoscdplayer.ui.menu.navigation_pages import NavigationRenderer
         nav = navigation_renderer or NavigationRenderer(language=renderer.translator.language)
         return nav.status_pixels(screen.heading,
                                  [(item.label, item.value or "") for item in screen.items],
-                                 status=screen.status, footer=screen.footer)
+                                 status=screen.status, footer=screen.footer,
+                                 **({} if gray else {'gray': False}))
     if view == "targets":
         marks = [_TARGET_MARKS.get(item.intent) or ("✓" if item.selected else "□")
                  for item in screen.items]
@@ -66,7 +68,7 @@ def render_screen(screen: SemanticScreen, *, renderer, navigation_renderer=None,
     raise ValueError(f"no OLED widget for view {view!r}")
 
 
-def graphic_frame_from_menu(menu, *, now: float):
+def graphic_frame_from_menu(menu, *, now: float, gray=True):
     """The OLED image of an InteractiveMenu (shutdown screens excluded).
 
     WLAN setup still has its own renderer; an inactive menu without
@@ -76,8 +78,8 @@ def graphic_frame_from_menu(menu, *, now: float):
     if screen is not None:
         return render_screen(screen, renderer=menu.renderer,
                              navigation_renderer=menu._navigation_renderer,
-                             notice_renderer=menu._connect_renderer)
+                             notice_renderer=menu._connect_renderer, gray=gray)
     setup = menu.netsetup_snapshot()
     if setup is not None and not menu.power_menu:
-        return menu.wifi_entry.frame(menu.renderer, setup, now=now)
-    return menu.renderer.render_multi(menu.state, gray=True, searching=menu.searching())
+        return menu.wifi_entry.frame(menu.renderer, setup, now=now, gray=gray)
+    return menu.renderer.render_multi(menu.state, gray=gray, searching=menu.searching())

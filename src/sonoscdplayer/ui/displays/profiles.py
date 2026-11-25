@@ -42,6 +42,9 @@ PROFILES = {
     'ssd1327_128x128': HardwareDisplayProfile(
         'ssd1327_128x128', 'SSD1327', 128, 128, 'gray4', False,
         'interactive', driver_ready=True),
+    'ssd1351_128x128': HardwareDisplayProfile(
+        'ssd1351_128x128', 'SSD1351', 128, 128, 'rgb565', False,
+        'interactive', driver_ready=True),
     'st7735s_128x160': HardwareDisplayProfile(
         'st7735s_128x160', 'ST7735S', 160, 128, 'rgb565', True,
         'interactive'),
