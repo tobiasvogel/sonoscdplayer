@@ -806,6 +806,7 @@ class Controller:
         # Publish STARTING before the potentially long, synchronous PCM prebuffer.
         # No Sonos command has been sent and ownership is not claimed here.
         self.state = self.state.start_requested()
+        self._sonos_read_failure_since = None
         self._display_progress = None
         self._display_progress_poll_at = None
         if self.status_hook is not None:
