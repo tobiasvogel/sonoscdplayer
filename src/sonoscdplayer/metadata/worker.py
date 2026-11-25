@@ -422,6 +422,10 @@ class MetadataWorker(LibraryMaintenanceWorkflow, LibraryManageWorkflow, LibraryW
             raise RuntimeError('manual edits still pending')
         if self._release_selection is not None:
             raise RuntimeError('release selection still pending')
+        if self._cover_pending is not None:
+            raise RuntimeError('cover operation still pending')
+        if self._maintenance_job is not None or self._library_manage_job is not None:
+            raise RuntimeError('library write still pending')
         self._reset_releases()
         identity = self._identify(toc)
         self._manual.delete(identity)

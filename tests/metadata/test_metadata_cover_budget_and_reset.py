@@ -117,6 +117,20 @@ class ResetDiscTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.worker.reset_current()
 
+    def test_reset_refuses_pending_cover_or_library_writes(self):
+        toc = FakeToc('disc')
+        self.worker.observe(toc)
+        for attribute, error in (
+                ('_cover_pending', 'cover operation still pending'),
+                ('_maintenance_job', 'library write still pending'),
+                ('_library_manage_job', 'library write still pending')):
+            with self.subTest(attribute=attribute):
+                setattr(self.worker, attribute, object())
+                with self.assertRaisesRegex(RuntimeError, error):
+                    self.worker.reset_current()
+                self.assertEqual(self.worker._last_toc, toc)
+                setattr(self.worker, attribute, None)
+
     def test_cache_delete_also_removes_manual_choice(self):
         cache = DiscCache(self.db)
         disc = DiscIdentity('B' * 28, '1 1 375 150')
