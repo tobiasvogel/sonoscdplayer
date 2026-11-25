@@ -38,8 +38,11 @@ class TrackServerProcess:
 
     ``base`` is the working directory (src/), ``config`` the player.toml path.
     """
-    def __init__(self, base, device, config, port, *, popen=subprocess.Popen, startup_prebuffer=True, startup_timeout=45.0):
+    def __init__(self, base, device, config, port, *, popen=subprocess.Popen, startup_prebuffer=True, startup_timeout=45.0, max_buffer_mib=None):
         self.base, self.device, self.config, self.port = base, device, config, port
+        if max_buffer_mib is not None and (type(max_buffer_mib) is not int or not 16 <= max_buffer_mib <= 512):
+            raise ValueError('invalid playback buffer size')
+        self.max_buffer_mib = max_buffer_mib
         self.popen = popen
         self.startup_prebuffer = startup_prebuffer
         self.startup_timeout = startup_timeout
@@ -70,6 +73,7 @@ class TrackServerProcess:
         p = self.popen([sys.executable, '-u', '-m', 'sonoscdplayer.audio.track_http_server',
                         '--device', self.device, '--track', str(track),
                         '--port', str(self.port), '--config', str(self.config)]
+                       + (['--max-buffer-mib', str(self.max_buffer_mib)] if self.max_buffer_mib is not None else [])
                        + (['--cover', str(cover)] if cover else [])
                        + (['--disc'] if disc else []),
                        cwd=self.base, stdout=subprocess.PIPE,

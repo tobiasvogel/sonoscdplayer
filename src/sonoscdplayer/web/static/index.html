@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title data-i18n="web.page_title">SonosCDPlayer</title>
+
+
+
+<style>
+:root{--bg:#f3f3ed;--surface:#fffefa;--surface2:#f8f8f3;--ink:#182c2d;--muted:#728080;--line:#e4e8e1;--accent:#0d7774;--accent-hover:#075b59;--accent-soft:#dbefeb;--gold:#d7ad65;--shadow:0 15px 50px rgba(32,49,44,.065);--radius:23px;}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:-.015em;}button,input,select{font:inherit}button{cursor:pointer}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #66bbb2;outline-offset:2px}button:disabled{cursor:not-allowed;opacity:.4}.shell{display:grid;grid-template-columns:228px minmax(0,1fr);min-height:100vh;max-width:1650px;margin:0 auto}.rail{background:#1c3435;color:#ecf7f5;display:flex;flex-direction:column;padding:34px 20px 22px;min-height:100vh}.brand{display:flex;gap:12px;align-items:center;margin:0 9px 55px;line-height:1.1;font-weight:740;font-size:17px;letter-spacing:-.045em}.brand-mark{display:flex;align-items:center;justify-content:center;width:38px;height:38px;border:1px solid #5f8886;border-radius:13px;color:#b0e1db;font-size:25px}.brand small{display:block;font-weight:500;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:#91b9b4;margin-top:6px}.railnav{display:flex;flex-direction:column;gap:8px}.navbtn{border:0;background:transparent;color:#b4cecb;display:flex;align-items:center;gap:12px;padding:14px 15px;width:100%;border-radius:12px;text-align:left;font-size:14px;font-weight:550}.navbtn:hover{background:#294747;color:white}.navbtn.active{background:#335a58;color:white}.navbtn .ico{font-size:18px;width:22px;text-align:center;font-weight:400}.railfoot{margin-top:auto;font-size:12px;color:#93b3af;padding:14px 12px;border-top:1px solid #355352}.railfoot strong{color:#e9f1ef;font-weight:600}.dot{display:inline-block;border-radius:50%;width:7px;height:7px;background:#70c5a2;margin-right:5px}.main{min-width:0;padding:38px clamp(22px,4.5vw,78px) 64px}.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:37px}.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--accent);font-weight:800}.page-title{font-size:clamp(27px,3vw,42px);font-weight:710;letter-spacing:-.052em;margin:7px 0 0;line-height:1.12}.topright{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.chip{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:22px;background:#fffdfa;padding:9px 12px;font-size:12px;color:#466563;white-space:nowrap}.avatar{width:38px;height:38px;border-radius:50%;background:#d7eae4;color:#2a6766;display:grid;place-items:center;font-weight:760}.preview-banner{padding:12px 17px;border-radius:14px;color:#64706b;background:#e8ebdf;margin:-16px 0 28px;font-size:12px;line-height:1.55}.screen{display:none}.screen.active{display:block}.player-grid{display:grid;grid-template-columns:minmax(265px,.95fr) minmax(330px,1.05fr);gap:clamp(23px,3vw,56px);align-items:stretch}.art-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}.art{position:relative;aspect-ratio:1;background:radial-gradient(circle at 24% 24%,#ecbf7e 0 5%,transparent 30%),radial-gradient(circle at 83% 87%,#274c55 0 14%,transparent 45%),linear-gradient(135deg,#a9c5b9 0%,#628c88 48%,#244a54 100%);border-radius:13px;overflow:hidden}.art:before{content:"";position:absolute;border:50px solid rgba(246,232,189,.32);border-radius:50%;width:67%;aspect-ratio:1;top:-13%;left:-30%;filter:blur(3px)}.art:after{content:"";position:absolute;border:1px solid rgba(255,255,255,.53);border-radius:50%;width:54%;aspect-ratio:1;top:23%;left:26%;box-shadow:0 0 0 30px rgba(232,244,220,.07),0 0 0 62px rgba(232,244,220,.075),0 0 0 95px rgba(232,244,220,.05)}.art-title{position:absolute;left:8%;bottom:8%;color:#f1f5e6;font-size:clamp(34px,4vw,66px);letter-spacing:-.085em;line-height:.88;font-weight:740;z-index:1}.art-title small{display:block;font-size:11px;letter-spacing:.27em;margin:0 0 15px 3px;font-weight:600}.art-bottom{padding:17px 4px 6px;display:flex;align-items:center;justify-content:space-between;gap:8px}.art-bottom small{color:var(--muted);font-size:12px}.format{font-size:10px;letter-spacing:.12em;font-weight:850;color:#5c7773;background:#e7f0e9;padding:7px 9px;border-radius:6px}.player-right{display:flex;flex-direction:column;justify-content:center;min-width:0;padding:9px 0}.playing-label{font-size:12px;font-weight:740;color:var(--accent);display:flex;gap:9px;align-items:center;margin-bottom:20px}.bars{display:inline-flex;gap:3px;align-items:center;height:16px}.bars i{display:block;width:3px;height:8px;background:var(--accent);border-radius:3px}.bars i:nth-child(2){height:15px}.bars i:nth-child(3){height:11px}.track-title{font-size:clamp(31px,3.7vw,59px);font-weight:725;line-height:1.03;letter-spacing:-.063em;margin:0 0 12px;max-width:700px}.track-artist{color:#647573;font-size:17px;margin:0 0 30px}.smallmeta{color:#83928e;font-size:13px;margin-bottom:15px}.progress{accent-color:var(--accent);width:100%;height:5px;margin:4px 0 9px}.times{display:flex;justify-content:space-between;color:#8a9a95;font-size:12px;font-variant-numeric:tabular-nums}.controls{display:flex;align-items:center;gap:16px;margin:30px 0 33px}.ctrl{background:transparent;border:1px solid transparent;border-radius:50%;min-width:44px;height:44px;color:#234340;font-size:23px;display:grid;place-items:center}.ctrl:hover{background:#e9efea}.ctrl.primary{background:var(--ink);color:white;width:63px;height:63px;font-size:24px}.ctrl.primary:hover{background:#2d5551}.destination{padding:19px 21px;border:1px solid var(--line);border-radius:16px;background:#fcfdfa;display:flex;align-items:center;justify-content:space-between;gap:14px}.destination .speaker-icon{font-size:19px;background:#edf4ee;color:var(--accent);padding:10px;border-radius:10px}.destination .dest-details{flex:1}.destination small{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);margin-bottom:5px}.destination strong{font-size:14px}.textbtn{background:none;border:0;color:var(--accent);font-size:13px;font-weight:730;padding:6px}.section-heading{display:flex;align-items:center;justify-content:space-between;margin:45px 0 17px}.section-heading h2{font-size:19px;margin:0;letter-spacing:-.04em}.tracklist{background:var(--surface);border-radius:17px;border:1px solid var(--line);overflow:hidden}.trackrow{display:grid;grid-template-columns:35px minmax(0,1fr) 65px;gap:15px;align-items:center;padding:15px 22px;border-bottom:1px solid var(--line);font-size:14px}.trackrow:last-child{border:0}.trackrow .num{color:#91a09c;font-variant-numeric:tabular-nums}.trackrow.active{background:#eaf3ed;color:#17625d;font-weight:700}.trackrow .duration{text-align:right;color:#879590;font-variant-numeric:tabular-nums;font-size:12px}.settings-layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:30px}.settings-nav{background:#f9faf5;border:1px solid var(--line);padding:12px;border-radius:17px;display:flex;flex-direction:column;gap:3px;align-self:start}.settings-nav button{background:transparent;border:0;border-radius:10px;text-align:left;padding:12px 13px;font-size:13px;color:#627571}.settings-nav button.active{color:#146b66;background:#e2f1eb;font-weight:750}.settings-nav button:hover:not(.active){background:#edf0e9}.panel{background:#fffefa;border:1px solid var(--line);border-radius:20px;padding:26px clamp(20px,3vw,36px);box-shadow:var(--shadow);min-height:430px}.panel h2{font-size:23px;letter-spacing:-.05em;margin:0 0 8px}.panel p{font-size:14px;color:#748480;line-height:1.6;margin:0 0 28px}.panel h3{font-size:14px;margin:28px 0 14px;color:#315a56}.fieldgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}.field{display:flex;flex-direction:column;gap:8px;min-width:0}.field label{font-size:12px;font-weight:700;color:#47615c}.field input,.field select{width:100%;border:1px solid #d8e2da;border-radius:10px;padding:12px;color:var(--ink);background:white;font-size:14px;min-width:0}.field.span{grid-column:span 2}.help{color:#8c9995;font-size:11px;line-height:1.4}.panel-footer{display:flex;align-items:center;gap:12px;justify-content:space-between;border-top:1px solid var(--line);padding-top:20px;margin-top:28px;font-size:12px;color:#82928a}.btn{border:0;border-radius:11px;background:var(--accent);color:white;padding:12px 18px;font-size:13px;font-weight:740}.btn:hover{background:var(--accent-hover)}.btn.secondary{background:#e7efeb;color:#275e59}.btn.secondary:hover{background:#d5e7df}.btn.danger{background:#a7423f}.pill-note{background:#eef4e9;color:#536e58;padding:10px 12px;border-radius:10px;font-size:12px;margin:12px 0}.subpanel{display:none}.subpanel.active{display:block}.record{padding:14px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:14px}.record small{color:var(--muted);display:block;font-size:12px;margin-top:5px}.record strong{font-size:14px}.tag{font-size:10px;color:#448278;background:#edf4ee;padding:5px 7px;border-radius:6px}.twoactions{display:flex;gap:10px;flex-wrap:wrap}.modal-backdrop{display:none;position:fixed;inset:0;background:rgba(10,31,32,.53);z-index:100;align-items:center;justify-content:center;padding:20px}.modal-backdrop.open{display:flex}.modal{max-width:410px;width:100%;border-radius:17px;padding:25px;background:white;box-shadow:0 30px 90px #1227}.modal h3{margin:0 0 9px}.modal p{font-size:14px;color:#73847e;line-height:1.5}.modalfooter{display:flex;justify-content:end;gap:10px;margin-top:24px}.toast{position:fixed;bottom:20px;right:20px;z-index:150;padding:13px 18px;background:#1e4140;color:white;border-radius:12px;box-shadow:0 20px 45px #1223;display:none;font-size:13px}.toast.show{display:block}
+@media(max-width:1000px){.shell{grid-template-columns:78px 1fr}.rail{padding:25px 12px}.brand{margin:0 0 45px;justify-content:center}.brand-word,.navbtn .nav-text,.railfoot{display:none}.navbtn{justify-content:center}.player-grid{gap:25px}.settings-layout{grid-template-columns:175px 1fr;gap:17px}.main{padding:28px 26px 55px}}
+@media(max-width:750px){.shell{display:block}.rail{min-height:unset;padding:11px 16px;flex-direction:row;align-items:center;justify-content:space-between}.brand{margin:0}.brand-mark{height:37px;width:37px}.brand-word{display:block;font-size:14px}.brand small{display:none}.railnav{flex-direction:row}.navbtn{width:auto;padding:10px}.navbtn .nav-text{display:none}.navbtn .ico{font-size:20px}.main{padding:25px 17px 58px}.topbar{align-items:flex-start;margin-bottom:28px}.topright .chip{display:none}.page-title{font-size:30px}.player-grid{grid-template-columns:1fr;max-width:570px;margin:auto}.player-right{padding:8px 5px}.track-title{font-size:35px}.art{max-height:570px}.section-heading{margin-top:33px}.settings-layout{display:block}.settings-nav{flex-direction:row;overflow:auto;white-space:nowrap;gap:4px;margin-bottom:17px}.settings-nav button{padding:11px 12px;flex-shrink:0}.panel{padding:22px}.fieldgrid{grid-template-columns:1fr}.field.span{grid-column:span 1}.panel-footer{align-items:flex-start;flex-direction:column}.destination{padding:15px}}
+
+/* --- SonosCDPlayer dual appearance system (prototype only) --- */
+:root { color-scheme: light; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:#15120f;
+  --surface:#261e18;
+  --surface2:#2e251f;
+  --ink:#f7ecdf;
+  --muted:#b8a597;
+  --line:#493b31;
+  --accent:#f6ac42;
+  --accent-hover:#ffca77;
+  --accent-soft:#39291d;
+  --gold:#dda15c;
+  --shadow:0 18px 58px rgba(0,0,0,.25);
+}
+:root[data-theme="dark"] body {
+  background:radial-gradient(circle at 76% 8%,#281d16 0%,#15120f 45%);
+}
+:root[data-theme="dark"] .rail {background:#100e0c;color:#f6eade}
+:root[data-theme="dark"] .brand-mark {border-color:#90633b;color:#f6b452}
+:root[data-theme="dark"] .brand small {color:#ba9b7d}
+:root[data-theme="dark"] .navbtn {color:#bdafa3}
+:root[data-theme="dark"] .navbtn:hover {background:#32271f;color:#fff5e8}
+:root[data-theme="dark"] .navbtn.active {background:#403026;color:#fff4e2;box-shadow:inset 3px 0 #f6ac42}
+:root[data-theme="dark"] .railfoot {color:#b19c8a;border-color:#392c23}
+:root[data-theme="dark"] .railfoot strong {color:#f6ebdb}
+:root[data-theme="dark"] .dot {background:#76c5a6}
+:root[data-theme="dark"] .chip {background:#2b231d;color:#e1cdb7}
+:root[data-theme="dark"] .avatar {background:#42301f;color:#ffcd80}
+:root[data-theme="dark"] .preview-banner {background:#2c241e;color:#cab9ab;border:1px solid #44372c}
+:root[data-theme="dark"] .art-card {background:#241d18}
+:root[data-theme="dark"] .art {
+  background:
+  radial-gradient(circle at 24% 24%,#d5a260 0 5%,transparent 30%),
+  radial-gradient(circle at 83% 87%,#21373a 0 14%,transparent 45%),
+  linear-gradient(135deg,#687c6e 0%,#3c625e 48%,#213e46 100%);
+}
+:root[data-theme="dark"] .art-title {color:#fffbef}
+:root[data-theme="dark"] .format {color:#f6c892;background:#413429}
+:root[data-theme="dark"] .track-artist {color:#d2bdae}
+:root[data-theme="dark"] .smallmeta,
+:root[data-theme="dark"] .times {color:#a99a8d}
+:root[data-theme="dark"] .progress {accent-color:#f6ac42}
+:root[data-theme="dark"] .ctrl {color:#f5e8d8}
+:root[data-theme="dark"] .ctrl:hover {background:#3a2d24}
+:root[data-theme="dark"] .ctrl.primary {background:#f6ad45;color:#211810}
+:root[data-theme="dark"] .ctrl.primary:hover {background:#ffc26b}
+:root[data-theme="dark"] .destination {background:#2b231d}
+:root[data-theme="dark"] .destination .speaker-icon {background:#423124;color:#ffc575}
+:root[data-theme="dark"] .trackrow .num,
+:root[data-theme="dark"] .trackrow .duration {color:#b7a496}
+:root[data-theme="dark"] .trackrow.active {background:#3a2b20;color:#ffca81}
+:root[data-theme="dark"] .settings-nav {background:#231c17}
+:root[data-theme="dark"] .settings-nav button {color:#c2aea1}
+:root[data-theme="dark"] .settings-nav button.active {background:#433022;color:#ffbe64}
+:root[data-theme="dark"] .settings-nav button:hover:not(.active) {background:#382c23}
+:root[data-theme="dark"] .panel {background:#261e18}
+:root[data-theme="dark"] .panel p,
+:root[data-theme="dark"] .modal p {color:#bba99b}
+:root[data-theme="dark"] .panel h3 {color:#e9c298}
+:root[data-theme="dark"] .field label {color:#d9c2b0}
+:root[data-theme="dark"] .field input,
+:root[data-theme="dark"] .field select {background:#1c1713;border-color:#584538;color:#f5e8da}
+:root[data-theme="dark"] .field input:focus-visible,
+:root[data-theme="dark"] .field select:focus-visible {outline:2px solid #f4ac46}
+:root[data-theme="dark"] .help,
+:root[data-theme="dark"] .panel-footer {color:#b8a597}
+:root[data-theme="dark"] .btn {background:#eaa03a;color:#21170e}
+:root[data-theme="dark"] .btn:hover {background:#ffc36b}
+:root[data-theme="dark"] .btn.secondary {background:#3c2d22;color:#ffd5a1}
+:root[data-theme="dark"] .btn.secondary:hover {background:#553c2a}
+:root[data-theme="dark"] .btn.danger {background:#a54840;color:#fff8f4}
+:root[data-theme="dark"] .pill-note {background:#352b20;color:#e2caa4}
+:root[data-theme="dark"] .tag {background:#443226;color:#f5bb72}
+:root[data-theme="dark"] .modal-backdrop {background:rgba(6,5,3,.74)}
+:root[data-theme="dark"] .modal {background:#2a211b}
+:root[data-theme="dark"] .toast {background:#563820;color:#fff4e5}
+:root[data-theme="dark"] button:focus-visible,
+:root[data-theme="dark"] a:focus-visible,
+:root[data-theme="dark"] input:focus-visible,
+:root[data-theme="dark"] select:focus-visible {outline-color:#f7b553}
+/* Identical navigation and component geometry in both themes. */
+.theme-switcher {
+  display:inline-flex;gap:3px;align-items:center;
+  border:1px solid var(--line);background:var(--surface);
+  padding:3px;border-radius:999px;flex-shrink:0;
+}
+.theme-switcher button {
+  background:transparent;border:0;color:var(--muted);border-radius:999px;
+  padding:8px 11px;font-size:12px;font-weight:700;white-space:nowrap;
+}
+.theme-switcher button:hover:not(.active) {background:var(--surface2);color:var(--ink)}
+.theme-switcher button.active {background:var(--ink);color:var(--surface)}
+:root[data-theme="dark"] .theme-switcher button.active {background:#f6ac42;color:#22180e}
+.theme-detail {font-size:12px;color:var(--muted);margin-top:9px;line-height:1.5}
+.theme-example {
+  display:flex;gap:9px;align-items:center;padding:14px 16px;
+  background:var(--surface2);border:1px solid var(--line);
+  border-radius:12px;margin:20px 0 4px;
+}
+.theme-example .swatch {height:26px;width:26px;border-radius:8px;background:var(--accent);flex-shrink:0}
+.theme-example .theme-example-label {font-size:13px;font-weight:600}
+@media(max-width:1100px){ .topright .avatar {display:none} }
+@media(max-width:750px){
+  .topbar {flex-wrap:wrap;gap:16px}
+  .topright {width:100%;justify-content:flex-start}
+  .theme-switcher button {padding:8px 13px}
+  .topright .chip,.topright .avatar {display:none}
+}
+@media(max-width:375px){
+  .theme-switcher button {padding:8px 10px;font-size:11px}
+}
+
+
+.cover-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:2;border-radius:13px}
+.cover-image[hidden]{display:none}
+.chip .dot.offline,.railfoot .dot.offline{background:#bc6058}
+input[readonly],select:disabled,input:disabled{opacity:.7;cursor:not-allowed}
+.art-title{overflow-wrap:anywhere}
+@media(max-width:750px){.art-title{font-size:clamp(30px,9vw,56px)}}
+
+.read-only-note{display:flex;align-items:center;gap:10px;padding:16px 1px 20px;color:var(--muted);font-size:13px;line-height:1.4}
+.read-only-note span:first-child{font-size:20px;color:var(--accent)}
+:root[data-theme="dark"] .read-only-note span:first-child{color:#f6ac42}
+/* WEB-03b: compact release comparison, also on narrow phones. */
+.release-status{margin:12px 0!important;font-size:12px!important}
+.release-list{display:grid;gap:8px;margin-top:12px}
+.release-choice{display:flex;gap:12px;justify-content:space-between;align-items:center;min-width:0;width:100%;border:1px solid var(--line);background:var(--surface2);color:var(--ink);padding:12px 14px;text-align:left;border-radius:11px}
+.release-choice:hover,.release-choice:focus-visible{border-color:var(--accent)}
+.release-choice strong{display:block;overflow-wrap:anywhere;font-size:13px}
+.release-choice small{display:block;color:var(--muted);font-size:11px;margin-top:5px;overflow-wrap:anywhere}
+.release-choice .tag{flex-shrink:0}
+.release-detail,.release-confirm{background:var(--surface2);color:var(--ink);padding:16px;border:1px solid var(--line);border-radius:13px;margin-top:14px;overflow-wrap:anywhere}
+.release-detail h4{font-size:16px;margin:0 0 5px}.release-detail p{margin:0 0 12px!important}
+.release-detail ol{font-size:12px;line-height:1.7;padding-left:25px;max-height:280px;overflow:auto}
+.release-detail li{padding-right:8px;border-bottom:1px solid var(--line)}
+.release-confirm p{margin:8px 0 14px!important}
+.release-confirm .twoactions{margin-top:12px}
+.release-detail[hidden],.release-confirm[hidden]{display:none}
+@media(max-width:480px){.release-choice{align-items:flex-start}.release-confirm .twoactions{flex-direction:column}.release-confirm .btn{width:100%}}
+.cover-manual-row{align-items:flex-start}.cover-manual-row .twoactions{justify-content:flex-end}.cover-upload-label{display:inline-flex;align-items:center;cursor:pointer;white-space:nowrap}.cover-upload-label.disabled{opacity:.4;cursor:not-allowed}.cover-manual-row small{max-width:420px}.cover-manual-row .btn{white-space:normal}#cover-upload-status{display:block;margin-top:10px}@media(max-width:650px){.cover-manual-row{flex-direction:column}.cover-manual-row .twoactions{justify-content:flex-start}}
+
+.library-tools{display:grid;gap:8px;margin:14px 0}.library-tools label{font-size:12px;font-weight:700;color:var(--muted)}
+.library-search-line{display:flex;gap:8px;flex-wrap:wrap}.library-search-line input{flex:1;min-width:140px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:11px;font:inherit}
+.library-items{display:grid;gap:7px}.library-entry{display:block;width:100%;text-align:left;padding:14px 15px;background:var(--surface2);color:var(--ink);border:1px solid var(--line);border-radius:12px}.library-entry:hover,.library-entry:focus-visible{border-color:var(--accent)}.library-entry strong{display:block;font-size:14px;overflow-wrap:anywhere}.library-entry small{display:block;color:var(--muted);margin-top:6px;font-size:12px}.library-pager{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:17px 0}.library-pager span{font-size:12px;color:var(--muted)}.library-detail{padding:17px;margin:15px 0;border:1px solid var(--line);border-radius:14px;background:var(--surface2);overflow-wrap:anywhere}.library-detail h3{margin:0 0 6px}.library-detail ol{padding-left:25px;font-size:13px;line-height:1.8}.library-detail .library-meta{font-size:12px;color:var(--muted)}
+.library-edit-fields{display:grid;gap:12px;margin:17px 0;border-top:1px solid var(--line);padding-top:16px}.library-edit-field{display:grid;gap:5px;font-size:12px;font-weight:650}.library-edit-field input,.library-edit-field select{max-width:100%;min-width:0;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);padding:10px}.library-manage-actions{display:flex;flex-wrap:wrap;gap:8px}.library-manage-actions .btn{white-space:normal;text-align:center}
+.library-select-row{display:flex;align-items:center;gap:11px}.library-select-row input[type="checkbox"]{width:18px;height:18px;flex:none;accent-color:var(--accent)}.library-select-row .library-entry{flex:1;min-width:0}.library-bulk-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0}.library-stats{padding:15px;border:1px solid var(--line);background:var(--surface2);border-radius:12px;margin:15px 0}.library-stats strong{display:block;margin-bottom:8px}.library-stats .library-stats-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.library-stats .help{margin:0 0 7px}
+@media(max-width:450px){.library-search-line .btn{padding:10px}.library-pager .btn{padding:9px 12px}.library-manage-actions .btn{width:100%}}
+/* Exact vector geometry from docs/logo_new.svg; colors follow the sidebar theme. */
+.brand-mark{border:0;border-radius:0;width:42px;height:42px;flex:none}
+.brand-logo{display:block;width:42px;height:42px;overflow:visible}
+.brand-logo-frame{fill:#a7c8c5}
+.brand-logo-disc{fill:#24484a}
+.brand-logo-disc-detail{fill:#eaf5f2}
+.brand-logo-waves{fill:none;stroke:#a7c8c5;stroke-width:7.5;stroke-linecap:round;stroke-linejoin:round}
+:root[data-theme="dark"] .brand-logo-frame{fill:#d0b69a}
+:root[data-theme="dark"] .brand-logo-disc{fill:#4a3223}
+:root[data-theme="dark"] .brand-logo-disc-detail{fill:#fff1dd}
+:root[data-theme="dark"] .brand-logo-waves{stroke:#f1bd7b}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="rail"><div class="brand"><div class="brand-mark" aria-hidden="true"><svg class="brand-logo" viewBox="0 0 260 260" xmlns="http://www.w3.org/2000/svg" focusable="false">
+<g class="brand-logo-frame">
+<path d="M129.921,70.325C162.813,70.325 189.518,97.029 189.518,129.921C189.518,162.813 162.813,189.518 129.921,189.518C97.029,189.518 70.325,162.813 70.325,129.921C70.325,97.029 97.029,70.325 129.921,70.325ZM129.921,76.276C100.314,76.276 76.276,100.314 76.276,129.921C76.276,159.529 100.314,183.567 129.921,183.567C159.529,183.567 183.567,159.529 183.567,129.921C183.567,100.314 159.529,76.276 129.921,76.276Z"/>
+<path d="M207.283,60.647L207.283,199.196C207.283,225.504 185.924,246.863 159.616,246.863L100.227,246.863C73.918,246.863 52.559,225.504 52.559,199.196L52.559,60.647C52.559,34.339 73.918,12.98 100.227,12.98L159.616,12.98C185.924,12.98 207.283,34.339 207.283,60.647ZM201.033,60.647C201.033,37.788 182.475,19.23 159.616,19.23L100.227,19.23C77.368,19.23 58.809,37.788 58.809,60.647L58.809,199.196C58.809,222.054 77.368,240.613 100.227,240.613L159.616,240.613C182.475,240.613 201.033,222.054 201.033,199.196L201.033,60.647Z"/>
+</g>
+<g class="brand-logo-disc">
+<circle cx="129.921" cy="129.921" r="48.438"/>
+</g>
+<g class="brand-logo-disc-detail">
+<path d="M129.921,116.128C137.534,116.128 143.714,122.309 143.714,129.921C143.714,137.534 137.534,143.714 129.921,143.714C122.309,143.714 116.128,137.534 116.128,129.921C116.128,122.309 122.309,116.128 129.921,116.128ZM129.921,120.468C124.704,120.468 120.468,124.704 120.468,129.921C120.468,135.138 124.704,139.374 129.921,139.374C135.138,139.374 139.374,135.138 139.374,129.921C139.374,124.704 135.138,120.468 129.921,120.468Z"/>
+<path d="M112.459,125.759L89.877,117.707C93.124,107.064 100.501,98.215 110.137,93.032L121.678,113.976C117.105,116.347 113.679,120.628 112.459,125.759ZM146.59,136.585L169.037,144.841C165.333,154.533 158.129,162.501 148.974,167.194L137.685,146.106C141.718,144.166 144.917,140.762 146.59,136.585Z"/>
+</g>
+<g class="brand-logo-waves">
+<path d="M46.801,155.035C40.632,147.709 37.078,139.11 37.078,129.917C37.078,120.728 40.628,112.133 46.792,104.809"/>
+<path d="M36.507,165.399C27.486,155.542 22.128,143.246 22.128,129.917C22.128,116.592 27.483,104.299 36.499,94.443"/>
+<path d="M213.041,155.035C219.211,147.709 222.765,139.11 222.765,129.917C222.765,120.728 219.214,112.133 213.05,104.809"/>
+<path d="M223.335,165.399C232.357,155.542 237.714,143.246 237.714,129.917C237.714,116.592 232.36,104.299 223.343,94.443"/>
+</g>
+</svg></div><div class="brand-word">SonosCDPlayer<small data-i18n="web.brand.tagline"></small></div></div><nav class="railnav" data-i18n-aria-label="web.text.main_navigation"><button class="navbtn active" data-page="playback"><span class="ico" aria-hidden="true">♫</span><span class="nav-text" data-i18n="web.text.playback"></span></button><button class="navbtn" data-page="settings"><span class="ico" aria-hidden="true">⚙</span><span class="nav-text" data-i18n="web.text.settings"></span></button></nav><div class="railfoot"><span class="dot"></span><strong id="device-reachable" data-i18n="web.text.connecting"></strong><p><span data-i18n="web.text.local_web_client"></span><br><span data-i18n="web.text.port_8081"></span></p></div></aside>
+<main class="main"><div class="topbar"><div><div class="eyebrow" id="eyebrow" data-i18n="web.text.listen_to_music"></div><h1 class="page-title" id="pagetitle" data-i18n="web.text.now_playing"></h1></div><div class="topright">
+  <div class="theme-switcher" role="group" data-i18n-aria-label="web.text.choose_color_theme">
+    <button type="button" data-theme-choice="auto" aria-pressed="true" class="active" data-i18n-title="web.text.follow_device_setting" data-i18n="web.text.auto"></button>
+    <button type="button" data-theme-choice="light" aria-pressed="false" data-i18n-title="web.text.light_teal_theme" data-i18n="web.text.light"></button>
+    <button type="button" data-theme-choice="dark" aria-pressed="false" data-i18n-title="web.text.dark_warm_theme" data-i18n="web.text.dark"></button>
+  </div>
+  <div class="chip"><span class="dot"></span><span id="connection-label" data-i18n="web.text.connecting"></span></div><div class="avatar" aria-hidden="true">CD</div></div></div>
+<div class="preview-banner"><strong data-i18n="web.text.playback_overview_read_only"></strong> <span data-i18n="web.text.control_playback_on_the_cd_player_or_in"></span></div>
+<section class="screen active" id="playback"><div class="player-grid"><div class="art-card"><div class="art" id="cover-art" role="img" data-i18n-aria-label="web.text.album_art_or_decorative_placeholder"><div class="art-title" id="art-placeholder"><small>SONOS CD PLAYER</small>CD<br> AUDIO</div><img id="cover-image" class="cover-image" data-i18n-alt="web.text.album_cover" hidden></div><div class="art-bottom"><small><span id="art-album" data-i18n="web.text.no_cd_detected"></span></small><span class="format">CD AUDIO</span></div></div><div class="player-right"><div class="playing-label"><span class="bars" aria-hidden="true"><i></i><i></i><i></i></span><span id="player-status" data-i18n="web.text.disconnected"></span></div><h2 class="track-title" id="track-title" data-i18n="web.text.no_playback"></h2><p class="track-artist" id="track-artist">—</p><div class="smallmeta" id="track-info" data-i18n="web.text.no_cd_information_yet"></div><input class="progress" type="range" value="36" min="0" max="100" data-i18n-aria-label="web.text.playback_position_read_only" disabled><div class="times"><span id="elapsed">—</span><span id="duration">—</span></div><div class="read-only-note" role="note"><span aria-hidden="true">♫</span><span data-i18n="web.text.control_playback_and_speakers_on_the_device_or"></span></div><div class="destination"><div class="speaker-icon" aria-hidden="true">◖))</div><div class="dest-details"><small id="target-label" data-i18n="web.text.sonos_target"></small><strong><span id="target-name" data-i18n="web.text.no_selection_loaded"></span></strong></div></div></div></div><div class="section-heading"><h2 data-i18n="web.text.track_list"></h2><button class="textbtn" id="edit-metadata" data-i18n="web.text.edit_metadata"></button></div><div class="tracklist" id="tracks" aria-live="polite"><div class="trackrow" data-i18n="web.text.no_track_list_available"></div></div></section>
+<section class="screen" id="settings"><div class="settings-layout"><nav class="settings-nav" data-i18n-aria-label="web.text.settings_sections"><button data-panel="metadata" class="active" data-i18n="web.text.metadata"></button><button data-panel="library" data-i18n="web.text.cd_library"></button><button data-panel="audio" data-i18n="web.text.playback"></button><button data-panel="display" data-i18n="web.text.display"></button><button data-panel="inputs" data-i18n="web.settings.input_title"></button><button data-panel="network" data-i18n="web.text.network"></button><button data-panel="system" data-i18n="web.text.device"></button></nav><div class="panel">
+<div class="subpanel active" id="metadata"><h2 data-i18n="web.text.cd_metadata"></h2><p data-i18n="web.text.correct_the_album_and_tracks_on_the_inserted"></p>
+<div class="metadata-source-status" role="group" data-i18n-aria-label="web.metadata_status.title">
+  <div class="record"><strong data-i18n="web.metadata_status.cdtext"></strong><span id="metadata-cdtext" role="status" aria-live="polite">—</span></div>
+  <div class="record"><strong data-i18n="web.metadata_status.lookup"></strong><span id="metadata-lookup" role="status" aria-live="polite">—</span></div>
+  <div class="record"><strong data-i18n="web.metadata_status.match"></strong><span id="metadata-match" role="status" aria-live="polite">—</span></div>
+</div>
+<div class="fieldgrid">
+<div class="field"><label for="album"><span data-i18n="web.text.album_title"></span> <span class="tag" id="meta-source" data-i18n="web.text.loading_source"></span></label><input id="album" maxlength="160" autocomplete="off" disabled><small class="help" id="meta-origin-album" role="status">—</small></div>
+<div class="field"><label for="artist" data-i18n="web.text.album_artist"></label><input id="artist" maxlength="160" autocomplete="off" disabled><small class="help" id="meta-origin-artist" role="status">—</small></div>
+<div class="field span"><label for="meta-track-select" data-i18n="web.text.track_to_edit"></label><select id="meta-track-select" disabled><option data-i18n="web.text.no_cd"></option></select></div>
+<div class="field"><label for="title2" data-i18n="web.text.track_title"></label><input id="title2" maxlength="160" autocomplete="off" disabled><small class="help" id="meta-origin-track-title" role="status">—</small></div>
+<div class="field"><label for="meta-track-artist" data-i18n="web.text.track_artist"></label><input id="meta-track-artist" maxlength="160" autocomplete="off" disabled><small class="help" id="meta-origin-track-artist" role="status">—</small></div>
+</div>
+<div class="pill-note" data-i18n="web.text.empty_fields_remove_a_manual_correction_automatically_retrieved"></div>
+<div class="panel-footer"><span id="meta-edit-status" role="status" data-i18n="web.text.waiting_for_cd_metadata"></span><div class="twoactions"><button class="btn secondary" id="meta-discard" disabled data-i18n="web.text.discard"></button><button class="btn" id="meta-save" disabled data-i18n="web.text.save_changes"></button></div></div>
+<h3 data-i18n="web.text.album_cover"></h3>
+<div class="record cover-manual-row"><div><strong data-i18n="web.text.add_custom_cover"></strong><small data-i18n="web.text.jpeg_or_png_up_to_4_mib_the"></small></div><div class="twoactions"><label class="btn secondary cover-upload-label" id="cover-upload-label" for="cover-upload" data-i18n="web.text.choose_image"></label><input type="file" id="cover-upload" accept="image/jpeg,image/png" hidden disabled><button class="btn danger" id="cover-remove" disabled data-i18n="web.text.remove_custom_cover"></button></div></div>
+<p id="cover-upload-status" class="help" role="status" data-i18n="web.text.no_custom_cover_saved"></p>
+<div class="record"><div><strong data-i18n="web.cover_storage.title"></strong><small id="cover-storage-status" role="status" data-i18n="web.cover_storage.loading"></small></div><button class="btn secondary" type="button" id="cover-storage-refresh" data-i18n="web.text.refresh"></button></div>
+<h3 data-i18n="web.text.release_association"></h3>
+<div class="record"><div><strong data-i18n="web.text.choose_a_musicbrainz_release"></strong><small data-i18n="web.text.compare_editions_and_explicitly_assign_the_correct_one"></small></div><button class="btn secondary" id="release-search" disabled data-i18n="web.text.search_releases"></button></div>
+<p id="release-status" class="release-status" role="status" data-i18n="web.text.no_release_search_performed_yet"></p>
+<div class="release-list" id="release-list" data-i18n-aria-label="web.text.musicbrainz_releases"></div>
+<div class="release-detail" id="release-detail" hidden></div>
+<div class="release-confirm" id="release-confirm" hidden>
+  <strong data-i18n="web.text.release_change_and_protected_fields"></strong>
+  <p id="release-confirm-text" data-i18n="web.text.what_should_happen_to_existing_manual_corrections"></p>
+  <div class="twoactions"><button class="btn secondary" id="release-keep" data-i18n="web.text.keep_corrections"></button><button class="btn danger" id="release-drop" data-i18n="web.text.discard_corrections"></button><button class="btn secondary" id="release-cancel" data-i18n="web.text.cancel"></button></div>
+</div></div>
+<div class="subpanel" id="library"><h2 data-i18n="web.text.cd_library"></h2><p data-i18n="web.text.browse_stored_cds_and_correct_them_even_without"></p>
+<div class="library-tools"><label for="library-search" data-i18n="web.text.search_library"></label><div class="library-search-line"><input id="library-search" type="search" maxlength="80" data-i18n-placeholder="web.text.album_artist_or_track"><button class="btn secondary" id="library-find" data-i18n="web.text.search"></button><button class="btn secondary" id="library-reload" data-i18n="web.text.refresh"></button></div></div>
+<p class="help" id="library-status" role="status" data-i18n="web.text.library_not_loaded_yet"></p>
+<div class="library-items" id="library-items" data-i18n-aria-label="web.text.stored_cds"></div>
+
+<div class="library-bulk-actions"><span class="help" id="library-selected-count" data-i18n="web.text.0_cds_selected"></span><button class="btn danger" id="library-delete-selected" disabled data-i18n="web.text.delete_selected_cds"></button><button class="btn secondary" id="library-selection-clear" disabled data-i18n="web.text.clear_selection"></button></div>
+<div class="library-pager"><button class="btn secondary" id="library-prev" disabled data-i18n="web.text.previous"></button><span id="library-count" data-i18n="web.text.0_entries"></span><button class="btn secondary" id="library-next" disabled data-i18n="web.text.next"></button></div>
+<div id="library-detail" class="library-detail" hidden aria-live="polite"></div>
+<div class="library-stats"><strong data-i18n="web.text.storage_overview"></strong><p class="help" id="library-stats" data-i18n="web.text.storage_information_not_loaded_yet"></p><p class="help" id="library-maintenance-status" role="status"></p><div class="library-stats-actions"><button class="btn secondary" id="library-refresh-stats" data-i18n="web.text.refresh_storage_information"></button><button class="btn secondary" id="library-prune-auto" disabled data-i18n="web.text.delete_unused_automatic_covers"></button></div><p class="help" data-i18n="web.text.manually_uploaded_and_shared_covers_are_preserved_during"></p></div>
+<h3 data-i18n="web.text.inserted_cd"></h3><div class="record"><div><strong id="library-current" data-i18n="web.text.inserted_cd"></strong><small data-i18n="web.text.use_the_separate_metadata_editor_for_the_inserted"></small></div><button class="btn secondary" id="delete-disc" data-i18n="web.text.reset_cd_entry"></button></div><div class="panel-footer"><span data-i18n="web.text.deleting_all_metadata_requires_an_ejected_cd_stopped"></span><button class="btn danger" id="delete-all" disabled data-i18n="web.text.delete_all_metadata"></button></div></div>
+<div class="subpanel" id="audio"><h2 data-i18n="web.text.playback"></h2><p data-i18n="web.text.basic_settings_for_reading_and_playing_cds"></p><div class="fieldgrid"><div class="field"><label for="queue" data-i18n="web.text.sonos_queue"></label><select id="queue" disabled><option data-i18n="web.text.use"></option><option data-i18n="web.text.do_not_use"></option></select></div><div class="field"><label for="continue" data-i18n="web.text.continue_after_track"></label><select id="continue" disabled><option data-i18n="web.text.enabled"></option><option data-i18n="web.text.disabled"></option></select></div><div class="field"><label for="buffer" data-i18n="web.text.audio_buffer_mib"></label><input id="buffer" type="number" value="16" min="16" max="512" disabled></div></div><div class="panel-footer"><span data-i18n="web.text.read_only_configuration_overrides_and_service_restarts_will"></span><button class="btn" disabled data-i18n="web.text.save"></button></div></div>
+<div class="subpanel" id="display"><h2 data-i18n="web.text.display"></h2><p data-i18n="web.text.display_settings_on_the_device_and_in_the"></p><div class="fieldgrid"><div class="field"><label for="lang" data-i18n="web.text.language"></label><select id="lang" disabled><option data-i18n="web.text.deutsch"></option><option data-i18n="web.text.english"></option></select></div><div class="field"><label for="cover" data-i18n="web.text.cover_on_display"></label><select id="cover" disabled><option data-i18n="web.text.automatic"></option><option data-i18n="web.text.off"></option><option data-i18n="web.text.on"></option></select></div><div class="field span">
+<label for="theme-setting" data-i18n="web.text.web_client_color_theme"></label>
+<select id="theme-setting">
+<option value="auto" data-i18n="web.text.automatic_browser_setting"></option>
+<option value="light" data-i18n="web.text.light_teal"></option>
+<option value="dark" data-i18n="web.text.dark_espresso_amber"></option>
+</select>
+<span class="help" data-i18n="web.text.automatic_follows_this_browsers_light_dark_setting_your"></span>
+</div></div>
+<div class="theme-example" aria-live="polite"><span class="swatch" aria-hidden="true"></span><span class="theme-example-label" id="theme-example-label" data-i18n="web.text.current_theme_light_teal"></span></div>
+<div class="panel-footer"><span data-i18n="web.settings.language_scope"></span><button class="btn secondary" id="save-display-language" disabled data-i18n="web.settings.save_language"></button></div>
+<div class="panel-footer"><span data-i18n="web.settings.cover_scope"></span><button class="btn secondary" id="reset-cover-mode" disabled data-i18n="web.settings.reset_cover"></button><button class="btn secondary" id="save-cover-mode" disabled data-i18n="web.settings.save_cover"></button></div>
+<div class="panel-footer"><span data-i18n="web.text.web_theme_web_json_active_device_settings_will"></span><button class="btn" id="save-theme" data-i18n="web.text.save_theme"></button></div></div>
+<div class="subpanel" id="inputs"><h2 data-i18n="web.settings.input_title"></h2>
+<p class="help" data-i18n="web.settings.input_scope"></p>
+<div class="fieldgrid">
+<div class="field"><label for="input-poll" data-i18n="web.settings.input_poll"></label><input id="input-poll" type="number" min="1" max="1000" step="1" disabled></div>
+<div class="field"><label for="input-repeat-delay" data-i18n="web.settings.input_delay"></label><input id="input-repeat-delay" type="number" min="100" max="5000" step="1" disabled></div>
+<div class="field"><label for="input-repeat-interval" data-i18n="web.settings.input_interval"></label><input id="input-repeat-interval" type="number" min="50" max="2000" step="1" disabled></div>
+<div class="field"><label for="input-debounce" data-i18n="web.settings.input_debounce"></label><input id="input-debounce" type="number" min="0" max="250" step="1" disabled></div>
+<div class="field"><label for="input-steps" data-i18n="web.settings.input_steps"></label><select id="input-steps" disabled><option value="1">1</option><option value="2">2</option><option value="4">4</option></select></div>
+<div class="field"><label for="input-invert" data-i18n="web.settings.input_invert"></label><select id="input-invert" disabled><option value="false" data-i18n="web.settings.no"></option><option value="true" data-i18n="web.settings.yes"></option></select></div>
+</div>
+<div class="panel-footer"><span data-i18n="web.settings.input_restart"></span><button class="btn secondary" type="button" id="input-settings-reset" disabled data-i18n="web.settings.input_reset_button"></button><button class="btn" type="button" id="input-settings-save" disabled data-i18n="web.settings.input_save_button"></button></div></div>
+<div class="subpanel" id="network"><h2 data-i18n="web.text.network"></h2><p data-i18n="web.text.connection_information_existing_wi_fi_setup_remains_a"></p><div class="record"><div><strong data-i18n="web.text.network_status"></strong><small data-i18n="web.text.network_status_is_not_yet_checked_separately"></small></div><span class="tag" data-i18n="web.text.unknown"></span></div><div class="pill-note" data-i18n="web.text.passwords_and_other_secret_credentials_are_never_shown"></div></div>
+<div class="subpanel" id="system"><h2 data-i18n="web.text.device"></h2><p data-i18n="web.text.local_device_information_and_future_management_functions"></p><div class="record"><div><strong>SonosCDPlayer</strong><small data-i18n="web.text.web_service_port_8081"></small></div><span class="tag" data-i18n="web.text.preview"></span></div><div class="record"><div><strong data-i18n="web.text.configuration"></strong><small><span data-i18n="web.text.etc_sonoscdplayer_base_settings_read_only_for_services"></span><br><span data-i18n="web.text.var_lib_sonoscdplayer_settings_saved_by_the_menu"></span></small></div></div><div class="pill-note" data-i18n="web.text.restart_diagnostics_device_name_and_advanced_settings_will"></div></div>
+</div></div></section>
+</main></div>
+<div class="modal-backdrop" id="modal" role="presentation"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><h3 id="modal-title" data-i18n="web.text.delete_entry"></h3><p id="modal-text" data-i18n="web.text.reset_cached_metadata_for_the_inserted_cd_and"></p><div class="modalfooter"><button class="btn secondary" id="modal-cancel" data-i18n="web.text.cancel"></button><button class="btn danger" id="modal-confirm" data-i18n="web.text.delete"></button></div></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/app.js" defer></script>
+</body>
+</html>

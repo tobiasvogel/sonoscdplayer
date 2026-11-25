@@ -21,6 +21,7 @@ CAPABILITIES = DisplayCapabilities(kind='graphic', width=128, height=128,
 
 @dataclass(frozen=True)
 class DisplayConfig:
+    """Validated rotation, color order and native master-current setting."""
     rotation: int = 0
     color_order: str = 'rgb'
     brightness: int = 8
@@ -59,6 +60,7 @@ def initialization_commands(config=DisplayConfig()):
 
 
 class SSD1351:
+    """128x128 RGB OLED driver with injected SPI transport and optional handover."""
     capabilities = CAPABILITIES
 
     def __init__(self, transport: DisplayTransport, config=DisplayConfig(), *, sleep=time.sleep):
@@ -78,6 +80,7 @@ class SSD1351:
         self.transport.data(data)
 
     def open(self, *, adopt_existing=False):
+        """Initialize the panel or adopt a matching, already initialized frame."""
         if self.opened:
             return
         try:
@@ -106,6 +109,7 @@ class SSD1351:
             raise
 
     def show(self, frame):
+        """Validate, rotate and transmit one complete RGB565 frame."""
         if not self.opened:
             raise RuntimeError('SSD1351 not opened')
         self._show_native(native_bytes(frame, self.config))
@@ -119,6 +123,7 @@ class SSD1351:
         self._cmd(0xC7, bytes([value]))
 
     def close(self, *, blank=True):
+        """Release owned I/O, optionally preserving display RAM for handover."""
         try:
             if self._transport_open and blank:
                 self._cmd(0xAE)

@@ -7,6 +7,7 @@ previously entered password characters are masked.
 from __future__ import annotations
 
 from sonoscdplayer.network_setup.session import SetupSnapshot
+from sonoscdplayer.ui.i18n import Translator
 from sonoscdplayer.ui.menu.wifi_entry import RESCAN, HIDDEN, BACK
 from sonoscdplayer.ui.menu.text_input import DONE, DELETE, CANCEL
 from sonoscdplayer.ui.screens.semantic_screen import ScreenItem, SemanticScreen
@@ -20,12 +21,10 @@ def wifi_entry_screen(controller, snapshot, *, language='de'):
     """
     if not isinstance(snapshot, SetupSnapshot):
         return None
-    if language not in ('de', 'en'):
-        raise ValueError('unsupported setup preview language')
-    de = language == 'de'
+    tr = Translator(language).tr
     if snapshot.state == 'scanning' and snapshot.manual:
         return SemanticScreen('notice', view='wifi_manual',
-                              message='WLAN wird gesucht' if de else 'Scanning Wi-Fi networks',
+                              message=tr('netsetup.scanning'),
                               severity='info')
     if snapshot.state != 'choosing' or controller is None:
         return None
@@ -38,11 +37,11 @@ def wifi_entry_screen(controller, snapshot, *, language='de'):
         rows = []
         for index, item in enumerate(entries):
             if item is RESCAN:
-                label = 'Erneut suchen' if de else 'Rescan'
+                label = tr('netsetup.rescan')
             elif item is HIDDEN:
-                label = 'Verstecktes WLAN' if de else 'Hidden network'
+                label = tr('netsetup.hidden')
             elif item is BACK:
-                label = 'Zurück' if de else 'Back'
+                label = tr('netsetup.back_hotspot')
             else:
                 label = getattr(item, 'ssid', None)
                 if not isinstance(label, str) or not label:
@@ -50,12 +49,12 @@ def wifi_entry_screen(controller, snapshot, *, language='de'):
                 if getattr(item, 'secure', False):
                     label += '  [*]'
                 elif item.ssid in snapshot.saved:
-                    label += '  [saved]'
+                    label += '  [' + tr('netsetup.kind.saved') + ']'
             rows.append(ScreenItem(f'wifi:{index}', label, focused=index == focus,
                                    intent='wifi_preview_only'))
-        return SemanticScreen('menu', heading='WLAN auswählen' if de else 'Choose Wi-Fi',
+        return SemanticScreen('menu', heading=tr('netsetup.choose'),
                               view='wifi_manual', items=tuple(rows),
-                              status='Drehencoder verwenden' if de else 'Use rotary encoder')
+                              status=tr('footer.select'))
     if mode not in ('ssid', 'password'):
         return None
     entry = getattr(controller, 'entry', None)
@@ -63,9 +62,9 @@ def wifi_entry_screen(controller, snapshot, *, language='de'):
         return None
     cursor = getattr(entry, 'current', None)
     action_labels = {
-        DONE: 'Fertig' if de else 'Done',
-        DELETE: 'Löschen' if de else 'Delete',
-        CANCEL: 'Abbrechen' if de else 'Cancel',
+        DONE: tr('textinput.done'),
+        DELETE: tr('textinput.delete'),
+        CANCEL: tr('textinput.cancel'),
     }
     if not isinstance(cursor, str):
         return None
@@ -74,16 +73,14 @@ def wifi_entry_screen(controller, snapshot, *, language='de'):
         return None
     secret = mode == 'password'
     typed = '*' * len(entry.text) if secret else entry.text
-    title = ('Passwort eingeben' if de else 'Enter password') if secret else (
-        'WLAN-Name eingeben' if de else 'Enter Wi-Fi name')
+    title = tr('netsetup.password_title' if secret else 'netsetup.ssid_title')
     rows = (
-        ScreenItem('wifi:value', ('Eingabe' if de else 'Input') + ': ' + (typed or '—'),
+        ScreenItem('wifi:value', tr('textinput.input') + ': ' + (typed or '—'),
                    value=typed),
         ScreenItem('wifi:cursor', selection, focused=True, intent='wifi_preview_only'),
     )
     # Do not copy entry.error parameters or password data to status/messages.
-    status = ('Eingabe prüfen' if de else 'Check input') if entry.error else (
-        'Drücken zum Auswählen' if de else 'Press to select')
+    status = tr('textinput.check') if entry.error else tr('textinput.footer')
     return SemanticScreen('menu', heading=title, view='wifi_manual', items=rows,
                           subheading=getattr(controller, 'target', '') if secret else '',
                           status=status)

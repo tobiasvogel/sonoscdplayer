@@ -57,6 +57,28 @@ class LocalizationTests(unittest.TestCase):
             value=load_ui_config(p)
         self.assertEqual((value.language,value.cover_mode),('en','off'))
 
+    def test_display_adopts_saved_language_only_when_menu_is_idle(self):
+        from sonoscdplayer.ui.display_service import refresh_saved_language
+        from sonoscdplayer.ui.language_state import UiState
+        with tempfile.TemporaryDirectory() as tmp:
+            state = UiState(tmp, log=lambda *_: None)
+            menu = InteractiveMenu(discover=lambda *,timeout: speakers(), language='de')
+            assert state.save_language('en')
+            self.assertTrue(refresh_saved_language(menu, state))
+            self.assertEqual(menu.language, 'en')
+            self.assertEqual(menu.language_focus, menu.languages.index('en'))
+            self.assertFalse(refresh_saved_language(menu, state))
+            assert state.save_language('de')
+            menu.active = True
+            self.assertFalse(refresh_saved_language(menu, state))
+            self.assertEqual(menu.language, 'en')
+            menu.active = False
+            menu.language_picker = True
+            self.assertFalse(refresh_saved_language(menu, state))
+            menu.language_picker = False
+            self.assertTrue(refresh_saved_language(menu, state))
+            self.assertEqual(menu.language, 'de')
+
     def test_invalid_config_is_rejected(self):
         with self.assertRaises(ValueError):
             UIConfig(language='fr')
@@ -143,6 +165,39 @@ class LocalizationTests(unittest.TestCase):
         menu=InteractiveMenu(discover=lambda *,timeout: speakers())
         self.assertFalse(menu.event('connect','pressed',now=0))
         self.assertFalse(menu.active)
+
+
+class NoInlineLanguageTextTests(unittest.TestCase):
+    """Every text shown to the user comes from locales/*.json."""
+
+    def test_no_module_switches_texts_on_the_language_itself(self):
+        import pathlib
+        import re
+        import sonoscdplayer
+        root = pathlib.Path(sonoscdplayer.__file__).parent
+        pattern = re.compile(r"""language\s*==\s*['"][a-z]{2}['"]|\bif de else\b""")
+        offenders = [str(path.relative_to(root)) for path in root.rglob('*.py')
+                     if 'i18n' not in path.parts and pattern.search(path.read_text())]
+        self.assertEqual(offenders, [])
+
+    def test_wifi_previews_follow_the_catalog(self):
+        from sonoscdplayer.network_setup.session import SetupSnapshot
+        from sonoscdplayer.ui.displays.special_screens import wifi_setup_screen
+        from sonoscdplayer.ui.i18n import Translator
+        for language in ('de', 'en'):
+            tr = Translator(language).tr
+            with self.subTest(language=language):
+                self.assertEqual(wifi_setup_screen(SetupSnapshot(state='preparing'),
+                                                   language=language).message,
+                                 tr('netsetup.preparing'))
+                self.assertEqual(wifi_setup_screen(SetupSnapshot(state='connected', target='Home'),
+                                                   language=language).message,
+                                 tr('netsetup.connected', ssid='Home'))
+                hotspot = wifi_setup_screen(SetupSnapshot(state='hotspot', hotspot_ssid='X',
+                                                          password='ABCDEFGH'),
+                                            language=language)
+                self.assertEqual(hotspot.heading, tr('netsetup.title'))
+                self.assertEqual(hotspot.status, tr('netsetup.display_only'))
 
 
 if __name__=='__main__':

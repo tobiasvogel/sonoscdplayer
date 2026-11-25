@@ -10,7 +10,9 @@ def master_current(contrast):
 
 
 class SSD1351Backend(SSD1351):
+    """Adapt SSD1351 current control and recovery to the shared runtime API."""
     def set_contrast(self, value):
+        """Apply shared 0..255 contrast, suppressing duplicate native levels."""
         level = master_current(value)
         if not self.opened:
             raise RuntimeError('SSD1351 not opened')
@@ -28,6 +30,7 @@ class SSD1351Backend(SSD1351):
         self._last_current = self.config.brightness
 
     def recover_once(self, frame, *, contrast=None):
+        """Reinitialize and redraw after the caller consumes its recovery budget."""
         native_bytes(frame, self.config)  # Reject bad frames before touching I/O.
         self.close()
         self.open()

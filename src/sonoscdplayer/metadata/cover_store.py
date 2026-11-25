@@ -14,13 +14,19 @@ from io import BytesIO
 import os
 from pathlib import Path
 import re
+import stat
 import tempfile
 import urllib.error
 import urllib.request
 
+from sonoscdplayer.metadata.cover_lock import locked_cover_directory
+
 DEFAULT_COVER_DIR = Path('/var/lib/sonoscdplayer/covers')
 _UUID = re.compile(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')
 
+
+# The storage budget also includes legacy/unmanaged JPEGs; only the web
+# inventory restricts filenames. Symlinks are excluded from both scans.
 
 DEFAULT_BUDGET_MB = 100
 
@@ -60,12 +66,20 @@ class CoverStore:
         return self.directory / (sha256(release_id.lower().encode()).hexdigest() + '.jpg')
 
     def used_bytes(self) -> int:
-        """Size of all stored covers."""
+        """Count all regular JPEGs; never treat I/O errors as free space."""
         try:
-            return sum(entry.stat().st_size for entry in self.directory.glob('*.jpg')
-                       if entry.is_file())
-        except OSError:
-            return 0
+            scan = os.scandir(self.directory)
+        except FileNotFoundError:
+            return 0  # Initial empty cache; no directory created yet.
+        used = 0
+        with scan as entries:
+            for entry in entries:
+                if not entry.name.lower().endswith('.jpg'):
+                    continue
+                info = entry.stat(follow_symlinks=False)
+                if stat.S_ISREG(info.st_mode):
+                    used += info.st_size
+        return used
 
     def find(self, release_id: str) -> Path | None:
         """Path of the stored cover for this release, or None."""
@@ -103,19 +117,22 @@ class CoverStore:
                 rgb = image.convert('RGB')
                 encoded = BytesIO()
                 rgb.save(encoded, format='JPEG', quality=policy.jpeg_quality, optimize=True)
-            if self.used_bytes() + len(encoded.getvalue()) > policy.budget_mb * 1024 * 1024:
-                # Full budget: keep every stored cover, store no new one.
-                raise CoverBudgetFull()
             self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-            path = self._path(release_id)
-            fd, temp_name = tempfile.mkstemp(prefix='.cover-', dir=self.directory)
-            try:
-                with os.fdopen(fd, 'wb') as output:
-                    output.write(encoded.getvalue())
-                os.replace(temp_name, path)
-            finally:
-                if os.path.exists(temp_name):
-                    os.unlink(temp_name)
+            # Cooperate with manual cover writes and prune-auto. The budget
+            # check and final rename must be inside the same critical section.
+            with locked_cover_directory(self.directory):
+                if self.used_bytes() + len(encoded.getvalue()) > policy.budget_mb * 1024 * 1024:
+                    # Full budget: keep every stored cover, store no new one.
+                    raise CoverBudgetFull()
+                path = self._path(release_id)
+                fd, temp_name = tempfile.mkstemp(prefix='.cover-', dir=self.directory)
+                try:
+                    with os.fdopen(fd, 'wb') as output:
+                        output.write(encoded.getvalue())
+                    os.replace(temp_name, path)
+                finally:
+                    if os.path.exists(temp_name):
+                        os.unlink(temp_name)
             return path
         except (urllib.error.URLError, TimeoutError, OSError,
                 UnidentifiedImageError, ValueError, Image.DecompressionBombError):

@@ -96,9 +96,14 @@ class DiscMonitor:
                 return self._mark_disconnected(controller)
             return self._recover_or_hold(controller)
 
-        current_id = self.identity_reader(self.device)
         if self._disconnected:
             return self._recover_or_hold(controller)
+        try:
+            current_id = self.identity_reader(self.device)
+        except (OSError, ValueError):
+            # USB sysfs can disappear between checking the device path and
+            # reading its identity. Keep the player alive, but revoke READY.
+            return self._mark_disconnected(controller, 'USB identity unavailable')
         if self.identity is not None and current_id != self.identity:
             return self._mark_disconnected(
                 controller, 'drive reconnect requires verified identity')
@@ -155,8 +160,13 @@ class DiscMonitor:
         """
         if self._disconnected or not self.path_exists(self.device):
             return False
-        if self.identity is not None and self.identity_reader(self.device) != self.identity:
-            return False
+        if self.identity is not None:
+            try:
+                if self.identity_reader(self.device) != self.identity:
+                    return False
+            except (OSError, ValueError):
+                # A passive check must not bring down playback on USB removal.
+                return False
         with self.lock(self.device, blocking=False) as acquired:
             if not acquired:
                 return False
@@ -182,7 +192,12 @@ class DiscMonitor:
                 current.device != self.device or not self.path_exists(self.device)):
             self._mark_disconnected(controller) if not self.path_exists(self.device) else None
             return False
-        if self.identity_reader(self.device) != self.identity:
+        try:
+            current_id = self.identity_reader(self.device)
+        except (OSError, ValueError):
+            self._mark_disconnected(controller, 'USB identity unavailable')
+            return False
+        if current_id != self.identity:
             self._mark_disconnected(controller,
                                     'drive reconnect requires verified identity')
             return False

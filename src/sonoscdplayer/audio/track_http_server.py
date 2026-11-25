@@ -922,6 +922,8 @@ def main():
     p.add_argument('--device', default='/dev/sr1')
     p.add_argument('--track', type=int, default=1)
     p.add_argument('--config', default=str(config_paths.player_config()))
+    p.add_argument('--max-buffer-mib', type=int, default=None,
+                   help='validated playback setting passed by the player service')
     p.add_argument('--bind', default='0.0.0.0')
     p.add_argument('--port', type=int, default=8765)
     p.add_argument('--write-timeout', type=float, default=30)
@@ -931,6 +933,10 @@ def main():
                    help='serve every track of the CD (/track/<n>.wav), one reader at a time')
     a = p.parse_args()
     cfg = StreamingConfig.load(a.config)
+    if a.max_buffer_mib is not None:
+        if not 16 <= a.max_buffer_mib <= 512:
+            p.error('max-buffer-mib must be 16..512')
+        cfg = StreamingConfig(max_buffer_mib=a.max_buffer_mib)
     toc = read_toc(a.device)
     track = toc.get_track(a.track)
     command = cdparanoia_command(a.device, a.track)

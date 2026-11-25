@@ -34,7 +34,7 @@ timeout_seconds = 8
 # MusicBrainz remains the primary provider. GnuDB is consulted only on
 # unavailable/not-found MusicBrainz results; no CDDB ID becomes an MB release ID.
 [metadata.gnudb]
-enabled = true
+enabled = false
 timeout_seconds = 5
 endpoint = "https://gnudb.gnudb.org/~cddb/cddb.cgi"
 
@@ -77,7 +77,7 @@ experimental_safe_screen = false
 
 # Optional OLED hardware pins. Legacy defaults are DC=25, RESET=24.
 # For the revised button PCB, set DC=22 and RESET=27 locally.
-# # Controller and output behavior are shared by runtime, boot and shutdown builds.
+# Controller and output behavior are shared by runtime, boot and shutdown builds.
 [display]
 controller = "ssd1327"   # ssd1327 | ssd1351; one choice for all output paths
 interface = "spi"

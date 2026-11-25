@@ -504,6 +504,11 @@ def main():
     if args.ui_events_socket is not None and not args.gpio:
         p.error('--ui-events-socket requires --gpio')
     cfg = load_config(args.config)
+    if args.gpio:
+        # Only the physical service consumes the validated staged input tuning.
+        # Simulation continues to exercise the original interface.toml.
+        from sonoscdplayer.hardware.inputs.input_settings import merged_settings
+        cfg = merged_settings(cfg)
     if args.simulate:
         run_sim(cfg, args.simulate)
     else:

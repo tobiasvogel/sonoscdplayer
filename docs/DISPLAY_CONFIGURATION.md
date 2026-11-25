@@ -113,8 +113,9 @@ The standalone diagnostic still accepts its own explicit GPIO and test-pattern
 arguments. It does not change the runtime configuration.
 
 Hardware status: SSD1351 diagnostics and RGB overview/menu previews were verified
-on the project module. The new live-service binding, firmware splash and native
-shutdown presentation still need end-to-end verification on the Pi. In particular,
+on the project module. The live-service binding and the new logo in startup/shutdown screens have
+also been confirmed on the Pi. These hardware results cover the tested module
+and wiring; longer-term operation and other module variants remain separate checks. In particular,
 do not infer panel operation from successful write-only SPI transfers. Small
 status-font readability is a separate follow-up for both 128x128 OLEDs.
 
@@ -157,3 +158,19 @@ with `--rasterized-logo /path/to/export.png`. SVG rasterization is a development
 step; normal deployment and the Pi runtime do not need CairoSVG or an SVG renderer.
 The source geometry and exact palette are checked alongside runtime and compiled
 frame payloads; 116 focused notice/runtime/system-screen tests passed locally.
+
+## Merge preparation validation
+
+After integrating main through `987bcfd37baab2530e26a0d05314677e2eb763b2`,
+639 focused tests and 539 subtests passed with Python 3.13 and the project's
+Pillow 11.3 dependency. This covers the UI, all display drivers, display
+configuration/deployment, the screen generators and the latest drive-lock
+permission tests. One Linux-native build was skipped and ten tests requiring
+restricted Unix sockets or Linux-native shutdown builds were deselected.
+`git diff --check` passed.
+
+A broader suite attempt passed 1275 tests before stopping on Unix-socket
+permission errors and missing Linux headers on the macOS test host. Examples
+of both failure categories were reproduced on unchanged main. These results
+do not claim a complete Linux suite pass; run `python3 -m pytest` on the Pi
+for that final platform verification.

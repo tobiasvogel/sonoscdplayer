@@ -3,6 +3,7 @@ from PIL import Image, ImageOps
 
 
 def fitted_rgb(image):
+    """Fit an image on a black 128x128 canvas, compositing transparency."""
     if not 1 <= image.width <= 4096 or not 1 <= image.height <= 4096:
         raise ValueError('invalid image dimensions')
     rgba = image.convert('RGBA')
@@ -15,6 +16,7 @@ def fitted_rgb(image):
 
 
 def image_to_frame(image, *, color=False):
+    """Pack the shared canvas as RGB565 or the established grayscale frame."""
     if color:
         from sonoscdplayer.hardware.displays.rgb565 import image_to_frame as pack
         return pack(fitted_rgb(image), (128, 128))

@@ -13,7 +13,7 @@ Usage: bash scripts/setup.sh [--apply|--dry-run] [--service-user NAME] [--venv P
   [--packages yes|no] [--spi yes|no] [--i2c yes|no]
   [--config yes|no] [--sensor yes|no] [--services yes|no] [--early-led yes|no]
   [--power-actions yes|no] [--drive-activity-events yes|no]
-  [--connect-gestures yes|no] [--network-setup yes|no]
+  [--connect-gestures yes|no] [--network-setup yes|no] [--web yes|no]
   [--screens yes|no] [--shutdown-services yes|no] [--splash-assembler yes|no]
   [--enable-services yes|no] [--start-services yes|no] [--confirm-apply]
   [--color auto|always|never]
@@ -28,7 +28,7 @@ EOF
 
 APPLY='' COLOR=auto CONFIRM_APPLY=no
 SERVICE_USER='' VENV=''
-PACKAGES_OPT='' SPI='' I2C='' CONFIG='' SENSOR='' SERVICES='' EARLY='' POWER='' WAKE='' CONNECT='' NETWORK='' SCREENS='' SHUTDOWN='' ASSEMBLER='' ENABLE='' START=''
+PACKAGES_OPT='' SPI='' I2C='' CONFIG='' SENSOR='' SERVICES='' EARLY='' POWER='' WAKE='' CONNECT='' NETWORK='' WEB='' SCREENS='' SHUTDOWN='' ASSEMBLER='' ENABLE='' START=''
 while (($#)); do
   case "$1" in
     --help|-h) usage; exit 0 ;;
@@ -48,6 +48,7 @@ while (($#)); do
     --drive-activity-events) WAKE="${2:?}"; shift 2 ;;
     --connect-gestures) CONNECT="${2:?}"; shift 2 ;;
     --network-setup) NETWORK="${2:?}"; shift 2 ;;
+    --web) WEB="${2:?}"; shift 2 ;;
     --screens) SCREENS="${2:?}"; shift 2 ;;
     --shutdown-services) SHUTDOWN="${2:?}"; shift 2 ;;
     --splash-assembler) ASSEMBLER="${2:?}"; shift 2 ;;
@@ -141,6 +142,7 @@ ask_yes_no CONFIG 'Create missing configuration files?'
 ask_yes_no SENSOR 'Build/install the APDS9306 C sensor service?' no
 ask_yes_no SERVICES 'Render and install systemd services and Polkit rules?'
 if [[ "$SERVICES" == yes ]]; then
+  ask_yes_no WEB 'Install local web client on port 8081?' no
   ask_yes_no EARLY 'Install early-boot Power LED service? (SSD1327 reference wiring)' no
   ask_yes_no POWER 'Enable POWER actions in rendered services?' no
   ask_yes_no WAKE 'Enable optical-drive wake from buttons?'
@@ -149,10 +151,10 @@ if [[ "$SERVICES" == yes ]]; then
   ask_yes_no ENABLE 'Enable installed services at boot?'
   ask_yes_no START 'Start services now?' no
 else
-  for unwanted in EARLY POWER WAKE CONNECT NETWORK ENABLE START; do
+  for unwanted in EARLY POWER WAKE CONNECT NETWORK WEB ENABLE START; do
     [[ -z "${!unwanted}" ]] || fail "--services no conflicts with option $unwanted"
   done
-  EARLY=no POWER=no WAKE=no CONNECT=no NETWORK=no ENABLE=no START=no
+  EARLY=no POWER=no WAKE=no CONNECT=no NETWORK=no WEB=no ENABLE=no START=no
 fi
 if [[ "$SENSOR" == yes && "$SERVICES" != yes ]]; then
   fail 'APDS9306 sensor service requires --services yes; no binaries have been installed.'
@@ -175,7 +177,7 @@ fi
 info "Repository: $ROOT"
 info "Service account: $SERVICE_USER; Python venv: $VENV"
 info "Packages=$PACKAGES_OPT SPI=$SPI I2C=$I2C Config=$CONFIG Sensor=$SENSOR Services=$SERVICES Screens=$SCREENS"
-info "EarlyLED=$EARLY Power=$POWER Wake=$WAKE Connect=$CONNECT Network=$NETWORK Enable=$ENABLE Start=$START"
+info "EarlyLED=$EARLY Power=$POWER Wake=$WAKE Connect=$CONNECT Network=$NETWORK Web=$WEB Enable=$ENABLE Start=$START"
 info "SplashAssembler=$ASSEMBLER ShutdownServices=$SHUTDOWN"
 # The preflight is read-only. It also checks rendered units against installed files.
 preflight=(python3 "$ROOT/tools/setup_preflight.py" --repo "$ROOT"
@@ -186,7 +188,7 @@ preflight=(python3 "$ROOT/tools/setup_preflight.py" --repo "$ROOT"
   --screens "$SCREENS" --assembler "$ASSEMBLER"
   --early-led "$EARLY" --shutdown-services "$SHUTDOWN"
   --power-actions "$POWER" --drive-activity-events "$WAKE"
-  --connect-gestures "$CONNECT" --network-setup "$NETWORK")
+  --connect-gestures "$CONNECT" --network-setup "$NETWORK" --web "$WEB")
 if [[ "$APPLY" == no && "$CONFIRM_APPLY" == yes ]]; then
   fail '--confirm-apply requires --apply'
 fi
@@ -261,6 +263,7 @@ if [[ "$SERVICES" == yes ]]; then
   done
   info 'Rendering service files and rules'; "${render[@]}"
   install_cmd=(python3 "$ROOT/tools/install_runtime_services.py" --rendered-dir "$out" --target-unit "$ROOT/systemd/sonoscdplayer.target" --apply)
+  [[ "$WEB" == yes ]] && install_cmd+=(--web)
   [[ "$SENSOR" == yes ]] && install_cmd+=(--sensor-unit "$SENSOR_DIR/apds9306d.service")
   [[ "$SHUTDOWN" == yes ]] && install_cmd+=(--shutdown-units-dir "$ROOT/systemd")
   [[ "$ENABLE" == yes ]] && install_cmd+=(--enable)

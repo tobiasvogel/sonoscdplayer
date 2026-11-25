@@ -150,4 +150,3 @@ class ST7735S:
             finally:
                 self.opened = False
                 self.transport.close()
-

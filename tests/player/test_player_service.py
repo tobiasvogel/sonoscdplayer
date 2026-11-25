@@ -42,6 +42,33 @@ def wait_until_listening(path, seconds=5.0):
                 raise
             time.sleep(0.01)
 
+
+def start_test_service(case, controller, path, **kwargs):
+    """Keep a test player alive only until unittest tearDown/cleanup."""
+    stop = threading.Event()
+    errors = []
+
+    def run_service():
+        try:
+            serve(controller, path, stop_event=stop, **kwargs)
+        except BaseException as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=run_service, daemon=True)
+
+    def cleanup():
+        stop.set()
+        thread.join(timeout=5)
+        case.assertFalse(thread.is_alive(), 'fake player service was not stopped')
+        if errors:
+            raise AssertionError('fake player service crashed') from errors[0]
+
+    case.addCleanup(cleanup)
+    thread.start()
+    wait_until_listening(path)
+    return thread
+
+
 class DummyController:
     def __init__(self):
         self.calls = []
@@ -81,9 +108,7 @@ class ServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = str(Path(td) / 'control.sock')
             c = DummyController()
-            thread = threading.Thread(target=serve, args=(c, path), kwargs={'poll_seconds': 0.01}, daemon=True)
-            thread.start()
-            wait_until_listening(path)
+            start_test_service(self, c, path, poll_seconds=0.01)
             self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
             self.assertTrue(request(path, 'status')['ok'])
             self.assertTrue(request(path, 'next')['ok'])
@@ -94,6 +119,30 @@ class ServiceTests(unittest.TestCase):
                 self.assertFalse(json.loads(s.recv(4096))['ok'])
             self.assertGreater(c.refreshes, 0)
 
+    def test_explicit_stop_closes_socket_and_worker(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = str(Path(td) / 'control.sock')
+            stop = threading.Event()
+            errors = []
+
+            def run_service():
+                try:
+                    serve(DummyController(), path, poll_seconds=0.01, stop_event=stop)
+                except BaseException as exc:
+                    errors.append(exc)
+
+            thread = threading.Thread(target=run_service, daemon=True)
+            thread.start()
+            try:
+                wait_until_listening(path)
+                self.assertTrue(request(path, 'status')['ok'])
+            finally:
+                stop.set()
+                thread.join(timeout=5)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(errors, [])
+            self.assertFalse(Path(path).exists())
+
     def test_serve_restores_the_remembered_target(self):
         from sonoscdplayer.sonos.target_store import TargetStore
         with tempfile.TemporaryDirectory() as td:
@@ -101,11 +150,8 @@ class ServiceTests(unittest.TestCase):
             store.save('RINCON_A', ())
             path = str(Path(td) / 'control.sock')
             c = DummyController()
-            thread = threading.Thread(target=serve, args=(c, path),
-                                      kwargs={'poll_seconds': 0.01, 'target_store': store}, daemon=True)
             with contextlib.redirect_stdout(io.StringIO()):
-                thread.start()
-                wait_until_listening(path)
+                start_test_service(self, c, path, poll_seconds=0.01, target_store=store)
                 reply = request(path, 'get-target')
             self.assertTrue(reply['target_selection']['selected'])
             self.assertEqual(reply['target_selection']['speakers'], ['RINCON_A'])
@@ -120,10 +166,7 @@ class ServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = str(Path(td) / 'control.sock')
             c = SlowController()
-            thread = threading.Thread(target=serve, args=(c, path),
-                                      kwargs={'poll_seconds': 0.01}, daemon=True)
-            thread.start()
-            wait_until_listening(path)
+            start_test_service(self, c, path, poll_seconds=0.01)
             self.assertTrue(request(path, 'play', uid='TEST_UID', response_timeout=1)['ok'])
             self.assertEqual(c.calls, [('play','TEST_UID')])
 
@@ -617,13 +660,7 @@ class ResponsiveStatusTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = str(Path(td) / 'control.sock')
             controller = BlockingController()
-            errors = []
-            def worker():
-                try: serve(controller, path, poll_seconds=0.03)
-                except BaseException as ex: errors.append(ex)
-            thread = threading.Thread(target=worker, daemon=True)
-            thread.start()
-            wait_until_listening(path)
+            start_test_service(self, controller, path, poll_seconds=0.03)
             play_result = []
             play_thread = threading.Thread(target=lambda: play_result.append(raw_request(path, {'command':'play','uid':'TEST_UID'},timeout=15)), daemon=True)
             play_thread.start()
@@ -654,10 +691,8 @@ class ResetDiscCommandTests(unittest.TestCase):
         td = tempfile.TemporaryDirectory()
         self.addCleanup(td.cleanup)
         path = str(Path(td.name) / 'control.sock')
-        threading.Thread(target=lambda: serve(BlockingController(), path, poll_seconds=0.03,
-                                              metadata_worker=metadata_worker),
-                         daemon=True).start()
-        wait_until_listening(path)
+        start_test_service(self, BlockingController(), path, poll_seconds=0.03,
+                           metadata_worker=metadata_worker)
         return path
 
     def test_reset_goes_to_the_worker(self):

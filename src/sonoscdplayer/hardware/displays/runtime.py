@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class BackendSpec:
+    """Construction and output capabilities of one explicitly registered backend."""
     controller: str
     pixel_format: str
     color: bool
@@ -15,6 +16,7 @@ class BackendSpec:
     rotates: bool = False
 
     def create(self, config, *, gpio_warnings=False):
+        """Construct a driver without opening display hardware."""
         return self.factory(config, gpio_warnings=gpio_warnings)
 
 
@@ -43,6 +45,7 @@ BACKENDS = {
 
 
 def backend_for(controller):
+    """Resolve a supported controller name, rejecting unregistered backends."""
     try:
         return BACKENDS[controller]
     except (KeyError, TypeError):

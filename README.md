@@ -158,7 +158,7 @@ To join a Wi-Fi network, use the device menu to select a network and enter its p
 
 SonosCDPlayer provides a display-based interface for playback information, device status, and menu navigation.
 
-The current reference implementation uses an OLED display. Drivers and test tools for a smaller monochrome OLED (SH1107) and a color LCD (ST7735S) are included and await their connection to the player; a four-color e-paper module was evaluated and found unsuitable. See [Displays](docs/DISPLAYS.md).
+The player supports the SSD1327 grayscale OLED and SSD1351 RGB OLED through the same `[display]` configuration. Both 128x128 modules have been tested on hardware; see [Display configuration](docs/DISPLAY_CONFIGURATION.md) and [SSD1351](docs/SSD1351.md). Drivers and test tools for a smaller monochrome OLED (SH1107) and a color LCD (ST7735S) are included and await their connection to the player; a four-color e-paper module was evaluated and found unsuitable. See [Displays](docs/DISPLAYS.md).
 
 The implemented interface includes playback and disc status, interactive menus, Sonos target selection, and rotary encoder navigation. English and German are available; the selected language is retained across restarts in local application state. Adaptive brightness is supported on suitable reference hardware.
 
@@ -213,7 +213,7 @@ Additional documentation is available in the [`docs/`](docs/) directory.
 | [Shutdown and restart screens](docs/SHUTDOWN_SCREENS.md) | OLED screens while shutting down or restarting, installation, optional exitrd |
 | [Status LEDs](docs/STATUS_LEDS.md) | Meaning of the power and connection (network) LEDs |
 | [Checking a CD drive](docs/DRIVE_CHECK.md) | Test whether a USB CD drive suits the player and share the result |
-| [Displays](docs/DISPLAYS.md) | Supported and evaluated display modules; [SH1107](docs/SH1107.md) and [ST7735S](docs/ST7735S.md) details |
+| [Displays](docs/DISPLAYS.md) | Supported and evaluated modules; [configuration](docs/DISPLAY_CONFIGURATION.md), [SSD1351](docs/SSD1351.md), [SH1107](docs/SH1107.md) and [ST7735S](docs/ST7735S.md) |
 | [Architecture](docs/ARCHITECTURE.md) | Services, sockets, data flow and package layout, for developers |
 | [Adding a display](docs/ADDING_A_DISPLAY.md) | Driver, test program, renderer and tests for a new display module |
 | [Adding buttons and input modules](docs/ADDING_INPUTS.md) | New buttons, shift registers or other input modules, rotary encoder |

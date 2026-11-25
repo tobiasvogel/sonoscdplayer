@@ -33,7 +33,7 @@ import tomllib
 
 from sonoscdplayer.audio.table_of_contents import read_toc
 from sonoscdplayer.drive.disc_startup import inspect_initial_disc
-from sonoscdplayer.drive.disc_monitor import DiscMonitor
+from sonoscdplayer.drive.disc_monitor import DiscMonitor, idle_for_disc_io
 from sonoscdplayer.metadata.worker import MetadataWorker, matching_policy_from_config
 from sonoscdplayer.metadata.worker import describe as describe_metadata
 from sonoscdplayer.metadata.local_metadata import read_cdtext
@@ -41,19 +41,34 @@ from sonoscdplayer.sonos.track_metadata import album_prefix_from_config, use_que
 from sonoscdplayer.drive.eject import eject_verified_idle
 from sonoscdplayer.player.state import Mode, PlayerState, state_for_disc
 from sonoscdplayer.drive.power import DrivePowerManager, load_config
+from sonoscdplayer.drive.drive_lock import drive_lock
 from sonoscdplayer.drive.wake_validation import wait_for_woken_disc
 from sonoscdplayer.drive.usb_identity import usb_identity, recovered_device
 from sonoscdplayer.player.controller import Controller, TrackServerProcess, routed_source_ip
+from sonoscdplayer.player.web_dashboard import DashboardPublisher
 from sonoscdplayer.sonos.target_selection import SelectedTarget
 from sonoscdplayer.sonos.target_store import PlaybackGroupStore, TargetStore, default_state_dir
 from sonoscdplayer.sonos.volume import VolumeControl, parse_volume_command
 from sonoscdplayer.sonos.groups import normalize_members
 from sonoscdplayer.system.package_paths import SOURCE_ROOT
 
-MAX_REQUEST = 1024
+# Library edits batch up to four fields; all request types remain validated.
+MAX_REQUEST = 4096
 # Commands whose refusal the display reports ("playback not possible ...").
 PLAY_COMMANDS = frozenset(('play', 'play-selected', 'playpause', 'resume'))
 COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'eject', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery', 'volume +N|-N', 'reset-disc')
+
+
+def maintenance_blocks_playback(request, metadata_worker):
+    """Block local playback operations while destructive maintenance runs."""
+    if not getattr(metadata_worker, 'destructive_maintenance_pending', False):
+        return False
+    command = request.get('command') if isinstance(request, dict) else None
+    if not isinstance(command, str):
+        return False
+    command = command.strip().lower()
+    return (command in PLAY_COMMANDS | {'reset', 'next', 'previous'} or
+            re.fullmatch(r'select [0-9]{1,3}', command) is not None)
 
 
 def response(controller, *, ok, error=None, commands=None):
@@ -468,12 +483,29 @@ def _current_disc(disc_monitor, drive_toc, drive_cdtext):
     return drive_toc, drive_cdtext
 
 
-def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, target_store=None, metadata_worker=None, drive_cdtext=None):
+def _start_power_if_ready(power, controller, disc_monitor):
+    """Start deferred power management after READY, outside drive/CD-TEXT I/O."""
+    if power is None or power._started:
+        return False
+    status = controller.disc_status
+    if (status is None or status.mode.value != 'READY' or
+            not idle_for_disc_io(controller) or
+            (disc_monitor is not None and disc_monitor.cdtext_pending)):
+        return False
+    with drive_lock(power.device, blocking=False) as acquired:
+        if not acquired:
+            return False
+        power.start()
+    return True
+
+
+def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=None, drive_toc=None, disc_monitor=None, target_store=None, metadata_worker=None, drive_cdtext=None, stop_event=None):
     """Listen on ``socket_path`` and run the worker until SIGTERM/SIGINT.
 
     The optional arguments connect drive power management, the USB identity
     and TOC of the drive, the disc monitor, the remembered speaker selection
-    and the metadata worker.
+    and the metadata worker. A supplied stop_event is for controlled test
+    teardown; production runs without one.
     """
     path = Path(socket_path).expanduser().absolute()
     if not path.parent.is_dir():
@@ -482,31 +514,44 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
         raise FileExistsError(f'refusing existing socket/path: {path}')
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     original_umask = os.umask(0o177)
+    bound_inode = None
     try:
         server.bind(str(path))
+        bound_inode = os.lstat(path).st_ino
         # Listen at once: clients wait for the socket file, and a connect
         # between bind() and listen() would be refused. Requests queue in the
         # backlog until the loop below accepts them.
         server.listen(16)
+    except BaseException:
+        server.close()
+        if bound_inode is not None:
+            try:
+                current = os.lstat(path)
+                if stat.S_ISSOCK(current.st_mode) and current.st_ino == bound_inode:
+                    path.unlink()
+            except FileNotFoundError:
+                pass
+        raise
     finally:
         os.umask(original_umask)
-    bound_inode = os.lstat(path).st_ino
-    publisher = StatusPublisher(controller, power)
-    selection = SelectedTarget(store=target_store)
-    if selection.restore():
-        print('[target] remembered speaker selection restored; no Sonos action until PLAY', flush=True)
-
-    def follow_app(uid, members):
-        selection.follow(uid, members)
-        controller.target_rev += 1
-        print('[target] selection follows the group changed in the Sonos app', flush=True)
-    if hasattr(controller, 'selection_hook'):
-        controller.selection_hook = follow_app
-    volume = VolumeControl()
-    if hasattr(controller, 'status_hook'):
-        controller.status_hook = lambda: publisher.publish(controller, power)
+    dashboard = None
     pending = []
     try:
+        publisher = StatusPublisher(controller, power)
+        selection = SelectedTarget(store=target_store)
+        if selection.restore():
+            print('[target] remembered speaker selection restored; no Sonos action until PLAY', flush=True)
+        dashboard = DashboardPublisher(controller, selection)
+
+        def follow_app(uid, members):
+            selection.follow(uid, members)
+            controller.target_rev += 1
+            print('[target] selection follows the group changed in the Sonos app', flush=True)
+        if hasattr(controller, 'selection_hook'):
+            controller.selection_hook = follow_app
+        volume = VolumeControl()
+        if hasattr(controller, 'status_hook'):
+            controller.status_hook = lambda: publisher.publish(controller, power)
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
         server.setblocking(False)
         print(f'[service] local socket ready: {path} (0600); responsive cached status', flush=True)
@@ -584,6 +629,151 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     if metadata_worker.observe(current_toc, current_text):
                         controller.metadata_snapshot = None
 
+                if isinstance(request, dict) and request.get('command') == 'edit-metadata':
+                    # Validation and scheduling only; SQLite I/O stays off this worker.
+                    if set(request) - {'command', 'token', 'field', 'track', 'value'} or not all(
+                            key in request for key in ('token', 'field', 'value')):
+                        reply = response(controller, ok=False, error='invalid metadata edit keys')
+                    elif metadata_worker is None:
+                        reply = response(controller, ok=False, error='metadata unavailable')
+                    else:
+                        try:
+                            metadata_worker.enqueue_edit(token=request['token'],
+                                field=request['field'], track=request.get('track'),
+                                value=request['value'])
+                            reply = response(controller, ok=True)
+                            reply['queued'] = True
+                        except (ValueError, RuntimeError) as exc:
+                            reply = response(controller, ok=False, error=str(exc))
+                    publisher.publish(controller, power)
+                    return reply
+
+                if isinstance(request, dict) and request.get('command') in (
+                        'lookup-releases', 'select-release', 'release-detail'):
+                    name = request['command']
+                    if metadata_worker is None:
+                        reply = response(controller, ok=False, error='metadata unavailable')
+                    else:
+                        try:
+                            if name == 'lookup-releases' and set(request) == {'command', 'token'}:
+                                metadata_worker.enqueue_release_search(token=request['token'])
+                                reply = response(controller, ok=True)
+                                reply['queued'] = True
+                            elif name == 'select-release' and set(request) == {
+                                    'command', 'token', 'release_id', 'keep_manual'}:
+                                metadata_worker.enqueue_release_selection(
+                                    token=request['token'], release_id=request['release_id'],
+                                    keep_manual=request['keep_manual'])
+                                reply = response(controller, ok=True)
+                                reply['queued'] = True
+                            elif name == 'release-detail' and set(request) == {
+                                    'command', 'token', 'release_id'}:
+                                detail = metadata_worker.release_detail_for(
+                                    token=request['token'], release_id=request['release_id'])
+                                reply = response(controller, ok=True)
+                                reply['release_detail'] = detail
+                            else:
+                                reply = response(controller, ok=False, error='invalid release request')
+                        except (ValueError, RuntimeError) as exc:
+                            reply = response(controller, ok=False, error=str(exc))
+                    publisher.publish(controller, power)
+                    return reply
+
+                if isinstance(request, dict) and request.get('command') in ('upload-cover', 'remove-cover'):
+                    # Only validate and queue; image processing and file I/O stay off the player thread.
+                    if metadata_worker is None:
+                        reply = response(controller, ok=False, error='metadata unavailable')
+                    else:
+                        try:
+                            if request['command'] == 'upload-cover' and set(request) == {
+                                    'command', 'token', 'upload_id'}:
+                                metadata_worker.enqueue_cover(token=request['token'],
+                                                              upload_id=request['upload_id'])
+                                reply = response(controller, ok=True)
+                                reply['queued'] = True
+                            elif request['command'] == 'remove-cover' and set(request) == {'command', 'token'}:
+                                metadata_worker.enqueue_cover(token=request['token'], remove=True)
+                                reply = response(controller, ok=True)
+                                reply['queued'] = True
+                            else:
+                                reply = response(controller, ok=False, error='invalid cover request')
+                        except (ValueError, RuntimeError) as exc:
+                            reply = response(controller, ok=False, error=str(exc))
+                    publisher.publish(controller, power)
+                    return reply
+
+                if isinstance(request, dict) and request.get('command') == 'library-maintenance':
+                    # No SQLite or cover I/O on the serialized player worker.
+                    if metadata_worker is None:
+                        reply = response(controller, ok=False, error='metadata unavailable')
+                    else:
+                        try:
+                            from sonoscdplayer.metadata.library_maintenance import validate_maintenance
+                            required = {'command', 'action'}
+                            if set(request) not in (required, required | {'tokens'}, required | {'confirmation'}):
+                                raise ValueError('invalid maintenance request')
+                            action, tokens, confirmation = validate_maintenance(
+                                request['action'], request.get('tokens'), request.get('confirmation'))
+                            if action != 'stats':
+                                mode = getattr(getattr(controller, 'state', None), 'mode', None)
+                                if (mode != Mode.STOPPED or getattr(controller, 'owned_url', None) or
+                                        getattr(controller, '_joined', False) or
+                                        getattr(controller, '_group_uncertain', False)):
+                                    raise ValueError('stop playback and finish group cleanup first')
+                            metadata_worker.enqueue_library_maintenance(
+                                action=action, tokens=list(tokens) if action == 'bulk-delete' else None,
+                                confirmation=confirmation)
+                            reply = response(controller, ok=True)
+                            reply['queued'] = True
+                        except (ValueError, RuntimeError, TypeError, KeyError) as exc:
+                            reply = response(controller, ok=False, error=str(exc))
+                    publisher.publish(controller, power)
+                    return reply
+                if isinstance(request, dict) and request.get('command') == 'library-manage':
+                    # Only scheduling and validation on the serialized player worker.
+                    if metadata_worker is None:
+                        reply = response(controller, ok=False, error='metadata unavailable')
+                    else:
+                        try:
+                            from sonoscdplayer.metadata.library_manage import validate_manage
+                            required = {'command', 'token', 'action'}
+                            if set(request) not in (required, required | {'changes'}):
+                                raise ValueError('invalid library manage fields')
+                            token, action, changes = validate_manage(
+                                request['token'], request['action'], request.get('changes'))
+                            metadata_worker.enqueue_library_manage(
+                                token=token, action=action,
+                                changes=([{'field': f, **({'track': n} if n else {}), 'value': v}
+                                          for f, n, v in changes] if action == 'edit' else None))
+                            reply = response(controller, ok=True)
+                            reply['queued'] = True
+                        except (ValueError, RuntimeError, TypeError, KeyError) as exc:
+                            reply = response(controller, ok=False, error=str(exc))
+                    publisher.publish(controller, power)
+                    return reply
+
+                if isinstance(request, dict) and request.get('command') in ('library-query', 'library-detail'):
+                    # Query scheduling only; SQLite runs in the metadata executor.
+                    if metadata_worker is None:
+                        reply = response(controller, ok=False, error='metadata unavailable')
+                    else:
+                        try:
+                            if request['command'] == 'library-query' and set(request) == {
+                                    'command', 'query', 'offset', 'limit'}:
+                                metadata_worker.enqueue_library(query=request['query'],
+                                    offset=request['offset'], limit=request['limit'])
+                            elif request['command'] == 'library-detail' and set(request) == {
+                                    'command', 'token'}:
+                                metadata_worker.enqueue_library(token=request['token'])
+                            else:
+                                raise ValueError('invalid library request')
+                            reply = response(controller, ok=True)
+                            reply['queued'] = True
+                        except (ValueError, RuntimeError) as exc:
+                            reply = response(controller, ok=False, error=str(exc))
+                    publisher.publish(controller, power)
+                    return reply
+
                 if isinstance(request, dict) and request.get('command') == 'reset-disc':
                     # forget the inserted CD's stored metadata and look it
                     # up again. No drive or Sonos access; playback is not touched.
@@ -622,11 +812,16 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
 
             def operate(request):
                 command = request.get('command') if isinstance(request, dict) else None
-                if (disc_monitor is not None and getattr(disc_monitor, 'cdtext_pending', False)
-                        and isinstance(command, str)
-                        and command.strip().lower() in PLAY_COMMANDS | {'eject'}):
-                    disc_monitor.cancel_cdtext()     # the drive is needed now
-                reply = unrecorded(request)
+                if maintenance_blocks_playback(request, metadata_worker):
+                    # Reject before CD-TEXT cancellation, drive wake or Sonos I/O.
+                    reply = response(controller, ok=False, error='maintenance in progress')
+                    publisher.publish(controller, power)
+                else:
+                    if (disc_monitor is not None and getattr(disc_monitor, 'cdtext_pending', False)
+                            and isinstance(command, str)
+                            and command.strip().lower() in PLAY_COMMANDS | {'eject'}):
+                        disc_monitor.cancel_cdtext()     # the drive is needed now
+                    reply = unrecorded(request)
                 if (reply.get('ok') is False and isinstance(command, str)
                         and command.strip().lower() in PLAY_COMMANDS):
                     controller.note_rejection(command.strip().lower(), reply.get('error'))
@@ -694,6 +889,8 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                             print(f'[disc] {controller.disc_status.mode.value}', flush=True)
                     except (OSError, RuntimeError, ValueError) as exc:
                         print(f'[disc] monitor deferred: {type(exc).__name__}: {exc}', flush=True)
+                if power is not None:
+                    _start_power_if_ready(power, controller, disc_monitor)
                 if power is not None and (controller.disc_status is None or
                                           controller.disc_status.mode.value == 'READY'):
                     power.tick(
@@ -715,10 +912,11 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                         controller.metadata_snapshot = metadata_worker.snapshot
                         print(describe_metadata(controller.metadata_snapshot), flush=True)
                 publisher.publish(controller, power)
+                dashboard.publish(controller, selection)
 
             busy = None
             next_refresh = time.monotonic()
-            while True:
+            while stop_event is None or not stop_event.is_set():
                 for conn, future in pending[:]:
                     if future.done():
                         pending.remove((conn, future))
@@ -742,6 +940,15 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     # No synchronous controller read and no new Sonos checks.
                     if isinstance(request, dict) and request == {'command': 'status'}:
                         send_reply(conn, publisher.read())
+                    elif isinstance(request, dict) and request == {'command': 'dashboard'}:
+                        send_reply(conn, dashboard.read())
+                    elif isinstance(request, dict) and request == {'command': 'settings-status'}:
+                        runtime = getattr(controller, 'playback_runtime_settings', None)
+                        send_reply(conn, {'ok': True, 'settings': runtime.copy()}
+                                   if isinstance(runtime, dict) else {'ok': False, 'error': 'unavailable'})
+                    elif isinstance(request, dict) and request == {'command': 'library'}:
+                        send_reply(conn, metadata_worker.library_snapshot() if metadata_worker is not None
+                                   else {'ok': False, 'error': 'metadata unavailable'})
                     elif sum(1 for _, f in pending if not f.done()) >= MAX_WAITING_COMMANDS:
                         # While a long PLAY runs, do not collect button presses
                         # that would all run late.
@@ -752,17 +959,23 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 except (ValueError, UnicodeError, socket.timeout, OSError) as exc:
                     send_reply(conn, {'ok': False, 'error': f'bad request: {type(exc).__name__}'})
     finally:
-        if hasattr(controller, 'status_hook'):
-            controller.status_hook = None
-        for conn, _ in pending:
-            conn.close()
-        server.close()
         try:
-            current = os.lstat(path)
-            if stat.S_ISSOCK(current.st_mode) and current.st_ino == bound_inode:
-                path.unlink()
-        except FileNotFoundError:
-            pass
+            if dashboard is not None:
+                dashboard.close()
+        finally:
+            try:
+                if hasattr(controller, 'status_hook'):
+                    controller.status_hook = None
+                for conn, _ in pending:
+                    conn.close()
+            finally:
+                server.close()
+                try:
+                    current = os.lstat(path)
+                    if stat.S_ISSOCK(current.st_mode) and current.st_ino == bound_inode:
+                        path.unlink()
+                except FileNotFoundError:
+                    pass
 
 
 #: Commands that may wait for the single worker; more are answered "busy".
@@ -814,6 +1027,32 @@ def install_sigterm_handler():
     return signal.signal(signal.SIGTERM, _terminate)
 
 
+def _close_runtime(ctrl, power, shutdown_policy):
+    """Always release local resources, even if Sonos shutdown fails."""
+    try:
+        if ctrl is not None:
+            try:
+                result = ctrl.shutdown_owned(shutdown_policy)
+                print(f'[shutdown] shutdown: {result}', flush=True)
+                if result['action'] == 'not_stopped':
+                    print('[shutdown] WARNING: Sonos may retain a stream URI; no unverified STOP sent', flush=True)
+            finally:
+                ctrl.close()
+    finally:
+        if power is not None:
+            power.close()
+
+
+def _metadata_switches(meta):
+    """Validate TOML feature switches instead of silently treating typos as off."""
+    if not isinstance(meta, dict):
+        raise ValueError('metadata must be a TOML table')
+    for key in ('enabled', 'online_lookup', 'read_cd_text'):
+        if type(meta.get(key, True)) is not bool:
+            raise ValueError(f'metadata.{key} must be true or false')
+    return meta
+
+
 def run(argv=None):
     """Command line of the service: read the configuration, find the drive, serve."""
     ap = argparse.ArgumentParser(description=__doc__)
@@ -841,6 +1080,10 @@ def run(argv=None):
                         if threading.current_thread() is threading.main_thread() else None)
     try:
         refuse_existing_control_socket(ns.socket)
+        from sonoscdplayer.drive.drive_lock import prepare_drive_lock_directory
+        lock_dir, repaired = prepare_drive_lock_directory()
+        if repaired:
+            print(f'[drive] repaired private lock directory permissions (0700): {lock_dir}', flush=True)
         disc_status, toc = inspect_initial_disc(requested_device=ns.device)
         device = disc_status.device or '/dev/sr0'  # placeholder, never opened without a READY TOC
         identity = usb_identity(device) if disc_status.device is not None else None
@@ -857,10 +1100,18 @@ def run(argv=None):
                 raise ValueError('invalid audio_startup settings')
         if shutdown_policy not in ('stop_owned', 'leave_playing'):
             raise ValueError('invalid service.shutdown_policy')
+        from sonoscdplayer.player.playback_settings import merged, FIELDS as PLAYBACK_FIELDS
+        settings, _ = merged(settings, state_dir=ns.state_dir)
+        effective_buffer = settings['streaming']['max_buffer_mib']
         ctrl = Controller(state, None, None, ns.port,
                           TrackServerProcess(base, device, conf, ns.port,
                                         startup_prebuffer=startup_enabled,
-                                        startup_timeout=float(startup_timeout)), route=routed_source_ip)
+                                        startup_timeout=float(startup_timeout),
+                                        max_buffer_mib=effective_buffer), route=routed_source_ip)
+        ctrl.playback_runtime_settings = {
+            field: settings[field.split('.')[0]][field.split('.')[1]]
+            for field in PLAYBACK_FIELDS
+        }
         ctrl.disc_status = disc_status
         ctrl.album_prefix = album_prefix_from_config(settings)
         ctrl.use_queue = use_queue_from_config(settings)
@@ -875,13 +1126,13 @@ def run(argv=None):
         cdtext_reader = None
         startup_cdtext = None
         try:
-            meta = settings.get('metadata', {})
-            if not isinstance(meta, dict):
-                raise ValueError('metadata must be a TOML table')
-            if meta.get('enabled', True) is True:
+            meta = _metadata_switches(settings.get('metadata', {}))
+            if meta.get('enabled', True):
                 musicbrainz = meta.get('musicbrainz', {})
                 if not isinstance(musicbrainz, dict):
                     raise ValueError('metadata.musicbrainz must be a table')
+                if type(musicbrainz.get('enabled', True)) is not bool:
+                    raise ValueError('metadata.musicbrainz.enabled must be true or false')
                 timeout = musicbrainz.get('timeout_seconds', 8)
                 if type(timeout) not in (int, float) or not 1 <= timeout <= 30:
                     raise ValueError('invalid metadata.musicbrainz.timeout_seconds')
@@ -902,17 +1153,19 @@ def run(argv=None):
                     gnudb_enabled=gnudb_enabled, gnudb_timeout=gnudb_timeout,
                     gnudb_endpoint=gnudb_endpoint,
                     # The OLED shows no covers yet; Sonos shows album art.
-                    display_supports_cover=False, sonos_uses_cover=True)
+                    display_supports_cover=False, sonos_uses_cover=True,
+                    cover_state_dir=ns.state_dir)
                 # With CD-TEXT the lookup starts once the monitor has read it.
                 metadata_worker.observe(toc if cdtext_reader is None else None, None)
         except (OSError, ValueError) as exc:
             print(f'[metadata] disabled: {type(exc).__name__}', flush=True)
 
-        # Never issue start/keepalive motor commands when no readable disc was
-        # selected. Disc changes while idle are handled by disc_monitor.
-        if toc is not None:
+        # Prepare the manager for a present drive even with an empty tray.
+        # Defer motor commands until a verified audio TOC is available.
+        if disc_status.device is not None:
             power = DrivePowerManager(device, load_config(conf))
-            power.start()
+            if toc is not None:
+                power.start()
         print(f'[disc] service ready; disc={disc_status.mode.value}; '
               'no Sonos action until explicit PLAY', flush=True)
         def on_verified_rebind(new_device):
@@ -941,18 +1194,15 @@ def run(argv=None):
         print(f'[service] service failed: {type(exc).__name__}: {exc}', file=sys.stderr)
         return 1
     finally:
-        if metadata_worker is not None:
-            metadata_worker.close()
-        if ctrl:
-            result = ctrl.shutdown_owned(shutdown_policy)
-            print(f'[shutdown] shutdown: {result}', flush=True)
-            if result['action'] == 'not_stopped':
-                print('[shutdown] WARNING: Sonos may retain a stream URI; no unverified STOP sent', flush=True)
-            ctrl.close()
-        if power is not None:
-            power.close()
-        if previous_sigterm is not None:
-            signal.signal(signal.SIGTERM, previous_sigterm)
+        try:
+            if metadata_worker is not None:
+                metadata_worker.close()
+        finally:
+            try:
+                _close_runtime(ctrl, power, shutdown_policy)
+            finally:
+                if previous_sigterm is not None:
+                    signal.signal(signal.SIGTERM, previous_sigterm)
     return 0
 
 

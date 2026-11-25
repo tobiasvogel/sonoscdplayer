@@ -28,6 +28,7 @@ UNITS = (
     'sonoscdplayer-led.service',
     'sonoscdplayer-oled.service',
     'sonoscdplayer-buttons.service',
+    'sonoscdplayer-web.service',
 )
 EARLY_UNIT = 'sonoscdplayer-early-power-led.service'
 POLKIT_RULE = '50-sonoscdplayer-power.rules'
@@ -38,8 +39,10 @@ USER_NAME = re.compile(r'[a-z_][a-z0-9_-]{0,31}')
 
 def absolute_path(value):
     path = Path(value)
-    if not path.is_absolute() or any(c.isspace() or ord(c) < 32 for c in value):
-        raise ValueError('Path must be absolute and contain no whitespace/control characters')
+    # Percent is a systemd unit specifier introducer, even in absolute paths.
+    if (not path.is_absolute() or
+            any(c.isspace() or ord(c) < 32 or c == '%' for c in value)):
+        raise ValueError('Path must be absolute and contain no whitespace/control characters or %')
     return str(path)
 
 
@@ -120,6 +123,10 @@ def render(source_dir, *, checkout, python_venv, user, power_actions=True,
             '--socket /run/sonoscdplayer/control.sock '
             '--ui-events-socket /run/sonoscdplayer-ui/events.sock '
             f'--execute --selected-target-execute{buttons_extra}'
+        ),
+        UNITS[4]: (
+            f'{python_venv} -u -m sonoscdplayer.web.server '
+            '--host 0.0.0.0 --port 8081 --socket /run/sonoscdplayer/control.sock'
         ),
     }
     for name in UNITS:

@@ -1,13 +1,15 @@
 # Displays
 
-The player uses one display at a time. Only the first entry below is
-connected to the player today; the others have a driver, a standalone
-diagnostic with test patterns and a renderer for the common screens, and
-await their connection to the player.
+The player uses one display at a time. SSD1327 and SSD1351 are connected to
+the live player, including menus and the boot/shutdown screen builders. Choose
+the controller through `[display]` in `player.toml`; see
+[Display configuration](DISPLAY_CONFIGURATION.md). Other entries remain
+standalone diagnostics or evaluated hardware as noted below.
 
 | Module | Controller | Size | Interface | State |
 |---|---|---|---|---|
 | OLED, 128×128 grayscale | SSD1327 | 128×128 | SPI | In use by the player |
+| Waveshare 1.5" RGB OLED Module, SKU 14747 | SSD1351 | 128×128, color | SPI | Live player, menu, notices and colored startup/shutdown logo confirmed on hardware. See [SSD1351](SSD1351.md) |
 | Waveshare 1.3" OLED Module (C), SKU 18179 | SH1107 | 128×64 (landscape) | SPI, I2C | Driver and diagnostic; SPI confirmed on hardware, I2C pending. See [SH1107](SH1107.md) |
 | Waveshare 1.8" LCD Module, SKU 13892 | ST7735S | 160×128 (landscape), color | SPI | Driver and diagnostic confirmed on hardware (RGB, rotation 270). See [ST7735S](ST7735S.md) |
 | Waveshare 1.54" e-Paper Module (G), SKU 30475 | – | 200×200, four colors | SPI | **Evaluated, not suitable** |

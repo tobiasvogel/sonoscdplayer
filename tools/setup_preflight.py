@@ -47,7 +47,8 @@ def inspect_configs(repo: Path, config_dir: Path, create_config: bool,
 
 def inspect_runtime_units(repo: Path, service_user: str, venv: Path, flags: dict[str, bool],
                           sensor: bool, early_led: bool, shutdown: bool,
-                          errors: list[str], warnings: list[str], preview: bool) -> None:
+                          errors: list[str], warnings: list[str], preview: bool,
+                          *, web: bool = False) -> None:
     renderer = repo / 'tools/render_runtime_units.py'
     installer = repo / 'tools/install_runtime_services.py'
     if not renderer.is_file() or not installer.is_file():
@@ -74,7 +75,8 @@ def inspect_runtime_units(repo: Path, service_user: str, venv: Path, flags: dict
                                      if sensor else None),
                         target_unit=repo / 'systemd/sonoscdplayer.target',
                         early_led=early_led,
-                        shutdown_units_dir=(repo / 'systemd' if shutdown else None))
+                        shutdown_units_dir=(repo / 'systemd' if shutdown else None),
+                        web=web)
         except PermissionError as exc:
             message = (f'Cannot inspect protected service/Polkit file: {exc}; '
                        'rerun with sudo for a complete conflict check')
@@ -150,7 +152,8 @@ def check(args: argparse.Namespace, *, pi_model: Path = Path('/proc/device-tree/
                                'connect-gestures': args.connect_gestures,
                                'network-setup': args.network_setup},
                               args.sensor, args.early_led, args.shutdown_services,
-                              errors, warnings, args.mode == 'preview')
+                               errors, warnings, args.mode == 'preview',
+                               web=getattr(args, 'web', False))
     if args.screens:
         for file in ('tools/build_shutdown_renderer.sh', 'tools/install_screens.sh',
                      'systemd/sonoscdplayer-final-shutdown-hook'):
@@ -175,12 +178,12 @@ def main(argv=None) -> int:
     parser.add_argument('--mode', choices=('apply', 'preview'), required=True)
     for key in ('packages', 'spi', 'i2c', 'config', 'sensor', 'services', 'screens',
                 'assembler', 'early-led', 'shutdown-services', 'power-actions',
-                'drive-activity-events', 'connect-gestures', 'network-setup'):
+                'drive-activity-events', 'connect-gestures', 'network-setup', 'web'):
         parser.add_argument('--' + key, choices=('yes', 'no'), required=True)
     args = parser.parse_args(argv)
     for key in ('packages', 'spi', 'i2c', 'config', 'sensor', 'services', 'screens',
                 'assembler', 'early_led', 'shutdown_services', 'power_actions',
-                'drive_activity_events', 'connect_gestures', 'network_setup'):
+                'drive_activity_events', 'connect_gestures', 'network_setup', 'web'):
         setattr(args, key, getattr(args, key) == 'yes')
     errors, warnings = check(args)
     for warning in warnings:

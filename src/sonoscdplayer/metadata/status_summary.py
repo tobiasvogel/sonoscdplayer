@@ -39,4 +39,7 @@ def status_metadata(metadata, track):
         'match_status': _text(metadata.get('match_status')),
         'cdtext_status': _text(metadata.get('cdtext_status')),
         'lookup_status': _text(metadata.get('lookup_status')),
+        'cover_manual': metadata.get('cover_manual') is True,
+        'cover_seq': metadata.get('cover_seq') if type(metadata.get('cover_seq')) is int else 0,
+        'cover_error': _text(metadata.get('cover_error')),
     }
