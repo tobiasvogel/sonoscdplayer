@@ -103,12 +103,14 @@ class ReleaseWorkflow:
         if keep_manual and not self._can_keep_track_edits(candidate):
             raise ValueError('cannot safely map track edits to this release; discard or cancel')
         toc = self._last_toc
-        generation = self._disc_generation
+        # Standalone ReleaseWorkflow users have no MetadataWorker generation.
+        # MetadataWorker always supplies one, so its reinsertion guard remains.
+        generation = getattr(self, '_disc_generation', None)
         local = local_metadata_from_cdtext(toc, self._last_cdtext)
         def work():
             return confirm_release(
                 self._cache, identity, local, candidate, keep_manual=keep_manual,
-                current=lambda: (self._disc_generation == generation and
+                current=lambda: (getattr(self, '_disc_generation', None) == generation and
                                  self._last_toc == toc))
         future = self._executor.submit(work)
         self._release_selection = (token, future)
