@@ -154,6 +154,10 @@ END_TOLERANCE_SECONDS = 6
 # so PLAY or STOP on the device can clear it.
 STARTUP_LIMIT_SECONDS = 30
 
+# A short Sonos read outage must not immediately cut off a healthy local stream.
+# Beyond this limit we release local resources, without sending a Sonos STOP.
+SONOS_READ_GRACE_SECONDS = 10.0
+
 
 class Controller:
     """Playback on Sonos for one CD; see the module docstring.
@@ -177,6 +181,7 @@ class Controller:
         self.last_transport = 'UNKNOWN'
         self.seen_playing = False
         self.start_monotonic = None
+        self._sonos_read_failure_since = None
         self._display_progress = None  # read-only Sonos timing; never used to control PLAY
         self._display_progress_poll_at = None
         self.display_toc = None  # validated startup/idle TOC; never read disc for display
@@ -528,6 +533,10 @@ class Controller:
             else:
                 self._display_progress = None
                 self._display_progress_poll_at = None
+            # A successful complete observation restores trust in the live state.
+            if self._sonos_read_failure_since is not None:
+                print('[player] Sonos status reachable again; ownership rechecked', flush=True)
+                self._sonos_read_failure_since = None
         except UriChanged as exc:
             if self._is_our_uri(exc.uri):
                 # Sonos went on to the next track of our disc between two
@@ -542,6 +551,17 @@ class Controller:
             # refresh sees the new state. UID, group and URI are still checked
             # on every refresh, so nothing foreign is adopted here.
             print(f'[player] transport changed during check ({exc}); rechecking', flush=True)
+        except (TimeoutError, ConnectionError) as exc:
+            now = time.monotonic()
+            if self._sonos_read_failure_since is None:
+                self._sonos_read_failure_since = now
+                print(f'[player] Sonos status temporarily unavailable: {type(exc).__name__}; '
+                      'keeping local stream, no Sonos command sent', flush=True)
+            if now - self._sonos_read_failure_since < SONOS_READ_GRACE_SECONDS:
+                return
+            self._fail(f'Sonos status unavailable for {SONOS_READ_GRACE_SECONDS:g} s; '
+                       'local stream closed; no Sonos STOP sent')
+            return
         except Exception as exc:
             self._fail(f'ownership/status check failed: {type(exc).__name__}: {exc}')
         if self._pending_advance is not None:
