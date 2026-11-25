@@ -1,4 +1,6 @@
 """AUD-03f: background reset and library writes must exclude one another."""
+from functools import partial
+
 import pytest
 
 from sonoscdplayer.metadata.manual_edits import disc_token
@@ -7,8 +9,15 @@ from sonoscdplayer.metadata.worker import MetadataWorker
 from test_metadata_worker import FakeToc, ManualExecutor
 
 
+
+class KeywordManualExecutor(ManualExecutor):
+    """Preserve deterministic jobs while supporting Executor.submit kwargs."""
+    def submit(self, function, *args, **kwargs):
+        return super().submit(partial(function, **kwargs), *args)
+
+
 def test_pending_reset_blocks_library_manage_and_destructive_maintenance(tmp_path):
-    executor = ManualExecutor()
+    executor = KeywordManualExecutor()
     worker = MetadataWorker(
         cache_path=tmp_path / 'metadata.sqlite3',
         cover_dir=tmp_path / 'covers', executor=executor,
@@ -40,3 +49,6 @@ def test_pending_reset_blocks_library_manage_and_destructive_maintenance(tmp_pat
     # A read-only maintenance request remains allowed throughout.
     worker.enqueue_library_maintenance(action='stats')
     assert worker._maintenance_job is not None
+    executor.finish(3)
+    worker.poll(toc)
+    assert worker._maintenance_state['status'] == 'ready'
