@@ -7,7 +7,7 @@ configuration overlays are separate follow-up slices, not simulated writes.
 from __future__ import annotations
 
 import argparse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 import json
 import os
 from pathlib import Path
@@ -21,6 +21,7 @@ from sonoscdplayer.metadata.manual_cover import MAX_UPLOAD_BYTES
 from sonoscdplayer.metadata.cover_preferences import read_cover_preferences
 from .cover_storage import cover_storage_snapshot
 from .cover_file import read_player_cover
+from .http_server import BoundedHTTPServer
 from .state import WebPreferences
 from .dashboard_projection import public_dashboard, public_release_detail
 from .library_projection import public_library
@@ -371,9 +372,8 @@ def run(argv=None):
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
         parser.error('invalid port')
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(
+    server = BoundedHTTPServer((args.host, args.port), make_handler(
         PlayerClient(args.socket), WebPreferences(args.state_dir)))
-    server.daemon_threads = True
     print(f'[web] ready on port {server.server_address[1]} (LAN access only; no port forwarding)', flush=True)
     try:
         server.serve_forever()
