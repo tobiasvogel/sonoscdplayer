@@ -30,7 +30,8 @@ def icon_file(severity, grayscale=False, icon_root=ICON_ROOT):
 
 class NoticeRenderer:
     """Draws a notice with its icon on the 128x128 OLED."""
-    def __init__(self, theme=MODERN_HIFI, icon_root=ICON_ROOT):
+    def __init__(self, theme=MODERN_HIFI, icon_root=ICON_ROOT, *, use_antialiasing=False):
+        self.use_antialiasing = use_antialiasing
         self.theme = theme
         self.icon_root = Path(icon_root)
 
@@ -55,6 +56,7 @@ class NoticeRenderer:
         # Keep background OLED pixels off, including behind icon/text rows.
         image = Image.new("RGB", (width, height), "#000000")
         draw = ImageDraw.Draw(image)
+        draw.fontmode = "L" if self.use_antialiasing else "1"
         tone = getattr(self.theme, COLOR[severity])
         margin = max(4, width // 24)
         icon_size = min(40, max(16, height // 3), width // 3)
@@ -99,6 +101,7 @@ class NoticeRenderer:
         visible = max(1, (bottom - top) // line_height)
         layer = Image.new("RGBA", (available_width, bottom - top), (0, 0, 0, 0))
         pen = ImageDraw.Draw(layer)
+        pen.fontmode = "L" if self.use_antialiasing else "1"
         for i, line in enumerate(lines[:visible]):
             box = pen.textbbox((0, 0), line, font=text_font)
             x = max(0, (available_width - (box[2] - box[0])) // 2)

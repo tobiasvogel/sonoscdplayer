@@ -43,14 +43,15 @@ def font(size=9,bold=False):
 
 class Renderer:
     """Draws the screens of the 128x128 SSD1327 OLED (idle, playback, speaker menu)."""
-    def __init__(self,theme=MODERN_HIFI,*,cover_mode='auto',display_profile=DisplayProfile(),language='de'):
+    def __init__(self,theme=MODERN_HIFI,*,cover_mode='auto',display_profile=DisplayProfile(),language='de',use_antialiasing=False):
         self.theme=theme
         self.marquee=Marquee()
         self.translator=Translator(language)
         self.tr=self.translator.tr
         self.cover_enabled=show_cover(cover_mode,display_profile)
+        self.use_antialiasing=use_antialiasing
 
-    def text(self,canvas,xy,value,*,fill,size=9,bold=False,width=None,height=None,time=None,scroll=False):
+    def text(self,canvas,xy,value,*,fill,size=9,bold=False,width=None,height=None,time=None,scroll=False,antialias=None):
         """Draw top-ink-aligned text, clipped to an explicit rectangular viewport.
 
         With scroll=True, text wider than its viewport runs as a marquee. Without
@@ -66,6 +67,7 @@ class Renderer:
         label=str(value)
         mask=Image.new('RGBA',(width,height),(0,0,0,0))
         d=ImageDraw.Draw(mask)
+        d.fontmode='L' if (self.use_antialiasing if antialias is None else antialias) else '1'
         bbox=d.textbbox((0,0),label,font=f)
         ink_width=max(0,bbox[2]-bbox[0]); ink_height=max(0,bbox[3]-bbox[1])
         ink_top=max(0,(height-ink_height)//2)
@@ -115,14 +117,16 @@ class Renderer:
         self.text(canvas,(5,1),heading,fill=self.theme.primary,size=9,bold=True,width=118,height=11)
         d.line((4,14,123,14),fill=self.theme.muted)
 
-    def bottom(self,canvas,*,status,footer,status_fill=None):
+    def bottom(self,canvas,*,status,footer,status_fill=None,elapsed=None):
         """Status (99-111), separator (113), footer (115-126) never overlap."""
         t=self.theme
-        self.text(canvas,(5,100),status,fill=status_fill or t.secondary,size=8,width=118,height=11)
+        self.text(canvas,(5,100),status,fill=status_fill or t.secondary,size=9,width=118,height=11,
+                  time=elapsed,scroll=True,antialias=self.use_antialiasing)
         d=ImageDraw.Draw(canvas)
         d.line((4,DIVIDER_Y,123,DIVIDER_Y),fill=t.muted)
         d.rectangle((0,114,127,126),fill=t.surface)
-        self.text(canvas,(5,115),footer,fill=t.secondary,size=8,width=118,height=12)
+        self.text(canvas,(5,115),footer,fill=t.secondary,size=9,width=118,height=12,
+                  time=elapsed,scroll=True,antialias=self.use_antialiasing)
 
     def render(self,model:DisplayModel,*,elapsed=None,grayscale=False):
         """The DisplayModel as image (grayscale for the OLED if requested)."""
@@ -148,12 +152,12 @@ class Renderer:
         if self.cover_enabled:
             self.cover(canvas,m.cover)
             self.text(canvas,(44,18),m.album or self.tr('label.audio_cd'),fill=t.primary,bold=True,size=9,width=80,height=12,time=elapsed,scroll=True)
-            self.text(canvas,(44,32),m.artist or self.tr('label.unknown_artist'),fill=t.secondary,size=8,width=80,height=11)
-            self.text(canvas,(44,45),self.tr('label.tracks',count=m.track_count or '?'),fill=t.muted,size=8,width=80,height=9)
+            self.text(canvas,(44,32),m.artist or self.tr('label.unknown_artist'),fill=t.secondary,size=9,width=80,height=11,time=elapsed,scroll=True)
+            self.text(canvas,(44,45),self.tr('label.tracks',count=m.track_count or '?'),fill=t.muted,size=9,width=80,height=11)
         else:
             self.text(canvas,(6,18),m.album or self.tr('label.audio_cd'),fill=t.primary,bold=True,size=12,width=116,height=17,time=elapsed,scroll=True)
-            self.text(canvas,(6,36),m.artist or self.tr('label.unknown_artist'),fill=t.secondary,size=10,width=116,height=15,time=elapsed,scroll=True)
-            self.text(canvas,(6,51),self.tr('label.tracks',count=m.track_count or '?'),fill=t.muted,size=8,width=116,height=8)
+            self.text(canvas,(6,35),m.artist or self.tr('label.unknown_artist'),fill=t.secondary,size=10,width=116,height=12,time=elapsed,scroll=True)
+            self.text(canvas,(6,48),self.tr('label.tracks',count=m.track_count or '?'),fill=t.muted,size=9,width=116,height=11)
         d.line((5,59,123,59),fill=t.muted)
         # The selected track (NEXT/PREVIOUS while stopped), not always track 1.
         number = m.track if isinstance(m.track, int) and m.track > 0 else 1
@@ -182,7 +186,7 @@ class Renderer:
             self.cover(canvas,m.cover)
             self.text(canvas,(44,16),f'{m.track:02d}/{m.track_count:02d}',fill=t.accent,size=9,bold=True,width=80,height=11)
             self.text(canvas,(44,29),m.title or self.tr('label.track',number=m.track),fill=t.primary,size=9,bold=True,width=80,height=12,time=elapsed,scroll=True)
-            self.text(canvas,(44,43),second,fill=t.secondary,size=8,width=80,height=10,time=elapsed,scroll=True)
+            self.text(canvas,(44,43),second,fill=t.secondary,size=9,width=80,height=11,time=elapsed,scroll=True)
         else:
             self.text(canvas,(6,16),f'{m.track:02d}/{m.track_count:02d}',fill=t.accent,size=10,bold=True,width=116,height=13)
             self.text(canvas,(6,30),m.title or self.tr('label.track',number=m.track),fill=t.primary,size=12,bold=True,width=116,height=16,time=elapsed,scroll=True)

@@ -49,7 +49,8 @@ class InteractiveMenu:
     the player go through the given callbacks (``target_rpc``,
     ``power_action``, ``disc_reset``, ...).
     """
-    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None, network_reader=read_network_status, current_target=None, on_language_change=None, network_setup=None, text_extra_characters=DEFAULT_EXTRA_CHARACTERS, disc_reset=None):
+    def __init__(self, *, discover=discover_targets, refresh_seconds=15.0, language='de', target_rpc=None, group_target_rpc=None, power_action=None, network_reader=read_network_status, current_target=None, on_language_change=None, network_setup=None, text_extra_characters=DEFAULT_EXTRA_CHARACTERS, disc_reset=None, use_antialiasing=False):
+        self.use_antialiasing = use_antialiasing
         self.state = MultiSelection()
         self.language = Translator(language).language
         self.languages = available_languages()
@@ -62,7 +63,7 @@ class InteractiveMenu:
         self._pending = None
         self._lock = threading.Lock()
         self._worker = None
-        self.renderer = MultiRenderer(language=self.language)
+        self.renderer = MultiRenderer(language=self.language, use_antialiasing=self.use_antialiasing)
         self._target_rpc = target_rpc
         self._group_target_rpc = group_target_rpc
         # disc_reset() -> True: forget the inserted CD's metadata;
@@ -117,12 +118,12 @@ class InteractiveMenu:
         self._volume_level = None
         self._volume_until = 0.0
         self.connect_notices = ConnectNoticeView()
-        self._connect_renderer = NoticeRenderer()
+        self._connect_renderer = NoticeRenderer(use_antialiasing=self.use_antialiasing)
         self._notice_previous_active = None
         self.section = 'targets'  # Preserve direct Sonos selection from CONNECT.
         self.menu_focus = 0
         self._targets_return = 'closed'
-        self._navigation_renderer = NavigationRenderer()
+        self._navigation_renderer = NavigationRenderer(use_antialiasing=self.use_antialiasing)
         self._network_reader = network_reader
         self.network_snapshot = NetworkStatus()
         self._network_pending = None
@@ -802,7 +803,7 @@ class InteractiveMenu:
             elif (name,event) == ('encoder_sw','pressed'):
                 changed_language = self.languages[self.language_focus] != self.language
                 self.language = self.languages[self.language_focus]
-                self.renderer = MultiRenderer(language=self.language)
+                self.renderer = MultiRenderer(language=self.language, use_antialiasing=self.use_antialiasing)
                 self.language_picker = False
                 if changed_language and self._on_language_change is not None:
                     try:

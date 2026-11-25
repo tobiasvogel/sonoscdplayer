@@ -15,14 +15,17 @@ DEFAULT_CONFIG = None
 
 @dataclass(frozen=True)
 class UIConfig:
-    """The ``[ui]`` settings: menu language, cover mode and extra characters for text entry."""
+    """The ``[ui]`` settings: menu language, cover mode, text rasterization and input characters."""
     language: str = 'de'
     cover_mode: str = 'auto'
     # Characters offered in addition to ASCII when typing names;
     # passwords stay ASCII.
     extra_characters: str = DEFAULT_EXTRA_CHARACTERS
+    use_antialiasing: bool = False
 
     def __post_init__(self):
+        if type(self.use_antialiasing) is not bool:
+            raise ValueError('use_antialiasing must be a boolean')
         if self.language not in available_languages():
             raise ValueError('unsupported UI language')
         if self.cover_mode not in ('auto', 'on', 'off'):
@@ -61,4 +64,4 @@ def load_ui_config(path=DEFAULT_CONFIG):
         logging.warning('Unsupported UI language in configuration; using English fallback')
         language = 'en'
     return UIConfig(language=language, cover_mode=cover.get('mode', 'auto'),
-                    extra_characters=extra)
+                    extra_characters=extra, use_antialiasing=ui.get('use_antialiasing', False))

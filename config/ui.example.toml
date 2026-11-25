@@ -1,6 +1,8 @@
 # Optional SonosCDPlayer interface preferences. Independent of Linux locale.
 [ui]
 language = "de" # de | en
+# Text rasterization on the display; restart the OLED service after changing.
+use_antialiasing = false # false: crisp pixels | true: smooth edges
 
 [ui.cover]
 mode = "auto" # auto: use covers on cover-capable displays | on | off

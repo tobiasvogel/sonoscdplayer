@@ -30,14 +30,16 @@ def render_screen(screen: SemanticScreen, *, renderer, navigation_renderer=None,
     view = screen.view
     if view == "navigation":
         from sonoscdplayer.ui.menu.navigation_pages import NavigationRenderer
-        nav = navigation_renderer or NavigationRenderer(language=renderer.translator.language)
+        nav = navigation_renderer or NavigationRenderer(language=renderer.translator.language,
+            use_antialiasing=renderer.use_antialiasing)
         return nav.menu_pixels(screen.heading,
                                [(item.key, item.label) for item in screen.items],
                                _focus(screen), status=screen.status, footer=screen.footer,
                                **({} if gray else {'gray': False}))
     if view == "network_status":
         from sonoscdplayer.ui.menu.navigation_pages import NavigationRenderer
-        nav = navigation_renderer or NavigationRenderer(language=renderer.translator.language)
+        nav = navigation_renderer or NavigationRenderer(language=renderer.translator.language,
+            use_antialiasing=renderer.use_antialiasing)
         return nav.status_pixels(screen.heading,
                                  [(item.label, item.value or "") for item in screen.items],
                                  status=screen.status, footer=screen.footer,
@@ -62,7 +64,7 @@ def render_screen(screen: SemanticScreen, *, renderer, navigation_renderer=None,
         return renderer.render_volume(int(screen.items[0].value), gray=gray)
     if view == "notice":
         from sonoscdplayer.ui.notices.render import NoticeRenderer
-        notices = notice_renderer or NoticeRenderer()
+        notices = notice_renderer or NoticeRenderer(use_antialiasing=renderer.use_antialiasing)
         return notices.render_text(screen.message, screen.severity, grayscale=gray,
                                    hint=screen.footer)
     raise ValueError(f"no OLED widget for view {view!r}")

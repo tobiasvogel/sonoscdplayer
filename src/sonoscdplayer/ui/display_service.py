@@ -49,7 +49,8 @@ def refresh_saved_language(menu, ui_state):
     from sonoscdplayer.ui.renderers.oled_128_speakers import MultiRenderer
     menu.language = saved
     menu.language_focus = menu.languages.index(saved)
-    menu.renderer = MultiRenderer(language=saved)
+    menu.renderer = MultiRenderer(language=saved,
+        use_antialiasing=getattr(menu, 'use_antialiasing', False))
     return True
 
 
@@ -153,60 +154,60 @@ def drive_fault_details(state):
     return retry, power.get('idle_wake_retries_exhausted') is True
 
 
-def notice_frame(key, *, severity='info', params=None, language='de', color=False):
+def notice_frame(key, *, severity='info', params=None, language='de', color=False, use_antialiasing=False):
     """One Modern Hi-Fi rendering pipeline for transient and persistent notices."""
     from sonoscdplayer.ui.notices.notice import Notice
     from sonoscdplayer.ui.notices.render import NoticeRenderer
     notice = Notice(key, severity=severity, params=params or {})
-    return image_to_frame(NoticeRenderer().render(
+    return image_to_frame(NoticeRenderer(use_antialiasing=use_antialiasing).render(
         notice, language=language, grayscale=not color), color=color)
 
 
-def drive_notice_frame(state, *, language='de', color=False):
+def drive_notice_frame(state, *, language='de', color=False, use_antialiasing=False):
     """Represent verified drive state without changing or retrying drive actions."""
     if drive_fault(state):
         retry, exhausted = drive_fault_details(state)
         if exhausted:
             return notice_frame('status.drive_wake_exhausted',
-                                severity='error', language=language, color=color)
+                                severity='error', language=language, color=color, use_antialiasing=use_antialiasing)
         if retry is None:
             return notice_frame('status.drive_wake_fault',
-                                severity='error', language=language, color=color)
+                                severity='error', language=language, color=color, use_antialiasing=use_antialiasing)
         if retry > 0:
             return notice_frame('status.drive_wake_retry',
                                 severity='error', params={'seconds': retry},
-                                language=language, color=color)
+                                language=language, color=color, use_antialiasing=use_antialiasing)
         return notice_frame('status.drive_wake_retry_ready',
-                            severity='error', language=language, color=color)
+                            severity='error', language=language, color=color, use_antialiasing=use_antialiasing)
     if drive_waking(state):
-        return notice_frame('status.drive_waking', language=language, color=color)
+        return notice_frame('status.drive_waking', language=language, color=color, use_antialiasing=use_antialiasing)
     return None
 
 
-def modern_status_frame(state=None, error=None, *, cover_mode='auto', language='de', color=False):
+def modern_status_frame(state=None, error=None, *, cover_mode='auto', language='de', color=False, use_antialiasing=False):
     """Render the player or a localized Modern Hi-Fi status notice."""
     if error is not None or state is None:
         return notice_frame('status.player_offline', severity='error',
-                            language=language, color=color)
-    notice = drive_notice_frame(state, language=language, color=color)
+                            language=language, color=color, use_antialiasing=use_antialiasing)
+    notice = drive_notice_frame(state, language=language, color=color, use_antialiasing=use_antialiasing)
     if notice is not None:
         return notice
     from sonoscdplayer.ui.menu.player_adapter import project_status
     from sonoscdplayer.ui.renderers.oled_128 import Renderer
     display = project_status(state)
-    image = Renderer(cover_mode=cover_mode, language=language).render(
+    image = Renderer(cover_mode=cover_mode, language=language, use_antialiasing=use_antialiasing).render(
         display, grayscale=not color)
     return image_to_frame(image, color=color)
 
 
-def safe_modern_status_frame(state, *, cover_mode='auto', language='de', color=False):
+def safe_modern_status_frame(state, *, cover_mode='auto', language='de', color=False, use_antialiasing=False):
     """Use the notice renderer, never a recursive legacy fallback, on bad data."""
     try:
         return modern_status_frame(
-            state, cover_mode=cover_mode, language=language, color=color)
+            state, cover_mode=cover_mode, language=language, color=color, use_antialiasing=use_antialiasing)
     except (ValueError, TypeError, KeyError):
         return notice_frame('status.invalid_player_status',
-                            severity='error', language=language, color=color)
+                            severity='error', language=language, color=color, use_antialiasing=use_antialiasing)
 
 
 # While a scrolling text overflows its viewport, redraw this often so the
@@ -240,7 +241,7 @@ def menu_overlay_active(menu):
 
 
 def selected_status_frame(state, *, menu=None, ui_modern=False,
-                          cover_mode='auto', language='de', cached=False, color=False):
+                          cover_mode='auto', language='de', cached=False, color=False, use_antialiasing=False):
     """All runtime views use Modern Hi-Fi, including drive and error notices.
 
     Retain the historical ui_modern/cached arguments for compatible callers,
@@ -253,13 +254,13 @@ def selected_status_frame(state, *, menu=None, ui_modern=False,
                              or isinstance(getattr(menu, 'shutdown_screen', None), str)
                              or netsetup_shown(menu)):
         return menu_frame()
-    drive_frame = drive_notice_frame(state, language=language, color=color)
+    drive_frame = drive_notice_frame(state, language=language, color=color, use_antialiasing=use_antialiasing)
     if drive_frame is not None:
         return drive_frame
     if menu is not None and (menu.active or menu_overlay_active(menu)):
         return menu_frame()
     return safe_modern_status_frame(
-        state, cover_mode=cover_mode, language=language, color=color)
+        state, cover_mode=cover_mode, language=language, color=color, use_antialiasing=use_antialiasing)
 
 
 class StatusHold:
@@ -396,9 +397,10 @@ def main(argv=None):
     args.preserve_display_on_exit = display_pins.preserve_on_exit
     args.oled_recover_on_error = display_pins.recover_on_error
     converter = partial(image_to_frame, color=True) if backend.color else image_to_frame
-    render_status = (partial(selected_status_frame, color=True) if backend.color
-                     else selected_status_frame)
-    render_notice = partial(notice_frame, color=True) if backend.color else notice_frame
+    render_status = partial(selected_status_frame, color=backend.color,
+                            use_antialiasing=ui_config.use_antialiasing)
+    render_notice = partial(notice_frame, color=backend.color,
+                            use_antialiasing=ui_config.use_antialiasing)
     def render_menu():
         return menu.frame(converter, gray=False) if backend.color else menu.frame(converter)
     if args.ui_target_rpc and not (args.ui_events_socket and args.ui_modern):
@@ -488,7 +490,7 @@ def main(argv=None):
                                on_language_change=ui_state.save_language,
                                network_setup=network_setup,
                                text_extra_characters=ui_config.extra_characters,
-                               disc_reset=disc_reset)
+                               disc_reset=disc_reset, use_antialiasing=ui_config.use_antialiasing)
         receiver_context = EventReceiver(args.ui_events_socket)
     def stop_on_sigterm(_signum, _frame):
         # systemd's normal SIGTERM must run finally and release SPI/GPIO.
