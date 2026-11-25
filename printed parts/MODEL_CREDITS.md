@@ -32,3 +32,6 @@ https://grabcad.com/library/usb-c-type-c-male-connector-cable-1
 
 USB A-Type Connector:
 https://grabcad.com/library/usb-type-a-male-connector-cable-1
+
+50mm Case Fan:
+https://grabcad.com/library/gelid-silent-5-fn-sx05-40-1

@@ -102,9 +102,15 @@ class ReleaseWorkflow:
         # D-090/091: a differing medium cannot safely inherit track edits.
         if keep_manual and not self._can_keep_track_edits(candidate):
             raise ValueError('cannot safely map track edits to this release; discard or cancel')
-        local = local_metadata_from_cdtext(self._last_toc, self._last_cdtext)
-        future = self._executor.submit(confirm_release, self._cache, identity, local,
-                                       candidate, keep_manual=keep_manual)
+        toc = self._last_toc
+        generation = self._disc_generation
+        local = local_metadata_from_cdtext(toc, self._last_cdtext)
+        def work():
+            return confirm_release(
+                self._cache, identity, local, candidate, keep_manual=keep_manual,
+                current=lambda: (self._disc_generation == generation and
+                                 self._last_toc == toc))
+        future = self._executor.submit(work)
         self._release_selection = (token, future)
         self._release_info.update(status='saving', error=None)
         self._release_info['seq'] += 1

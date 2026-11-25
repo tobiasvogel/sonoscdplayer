@@ -81,7 +81,8 @@ def selected_metadata(cdtext_local: LocalDiscMetadata, candidate):
                    tracks=tuple(tracks))
 
 
-def confirm_release(cache, identity, cdtext_local, candidate, *, keep_manual):
+def confirm_release(cache, identity, cdtext_local, candidate, *, keep_manual,
+                    current=lambda: True):
     """Atomically rebind a disc, explicitly allowing re-selection of a manual ID.
 
     `DiscCache.put` rightly refuses an *automatic* overwrite of a confirmed
@@ -91,6 +92,8 @@ def confirm_release(cache, identity, cdtext_local, candidate, *, keep_manual):
     """
     if type(keep_manual) is not bool:
         raise ValueError('explicit manual correction decision required')
+    if not current():
+        raise ValueError('disc changed before release selection')
     local = selected_metadata(cdtext_local, candidate)
     db = cache._connect(write=True)
     try:
@@ -113,6 +116,8 @@ def confirm_release(cache, identity, cdtext_local, candidate, *, keep_manual):
             (identity.disc_id, identity.toc,
              json.dumps(asdict(local), ensure_ascii=False, separators=(',', ':')),
              candidate.release_id, 'manual', None, 1, int(time.time())))
+        if not current():
+            raise ValueError('disc changed during release selection')
         db.commit()
     except Exception:
         db.rollback()
