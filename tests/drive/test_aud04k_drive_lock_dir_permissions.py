@@ -65,3 +65,23 @@ def test_insecure_fallback_not_repaired(monkeypatch, tmp_path):
             drive_locks.lock_path('/dev/sr0')
     finally:
         directory.chmod(0o700)
+
+
+def test_preflight_runs_before_drive_inspection(monkeypatch, tmp_path, capsys):
+    from sonoscdplayer.player import service
+    from unittest.mock import patch
+    config = tmp_path / 'player.toml'
+    config.write_text('')
+    calls = []
+    def prepare():
+        calls.append('preflight')
+        return tmp_path / 'safe-locks', True
+    def inspect(**kwargs):
+        assert calls == ['preflight']
+        calls.append('inspect')
+        raise RuntimeError('inspection deliberately stopped')
+    with (patch('sonoscdplayer.drive.drive_lock.prepare_drive_lock_directory', side_effect=prepare),
+          patch.object(service, 'inspect_initial_disc', side_effect=inspect)):
+        assert service.run(['--config', str(config), '--socket', str(tmp_path / 'control.sock')]) == 1
+    assert calls == ['preflight', 'inspect']
+    assert '[drive] repaired private lock directory permissions (0700)' in capsys.readouterr().out

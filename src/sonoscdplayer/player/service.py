@@ -1080,6 +1080,10 @@ def run(argv=None):
                         if threading.current_thread() is threading.main_thread() else None)
     try:
         refuse_existing_control_socket(ns.socket)
+        from sonoscdplayer.drive.drive_lock import prepare_drive_lock_directory
+        lock_dir, repaired = prepare_drive_lock_directory()
+        if repaired:
+            print(f'[drive] repaired private lock directory permissions (0700): {lock_dir}', flush=True)
         disc_status, toc = inspect_initial_disc(requested_device=ns.device)
         device = disc_status.device or '/dev/sr0'  # placeholder, never opened without a READY TOC
         identity = usb_identity(device) if disc_status.device is not None else None

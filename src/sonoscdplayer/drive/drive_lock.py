@@ -21,25 +21,39 @@ def lock_path(device):
     """
     if not re.fullmatch(r'/dev/sr[0-9]+', device):
         raise ValueError('invalid optical drive device')
+    root, _repaired = prepare_drive_lock_directory()
+    return root / ('sonoscdplayer-drive-' + device.rsplit('/', 1)[1] + '.lock')
+
+
+def prepare_drive_lock_directory():
+    """Validate the drive lock directory before startup CD I/O.
+
+    Repair only the known 0600 umask error in our own private fallback.
+    Never change permissions of XDG_RUNTIME_DIR or foreign directories.
+    Return (directory, repaired) for a startup log message.
+    """
     runtime_dir = os.environ.get('XDG_RUNTIME_DIR')
     root = Path(runtime_dir or (Path(tempfile.gettempdir()) / f'sonoscdplayer-{os.getuid()}'))
-    if not root.exists():
+    try:
         root.mkdir(mode=0o700)
-    # umask 0177 can turn mkdir(0700) into 0600, preventing traversal.
-    # Only repair our private fallback directory, never XDG_RUNTIME_DIR.
+    except FileExistsError:
+        pass
+    # O_NOFOLLOW and fstat/fchmod prevent replacing a checked symlink.
     fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    repaired = False
     try:
         s = os.fstat(fd)
         if s.st_uid != os.getuid() or s.st_mode & 0o077:
             raise PermissionError('drive lock directory must be private and owned by current user')
         if not runtime_dir and (s.st_mode & 0o777) == 0o600:
             os.fchmod(fd, 0o700)
+            repaired = True
             s = os.fstat(fd)
         if (s.st_mode & 0o700) != 0o700:
             raise PermissionError('drive lock directory needs owner rwx permissions')
     finally:
         os.close(fd)
-    return root / ('sonoscdplayer-drive-' + device.rsplit('/', 1)[1] + '.lock')
+    return root, repaired
 
 
 @contextmanager
