@@ -19,6 +19,8 @@ import tempfile
 import urllib.error
 import urllib.request
 
+from sonoscdplayer.metadata.cover_lock import locked_cover_directory
+
 DEFAULT_COVER_DIR = Path('/var/lib/sonoscdplayer/covers')
 _UUID = re.compile(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')
 
@@ -115,19 +117,22 @@ class CoverStore:
                 rgb = image.convert('RGB')
                 encoded = BytesIO()
                 rgb.save(encoded, format='JPEG', quality=policy.jpeg_quality, optimize=True)
-            if self.used_bytes() + len(encoded.getvalue()) > policy.budget_mb * 1024 * 1024:
-                # Full budget: keep every stored cover, store no new one.
-                raise CoverBudgetFull()
             self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-            path = self._path(release_id)
-            fd, temp_name = tempfile.mkstemp(prefix='.cover-', dir=self.directory)
-            try:
-                with os.fdopen(fd, 'wb') as output:
-                    output.write(encoded.getvalue())
-                os.replace(temp_name, path)
-            finally:
-                if os.path.exists(temp_name):
-                    os.unlink(temp_name)
+            # Cooperate with manual cover writes and prune-auto. The budget
+            # check and final rename must be inside the same critical section.
+            with locked_cover_directory(self.directory):
+                if self.used_bytes() + len(encoded.getvalue()) > policy.budget_mb * 1024 * 1024:
+                    # Full budget: keep every stored cover, store no new one.
+                    raise CoverBudgetFull()
+                path = self._path(release_id)
+                fd, temp_name = tempfile.mkstemp(prefix='.cover-', dir=self.directory)
+                try:
+                    with os.fdopen(fd, 'wb') as output:
+                        output.write(encoded.getvalue())
+                    os.replace(temp_name, path)
+                finally:
+                    if os.path.exists(temp_name):
+                        os.unlink(temp_name)
             return path
         except (urllib.error.URLError, TimeoutError, OSError,
                 UnidentifiedImageError, ValueError, Image.DecompressionBombError):

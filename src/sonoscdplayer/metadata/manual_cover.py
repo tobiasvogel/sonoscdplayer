@@ -15,6 +15,7 @@ import tempfile
 from threading import Lock
 
 from sonoscdplayer.metadata.cover_store import CoverBudgetFull, CoverStore, DEFAULT_COVER_DIR
+from sonoscdplayer.metadata.cover_lock import locked_cover_directory
 from sonoscdplayer.metadata.cover_preferences import read_cover_preferences
 from sonoscdplayer.metadata.manual_edits import disc_token
 
@@ -85,34 +86,39 @@ class ManualCoverStore:
             encoded = self._jpeg(data)
             if not current():
                 raise ValueError('disc changed')
-            path = self.path(identity)
-            existing_size = path.stat().st_size if path.is_file() else 0
-            budget = self.preferences.budget_mb * 1024 * 1024
-            if (CoverStore(self.cover_dir).used_bytes() - existing_size + len(encoded) > budget):
-                raise CoverBudgetFull('cover storage budget reached')
             self.cover_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-            fd, temp_name = tempfile.mkstemp(prefix='.manual-cover-', dir=self.cover_dir)
-            try:
-                with os.fdopen(fd, 'wb') as target:
-                    target.write(encoded)
-                    target.flush()
-                    os.fsync(target.fileno())
-                if guarded_replace is not None:
-                    guarded_replace(lambda: os.replace(temp_name, path))
-                else:
-                    if not current():
-                        raise ValueError('disc changed')
-                    os.replace(temp_name, path)
-            finally:
-                if os.path.exists(temp_name):
-                    os.unlink(temp_name)
+            # CoverStore downloads and prune-auto use this same advisory lock.
+            with locked_cover_directory(self.cover_dir):
+                if not current():
+                    raise ValueError('disc changed')
+                path = self.path(identity)
+                existing_size = path.stat().st_size if path.is_file() else 0
+                budget = self.preferences.budget_mb * 1024 * 1024
+                if (CoverStore(self.cover_dir).used_bytes() - existing_size + len(encoded) > budget):
+                    raise CoverBudgetFull('cover storage budget reached')
+                fd, temp_name = tempfile.mkstemp(prefix='.manual-cover-', dir=self.cover_dir)
+                try:
+                    with os.fdopen(fd, 'wb') as target:
+                        target.write(encoded)
+                        target.flush()
+                        os.fsync(target.fileno())
+                    if guarded_replace is not None:
+                        guarded_replace(lambda: os.replace(temp_name, path))
+                    else:
+                        if not current():
+                            raise ValueError('disc changed')
+                        os.replace(temp_name, path)
+                finally:
+                    if os.path.exists(temp_name):
+                        os.unlink(temp_name)
             return str(path)
         finally:
             staged.unlink(missing_ok=True)
 
     def remove(self, identity, *, current, guarded_remove=None):
         def action():
-            self.path(identity).unlink(missing_ok=True)
+            with locked_cover_directory(self.cover_dir):
+                self.path(identity).unlink(missing_ok=True)
         if guarded_remove is not None:
             guarded_remove(action)
         else:

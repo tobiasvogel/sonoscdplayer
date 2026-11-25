@@ -14,6 +14,7 @@ import re
 import stat
 
 from sonoscdplayer.metadata.cache import DiscCache
+from sonoscdplayer.metadata.cover_lock import locked_cover_directory
 from sonoscdplayer.metadata.cover_preferences import read_cover_preferences
 from sonoscdplayer.metadata.library_index import MAX_LIBRARY_ROWS, valid_token
 from sonoscdplayer.metadata.manual_edits import disc_token
@@ -155,8 +156,9 @@ class LibraryMaintenance:
                     candidates.append((path.name, info.st_dev, info.st_ino))
             removed = 0
             if candidates:
-                fd = os.open(self.cover_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-                try:
+                # Protect the stat/unlink pair from cooperating cover writers.
+                # Keep identity checks: unrelated filesystem writers ignore flock.
+                with locked_cover_directory(self.cover_dir) as fd:
                     for name, device, inode in candidates:
                         if not current():
                             raise ValueError('disc or playback state changed')
@@ -169,8 +171,6 @@ class LibraryMaintenance:
                             raise ValueError('cover changed during cleanup')
                         os.unlink(name, dir_fd=fd)
                         removed += 1
-                finally:
-                    os.close(fd)
             return {'changed_count': removed, 'stats': self.stats()}
         if not self.cache.path.is_file():
             if action == 'bulk-delete':
