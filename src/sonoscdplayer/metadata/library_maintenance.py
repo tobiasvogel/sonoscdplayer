@@ -219,6 +219,12 @@ class LibraryMaintenanceWorkflow:
         self._maintenance_state = {'status': 'idle', 'seq': 0, 'action': None,
                                    'changed_count': 0, 'stats': None, 'error': None}
 
+    @property
+    def destructive_maintenance_pending(self):
+        """Keep playback gated until destructive maintenance is consumed."""
+        return (self._maintenance_job is not None and
+                self._maintenance_state['action'] != 'stats')
+
     def enqueue_library_maintenance(self, *, action, tokens=None, confirmation=None):
         action, tokens, confirmation = validate_maintenance(action, tokens, confirmation)
         if self._maintenance_job is not None:

@@ -58,6 +58,18 @@ PLAY_COMMANDS = frozenset(('play', 'play-selected', 'playpause', 'resume'))
 COMMANDS = ('status', 'sonos-status --uid UID', 'play --uid UID', 'playpause --uid UID', 'pause', 'resume', 'next', 'previous', 'eject', 'stop', 'stop --force --uid UID', 'select N', 'reset', 'help', 'set-target --uid UID', 'get-target', 'clear-target', 'play-selected', 'inspect-group-recovery', 'resolve-group-recovery', 'volume +N|-N', 'reset-disc')
 
 
+def maintenance_blocks_playback(request, metadata_worker):
+    """Block local playback operations while destructive maintenance runs."""
+    if not getattr(metadata_worker, 'destructive_maintenance_pending', False):
+        return False
+    command = request.get('command') if isinstance(request, dict) else None
+    if not isinstance(command, str):
+        return False
+    command = command.strip().lower()
+    return (command in PLAY_COMMANDS | {'reset', 'next', 'previous'} or
+            re.fullmatch(r'select [0-9]{1,3}', command) is not None)
+
+
 def response(controller, *, ok, error=None, commands=None):
     """The JSON reply: ok/error, the status line and the full state snapshot."""
     result = {'ok': ok, 'status': controller.status(),
@@ -771,11 +783,16 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
 
             def operate(request):
                 command = request.get('command') if isinstance(request, dict) else None
-                if (disc_monitor is not None and getattr(disc_monitor, 'cdtext_pending', False)
-                        and isinstance(command, str)
-                        and command.strip().lower() in PLAY_COMMANDS | {'eject'}):
-                    disc_monitor.cancel_cdtext()     # the drive is needed now
-                reply = unrecorded(request)
+                if maintenance_blocks_playback(request, metadata_worker):
+                    # Reject before CD-TEXT cancellation, drive wake or Sonos I/O.
+                    reply = response(controller, ok=False, error='maintenance in progress')
+                    publisher.publish(controller, power)
+                else:
+                    if (disc_monitor is not None and getattr(disc_monitor, 'cdtext_pending', False)
+                            and isinstance(command, str)
+                            and command.strip().lower() in PLAY_COMMANDS | {'eject'}):
+                        disc_monitor.cancel_cdtext()     # the drive is needed now
+                    reply = unrecorded(request)
                 if (reply.get('ok') is False and isinstance(command, str)
                         and command.strip().lower() in PLAY_COMMANDS):
                     controller.note_rejection(command.strip().lower(), reply.get('error'))
