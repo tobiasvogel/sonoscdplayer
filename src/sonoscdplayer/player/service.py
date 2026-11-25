@@ -991,6 +991,22 @@ def install_sigterm_handler():
     return signal.signal(signal.SIGTERM, _terminate)
 
 
+def _close_runtime(ctrl, power, shutdown_policy):
+    """Always release local resources, even if Sonos shutdown fails."""
+    try:
+        if ctrl is not None:
+            try:
+                result = ctrl.shutdown_owned(shutdown_policy)
+                print(f'[shutdown] shutdown: {result}', flush=True)
+                if result['action'] == 'not_stopped':
+                    print('[shutdown] WARNING: Sonos may retain a stream URI; no unverified STOP sent', flush=True)
+            finally:
+                ctrl.close()
+    finally:
+        if power is not None:
+            power.close()
+
+
 def run(argv=None):
     """Command line of the service: read the configuration, find the drive, serve."""
     ap = argparse.ArgumentParser(description=__doc__)
@@ -1123,18 +1139,15 @@ def run(argv=None):
         print(f'[service] service failed: {type(exc).__name__}: {exc}', file=sys.stderr)
         return 1
     finally:
-        if metadata_worker is not None:
-            metadata_worker.close()
-        if ctrl:
-            result = ctrl.shutdown_owned(shutdown_policy)
-            print(f'[shutdown] shutdown: {result}', flush=True)
-            if result['action'] == 'not_stopped':
-                print('[shutdown] WARNING: Sonos may retain a stream URI; no unverified STOP sent', flush=True)
-            ctrl.close()
-        if power is not None:
-            power.close()
-        if previous_sigterm is not None:
-            signal.signal(signal.SIGTERM, previous_sigterm)
+        try:
+            if metadata_worker is not None:
+                metadata_worker.close()
+        finally:
+            try:
+                _close_runtime(ctrl, power, shutdown_policy)
+            finally:
+                if previous_sigterm is not None:
+                    signal.signal(signal.SIGTERM, previous_sigterm)
     return 0
 
 
