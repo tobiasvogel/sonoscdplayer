@@ -523,23 +523,24 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
     finally:
         os.umask(original_umask)
     bound_inode = os.lstat(path).st_ino
-    publisher = StatusPublisher(controller, power)
-    selection = SelectedTarget(store=target_store)
-    if selection.restore():
-        print('[target] remembered speaker selection restored; no Sonos action until PLAY', flush=True)
-    dashboard = DashboardPublisher(controller, selection)
-
-    def follow_app(uid, members):
-        selection.follow(uid, members)
-        controller.target_rev += 1
-        print('[target] selection follows the group changed in the Sonos app', flush=True)
-    if hasattr(controller, 'selection_hook'):
-        controller.selection_hook = follow_app
-    volume = VolumeControl()
-    if hasattr(controller, 'status_hook'):
-        controller.status_hook = lambda: publisher.publish(controller, power)
+    dashboard = None
     pending = []
     try:
+        publisher = StatusPublisher(controller, power)
+        selection = SelectedTarget(store=target_store)
+        if selection.restore():
+            print('[target] remembered speaker selection restored; no Sonos action until PLAY', flush=True)
+        dashboard = DashboardPublisher(controller, selection)
+
+        def follow_app(uid, members):
+            selection.follow(uid, members)
+            controller.target_rev += 1
+            print('[target] selection follows the group changed in the Sonos app', flush=True)
+        if hasattr(controller, 'selection_hook'):
+            controller.selection_hook = follow_app
+        volume = VolumeControl()
+        if hasattr(controller, 'status_hook'):
+            controller.status_hook = lambda: publisher.publish(controller, power)
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
         server.setblocking(False)
         print(f'[service] local socket ready: {path} (0600); responsive cached status', flush=True)
@@ -947,7 +948,8 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                 except (ValueError, UnicodeError, socket.timeout, OSError) as exc:
                     send_reply(conn, {'ok': False, 'error': f'bad request: {type(exc).__name__}'})
     finally:
-        dashboard.close()
+        if dashboard is not None:
+            dashboard.close()
         if hasattr(controller, 'status_hook'):
             controller.status_hook = None
         for conn, _ in pending:
