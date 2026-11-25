@@ -17,6 +17,7 @@ class ManualExecutor:
 
 class StubCover(ManualCoverWorkflow):
     def __init__(self, tmp_path):
+        (tmp_path / 'covers').mkdir()
         self._executor = ManualExecutor()
         self._last_toc = object()
         self._identify = lambda _toc: type('Identity', (), {
