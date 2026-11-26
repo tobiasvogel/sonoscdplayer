@@ -4,6 +4,8 @@ Every text glyph is first drawn to an isolated, explicitly bounded viewport.
 No glyph may paint a neighboring region, regardless of font metrics or Unicode.
 """
 from pathlib import Path
+from functools import lru_cache
+from sonoscdplayer.system.package_paths import ASSETS
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from sonoscdplayer.ui.screens.model import DisplayModel
 from sonoscdplayer.ui.renderers.theme import MODERN_HIFI, ssd1327_gray
@@ -26,6 +28,14 @@ MENU_ROW_HEIGHT=19
 MENU_TEXT_SIZE=11
 MENU_VISIBLE_ROWS=3
 FOOTER=(115,127)
+
+
+@lru_cache(maxsize=8)
+def _blank_disc(side):
+    """Cache the packaged fallback at its display size, retaining alpha."""
+    with Image.open(ASSETS / 'blank_disc.png') as source:
+        return ImageOps.contain(source.convert('RGBA'), (side, side),
+                                method=Image.Resampling.LANCZOS)
 
 
 def font(size=9,bold=False):
@@ -78,15 +88,14 @@ class Renderer:
 
     def cover(self,canvas,path,x=4,y=17,side=36):
         """Draw the cover image (or a placeholder) at the given position."""
-        d=ImageDraw.Draw(canvas)
         if path and Path(path).is_file():
             with Image.open(path) as source:
                 thumb=ImageOps.fit(source.convert('RGB'),(side,side),method=Image.Resampling.LANCZOS)
             canvas.paste(thumb,(x,y))
         else:
-            d.rounded_rectangle((x,y,x+side-1,y+side-1),radius=3,fill=self.theme.surface,outline=self.theme.muted)
-            d.ellipse((x+8,y+8,x+side-9,y+side-9),outline=self.theme.secondary,width=2)
-            d.ellipse((x+16,y+16,x+19,y+19),fill=self.theme.secondary)
+            # Inset the bare disc; actual album covers keep the full field.
+            thumb=_blank_disc(max(1, side*5//6))
+            canvas.paste(thumb,(x+(side-thumb.width)//2,y+(side-thumb.height)//2),thumb)
 
     def menu_window(self,count,focus):
         """Indexes of the visible rows; the focused row stays visible."""
