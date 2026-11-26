@@ -1,0 +1,9 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP 2N3904
+D Bipolar (BJT) Transistor NPN 40 V 200 mA 300MHz 625 mW Through Hole TO-92
+K
+F https://www.onsemi.com/pdf/datasheet/2n3903-d.pdf
+$ENDCMP
+#
+#End Doc Library

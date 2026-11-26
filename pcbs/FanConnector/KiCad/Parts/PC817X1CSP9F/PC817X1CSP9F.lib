@@ -1,0 +1,25 @@
+EESchema-LIBRARY Version 2.3
+#encoding utf-8
+#SamacSys ECAD Model PC817X1CSP9F
+#/1132671/120707/2.50/4/4/Phototransistor
+DEF PC817X1CSP9F Q 0 30 Y Y 1 F N
+F0 "Q" 650 300 50 H V L CNN
+F1 "PC817X1CSP9F" 650 200 50 H V L CNN
+F2 "SOP254P1016X436-4N" 650 100 50 H I L CNN
+F3 "https://www.lcsc.com/product-detail/Optocouplers-Phototransistor-Output_Sharp-Microelectronics-PC817X1CSP9F_C97308.html" 650 0 50 H I L CNN
+F4 "80V 5kV 50mA 100mV@1mA,20mA 1 6V 1.2V DC SMD-4P Transistor, Photovoltaic Output Optoisolators ROHS" 650 -100 50 H I L CNN "Description"
+F5 "4.36" 650 -200 50 H I L CNN "Height"
+F6 "852-PC817X1CSP9F" 650 -300 50 H I L CNN "Mouser Part Number"
+F7 "https://www.mouser.co.uk/ProductDetail/Sharp-Microelectronics/PC817X1CSP9F?qs=rrS6PyfT74f%252BaIhOIosJzQ%3D%3D" 650 -400 50 H I L CNN "Mouser Price/Stock"
+F8 "Sharp Microelectronics" 650 -500 50 H I L CNN "Manufacturer_Name"
+F9 "PC817X1CSP9F" 650 -600 50 H I L CNN "Manufacturer_Part_Number"
+DRAW
+X A 1 0 0 200 R 50 50 0 0 P
+X K 2 0 -100 200 R 50 50 0 0 P
+X C 4 800 0 200 L 50 50 0 0 P
+X E 3 800 -100 200 L 50 50 0 0 P
+P 5 0 1 6 200 100 600 100 600 -200 200 -200 200 100 N
+ENDDRAW
+ENDDEF
+#
+#End Library
