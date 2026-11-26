@@ -759,10 +759,26 @@ class Controller:
                                        propagate_read_errors=True))
 
     def _drop_queue_entry(self, player):
-        """After our own verified stop/end: remove our block where still ours."""
+        """Attempt cleanup once; report confirmed removals and discard the block."""
         block, self._queue_block = self._queue_block, None
-        if block is not None:
-            remove_queue_block(player, block)
+        if block is None:
+            return
+        total = len(block['urls'])
+        if player is None:
+            print(f'[player] queue cleanup incomplete: 0/{total} removals confirmed; '
+                  'no target attached; entries may need manual removal', flush=True)
+            return
+        try:
+            removed = remove_queue_block(player, block)
+        except Exception as cleanup:
+            print(f'[player] queue cleanup incomplete: removal count unknown '
+                  f'({type(cleanup).__name__}); entries may need manual removal', flush=True)
+            return
+        if removed == total:
+            print(f'[player] queue cleanup: {removed}/{total} removals confirmed', flush=True)
+        else:
+            print(f'[player] queue cleanup incomplete: {removed}/{total} removals confirmed; '
+                  'remaining entries may need manual removal', flush=True)
 
     def verify_existing(self):
         """The speaker we play on; raises RuntimeError if there is none."""
@@ -778,16 +794,7 @@ class Controller:
         self.owned_url = None
         self.player = None
         self.server.close()
-        if self._queue_block is not None:
-            # Our disc block must not stay behind in the Sonos queue. Each
-            # entry is checked before removal, so this never touches the
-            # user's own entries; if Sonos is unreachable it stays as is.
-            try:
-                if player is not None:
-                    remove_queue_block(player, self._queue_block)
-            except Exception as cleanup:
-                print(f'[player] queue cleanup after error failed: {cleanup}', flush=True)
-            self._queue_block = None
+        self._drop_queue_entry(player)
         # An error here may mean the topology, URI or transport could not be
         # verified. Never issue unjoin on an ambiguous observation.
         if self._joined:
@@ -884,12 +891,7 @@ class Controller:
         except BaseException as exc:
             self.server.close()
             if self._queue_block is not None:
-                # Half-added disc block: take back what is verifiably ours.
-                try:
-                    remove_queue_block(player, self._queue_block)
-                except Exception as cleanup:
-                    print(f'[player] queue cleanup failed: {cleanup}', flush=True)
-                self._queue_block = None
+                self._drop_queue_entry(player)
             # A failed/ambiguous play_uri may already have changed the coordinator.
             # Never unjoin after an uncertain Sonos write without URI proof.
             if self._joined and not self._group_uncertain:
