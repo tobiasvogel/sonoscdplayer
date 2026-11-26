@@ -21,14 +21,29 @@ READER_STARTED = 'READER started'
 READER_FINISHED = 'READER end'
 
 
-def track_stream_url(host: str, port: int, track: int) -> str:
+def track_stream_path(track: int, *, session_id: str | None = None) -> str:
+    """Build a track path shared by the URL builder and HTTP server.
+
+    None preserves the standalone path; a session ID must be canonical hex.
+    """
+    if track < 1:
+        raise ValueError('Invalid track')
+    if session_id is None:
+        return f'/track/{track}.wav'
+    if not isinstance(session_id, str) or re.fullmatch(r'[0-9a-f]{32}', session_id) is None:
+        raise ValueError('Invalid session ID')
+    return f'/session/{session_id}/track/{track}.wav'
+
+
+def track_stream_url(host: str, port: int, track: int, *,
+                     session_id: str | None = None) -> str:
     """URL under which Sonos fetches a track from the player.
 
-    Only a plain unicast IPv4 address is accepted as host, so that nothing
-    but an address and a number can end up in the URL.
+    Only a plain unicast IPv4 address is accepted as host. An optional
+    canonical session ID distinguishes resources across server lifetimes.
 
     Raises:
-        ValueError: invalid address, port or track number.
+        ValueError: invalid address, port, track number or session ID.
     """
     address = ipaddress.IPv4Address(host)
     if (address.is_multicast or address.is_unspecified or address.is_loopback
@@ -36,7 +51,7 @@ def track_stream_url(host: str, port: int, track: int) -> str:
         raise ValueError('pi-host must be a reachable unicast LAN IPv4 address')
     if not 1 <= port <= 65535 or track < 1:
         raise ValueError('Invalid port or track')
-    return f'http://{address}:{port}/track/{track}.wav'
+    return f'http://{address}:{port}{track_stream_path(track, session_id=session_id)}'
 
 
 def forward_server_output(process: subprocess.Popen, lines: queue.Queue,
