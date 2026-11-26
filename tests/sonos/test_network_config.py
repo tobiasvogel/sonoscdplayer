@@ -1,4 +1,6 @@
 """Validate the configured SOAP timeout without contacting Sonos."""
+import builtins
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -36,3 +38,29 @@ def test_invalid_timeout_does_not_modify_soco(value):
 def test_invalid_sonos_section_is_rejected():
     with pytest.raises(ValueError, match='must be a table'):
         request_timeout_from_config({'sonos': []})
+
+
+def test_missing_soco_does_not_prevent_offline_start(monkeypatch, capsys):
+    monkeypatch.setitem(sys.modules, 'soco', None)
+    assert configure_request_timeout({}) is None
+    assert 'SoCo unavailable' in capsys.readouterr().out
+
+
+def test_missing_soco_does_not_bypass_validation(monkeypatch):
+    monkeypatch.setitem(sys.modules, 'soco', None)
+    with pytest.raises(ValueError, match='sonos.request_timeout_seconds'):
+        configure_request_timeout({'sonos': {'request_timeout_seconds': 0}})
+
+
+def test_broken_soco_dependency_is_not_silenced(monkeypatch):
+    original_import = builtins.__import__
+
+    def import_with_missing_dependency(name, *args, **kwargs):
+        if name == 'soco':
+            raise ModuleNotFoundError('missing dependency', name='soco_dependency')
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, '__import__', import_with_missing_dependency)
+    with pytest.raises(ModuleNotFoundError) as exc:
+        configure_request_timeout({})
+    assert exc.value.name == 'soco_dependency'

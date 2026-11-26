@@ -16,9 +16,15 @@ def request_timeout_from_config(settings):
 
 
 def configure_request_timeout(settings, *, soco_config=None):
-    """Set SoCo's supported process-wide timeout before the worker starts."""
+    """Configure SoCo if installed; return None if the optional library is absent."""
     timeout = request_timeout_from_config(settings)
     if soco_config is None:
-        from soco import config as soco_config
+        try:
+            from soco import config as soco_config
+        except ModuleNotFoundError as exc:
+            if exc.name != 'soco':
+                raise
+            print('[sonos] SoCo unavailable; request timeout not applied', flush=True)
+            return None
     soco_config.REQUEST_TIMEOUT = timeout
     return timeout
