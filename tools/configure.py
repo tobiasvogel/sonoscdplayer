@@ -68,6 +68,7 @@ FIELDS = (
     ('metadata.gnudb', 'enabled', 'Use GnuDB if MusicBrainz is unavailable/not found', 'bool'),
     ('metadata.gnudb', 'timeout_seconds', 'GnuDB request timeout (seconds)', 'int'),
     ('metadata.gnudb', 'endpoint', 'GnuDB HTTPS CGI endpoint', 'https_url'),
+    ('metadata.gnudb', 'contact_email', 'GnuDB contact email (sent to server)', 'contact_email'),
     ('metadata', 'auto_match', 'Automatically select matched releases', 'bool'),
     ('metadata.matching', 'confidence_threshold', 'Matching confidence threshold (0..100)', 'int'),
     ('metadata.matching', 'minimum_margin', 'Minimum score margin (0..100)', 'int'),
@@ -154,6 +155,7 @@ def existing_values(parsed: dict, reference: dict) -> dict[tuple[str, str], obje
                                                    ('stop_owned', 'leave_playing')))
                 or (kind == 'album_prefix' and not valid_album_prefix(value))
                 or (kind == 'https_url' and not valid_gnudb_endpoint(value))
+                or (kind == 'contact_email' and not valid_gnudb_contact(value))
                 or (kind == 'float01' and (type(value) not in (int, float) or
                     not math.isfinite(value) or not 0 <= value <= 1))
                 or (kind == 'float_lux' and (type(value) not in (int, float) or
@@ -195,6 +197,13 @@ def valid_extra_characters(value):
     ascii_chars = string.ascii_letters + string.digits + string.punctuation
     return (len(set(value)) == len(value) and all(
         ch.isprintable() and not ch.isspace() and ch not in ascii_chars for ch in value))
+
+
+def valid_gnudb_contact(value):
+    """Match the runtime's restricted CDDB hello contact syntax."""
+    sys.path.insert(0, str(ROOT / 'src'))
+    from sonoscdplayer.metadata.gnudb import valid_contact_email
+    return valid_contact_email(value)
 
 
 def existing_ui_values(parsed: dict, reference: dict) -> dict[tuple[str, str], object]:
@@ -354,6 +363,8 @@ FIELD_HELP = {
     ('metadata.gnudb', 'enabled'): 'Use GnuDB only if MusicBrainz fails or has no release.',
     ('metadata.gnudb', 'timeout_seconds'): 'Each GnuDB HTTP request: 1..30 seconds.',
     ('metadata.gnudb', 'endpoint'): 'HTTPS-only CDDB CGI URL; no credentials, query or fragment.',
+    ('metadata.gnudb', 'contact_email'): ('Optional email sent to the configured GnuDB server with every lookup. '
+                                          'Never included in journal diagnostics. Type - to clear.'),
     ('metadata.matching', 'rule_languages'): 'JSON list of installed pack codes, e.g. ["de", "fr"].',
     ('metadata.matching', 'soft_suffixes'): 'JSON list of qualifiers that may differ.',
     ('metadata.matching', 'protected_suffixes'): 'JSON list of qualifiers that block wrong editions.',
@@ -446,6 +457,12 @@ def ask(label: str, current: object, suggestion: object, kind: str,
             if valid_gnudb_endpoint(value):
                 return value
             out('Enter a valid HTTPS CGI URL without credentials, query or fragment.')
+        elif kind == 'contact_email':
+            if value == '-':
+                return ''
+            if valid_gnudb_contact(value) and value:
+                return value
+            out('Enter a valid contact email, or - to clear it (sent to GnuDB).')
         elif kind == 'string_list':
             try:
                 values = json.loads(value)

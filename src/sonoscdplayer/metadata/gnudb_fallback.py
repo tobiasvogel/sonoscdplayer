@@ -32,7 +32,7 @@ def _compatible(local: LocalDiscMetadata, entry: CDDBEntry) -> bool:
 
 
 def resolve_fallback(toc, local: LocalDiscMetadata, *, timeout_seconds=5,
-                     query=query_disc, read=read_entry, endpoint=None):
+                     query=query_disc, read=read_entry, endpoint=None, contact_email=''):
     """Return (metadata, status) or (None, sanitized status).
 
     The status is informative only; no CDDB ID is ever used as a MusicBrainz
@@ -47,6 +47,8 @@ def resolve_fallback(toc, local: LocalDiscMetadata, *, timeout_seconds=5,
         kwargs = {'timeout_seconds': timeout_seconds}
         if endpoint is not None:
             kwargs['endpoint'] = endpoint
+        if contact_email:
+            kwargs['contact_email'] = contact_email
         found = query(identity, **kwargs)
         if found.status != 'unique' or len(found.matches) != 1:
             return None, found.status

@@ -40,7 +40,7 @@ def gnudb_settings_from_config(metadata):
     section = metadata.get('gnudb', {})
     if not isinstance(section, dict):
         raise ValueError('metadata.gnudb must be a table')
-    if set(section) - {'enabled', 'timeout_seconds', 'endpoint'}:
+    if set(section) - {'enabled', 'timeout_seconds', 'endpoint', 'contact_email'}:
         raise ValueError('unknown metadata.gnudb setting')
     enabled = section.get('enabled', True)
     timeout = section.get('timeout_seconds', 5)
@@ -60,7 +60,16 @@ def gnudb_settings_from_config(metadata):
         valid = False
     if not valid:
         raise ValueError('metadata.gnudb.endpoint must be an HTTPS CGI URL')
+    from sonoscdplayer.metadata.gnudb import valid_contact_email
+    if not valid_contact_email(section.get('contact_email', '')):
+        raise ValueError('invalid metadata.gnudb.contact_email')
     return enabled, timeout, endpoint
+
+
+def gnudb_contact_from_config(metadata):
+    """Read validated optional contact; keep the established settings tuple.""
+    gnudb_settings_from_config(metadata)
+    return metadata.get('gnudb', {}).get('contact_email', '')
 
 
 def matching_policy_from_config(metadata):
@@ -154,7 +163,7 @@ def _compatible_cached_gnudb(local, cached):
 def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, timeout,
                  policy, identify, lookup, gnudb_enabled=False, gnudb_timeout=5,
                  gnudb_query=query_gnudb, gnudb_read=read_gnudb,
-                 gnudb_endpoint=GNUDB_ENDPOINT):
+                 gnudb_endpoint=GNUDB_ENDPOINT, gnudb_contact_email=''):
     identity = identify(toc)
     local = local_metadata_from_cdtext(toc, cdtext)
     # Database corruption and permissions must not hide already-read CD-TEXT.
@@ -228,7 +237,8 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
             fallback, _fallback_status = resolve_fallback(
                 toc, local, timeout_seconds=gnudb_timeout,
                 query=gnudb_query, read=gnudb_read,
-                endpoint=gnudb_endpoint if gnudb_endpoint != GNUDB_ENDPOINT else None)
+                endpoint=gnudb_endpoint if gnudb_endpoint != GNUDB_ENDPOINT else None,
+                contact_email=gnudb_contact_email)
             if fallback is not None:
                 effective, match, score = fallback, 'gnudb', None
                 try:
@@ -293,7 +303,7 @@ class MetadataWorker(LibraryMaintenanceWorkflow, LibraryManageWorkflow, LibraryW
                  executor=None, clock=time.monotonic, retry_delays=RETRY_DELAYS,
                  gnudb_enabled=False, gnudb_timeout=5,
                  gnudb_query=query_gnudb, gnudb_read=read_gnudb,
-                 gnudb_endpoint=GNUDB_ENDPOINT,
+                 gnudb_endpoint=GNUDB_ENDPOINT, gnudb_contact_email='',
                  cover_staging_dir=DEFAULT_STAGING):
         self._cache = DiscCache(cache_path)
         self._manual = ManualEdits(cache_path)
@@ -315,9 +325,11 @@ class MetadataWorker(LibraryMaintenanceWorkflow, LibraryManageWorkflow, LibraryW
         self._identify, self._lookup = identify, lookup
         # Validate the URL even when the fallback is disabled.
         gnudb_settings_from_config({'gnudb': {'enabled': gnudb_enabled,
-            'timeout_seconds': gnudb_timeout, 'endpoint': gnudb_endpoint}})
+            'timeout_seconds': gnudb_timeout, 'endpoint': gnudb_endpoint,
+            'contact_email': gnudb_contact_email}})
         self._gnudb_enabled, self._gnudb_timeout = gnudb_enabled, gnudb_timeout
         self._gnudb_endpoint = gnudb_endpoint
+        self._gnudb_contact_email = gnudb_contact_email
         self._gnudb_query, self._gnudb_read = gnudb_query, gnudb_read
         self._executor = executor or ThreadPoolExecutor(max_workers=1, thread_name_prefix='disc-metadata')
         self._owns_executor = executor is None
@@ -370,7 +382,8 @@ class MetadataWorker(LibraryMaintenanceWorkflow, LibraryManageWorkflow, LibraryW
                 identify=self._identify, lookup=self._lookup,
                 gnudb_enabled=self._gnudb_enabled, gnudb_timeout=self._gnudb_timeout,
                 gnudb_query=self._gnudb_query, gnudb_read=self._gnudb_read,
-                gnudb_endpoint=self._gnudb_endpoint)
+                gnudb_endpoint=self._gnudb_endpoint,
+                gnudb_contact_email=self._gnudb_contact_email)
             if value is not None:
                 path = self._manual_covers.find(self._identify(toc))
                 value['_manual_cover_file'] = str(path) if path is not None else None

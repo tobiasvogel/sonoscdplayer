@@ -42,7 +42,8 @@ class ProviderConfigurationTests(unittest.TestCase):
         group = wizard.PROVIDER_MENU_GROUP[1]
         self.assertEqual(group, (('metadata.gnudb', 'enabled'),
                                  ('metadata.gnudb', 'timeout_seconds'),
-                                 ('metadata.gnudb', 'endpoint')))
+                                 ('metadata.gnudb', 'endpoint'),
+                                 ('metadata.gnudb', 'contact_email')))
 
     def test_wizard_plan_validates_and_selects_player_only(self):
         raw = (ROOT/'config/player.example.toml').read_text()

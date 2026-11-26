@@ -19,6 +19,26 @@ from sonoscdplayer.audio.table_of_contents import DiscTOC
 ENDPOINT = 'https://gnudb.gnudb.org/~cddb/cddb.cgi'
 USER_AGENT = 'SonosCDPlayer/0.1 (https://github.com/tobiasvogel/sonoscdplayer)'
 HELLO = 'anonymous localhost SonosCDPlayer 0.1'
+
+
+def hello_for_contact(contact_email: str = '') -> str:
+    """Build a CDDB hello without leaking contact data into diagnostics."""
+    if not isinstance(contact_email, str) or (contact_email and not valid_contact_email(contact_email)):
+        raise ValueError('invalid GnuDB contact email')
+    if not contact_email:
+        return HELLO  # Legacy configurations preserve their existing behaviour.
+    return f'{contact_email} SonosCDPlayer SonosCDPlayer 0.9'
+
+
+def valid_contact_email(value) -> bool:
+    """Restricted ASCII mailbox for the space-delimited CDDB hello protocol."""
+    return (type(value) is str and len(value) <= 254 and
+            (value == '' or (
+                value.isascii() and value.count('@') == 1 and
+                not any(c.isspace() for c in value) and
+                __import__('re').fullmatch(
+                    r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+",
+                    value) is not None)))
 MAX_RESPONSE_BYTES = 256_000
 MAX_MATCHES = 20
 _ID = re.compile(r'[0-9a-fA-F]{8}\Z')
@@ -226,14 +246,16 @@ def parse_entry(raw: bytes, *, identity: CDDBIdentity,
                      tuple(artists), year)
 
 
-def _get(command: str, *, opener, timeout_seconds: int, endpoint: str) -> bytes:
+def _get(command: str, *, opener, timeout_seconds: int, endpoint: str,
+         contact_email: str = '') -> bytes:
     if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 30:
         raise ValueError('timeout_seconds must be 1..30')
     parsed = urllib.parse.urlsplit(endpoint)
     if (parsed.scheme != 'https' or not parsed.hostname or parsed.username or
             parsed.password or parsed.query or parsed.fragment):
         raise ValueError('CDDB endpoint must be an HTTPS CGI URL')
-    query = urllib.parse.urlencode({'cmd': command, 'hello': HELLO, 'proto': '6'})
+    query = urllib.parse.urlencode({'cmd': command, 'hello': hello_for_contact(contact_email),
+                                    'proto': '6'})
     request = urllib.request.Request(endpoint + '?' + query,
                                      headers={'User-Agent': USER_AGENT,
                                               'Accept': 'text/plain'})
@@ -245,13 +267,15 @@ def _get(command: str, *, opener, timeout_seconds: int, endpoint: str) -> bytes:
 
 
 def query_disc(identity: CDDBIdentity, *, timeout_seconds=5,
-               opener=urllib.request.urlopen, endpoint=ENDPOINT) -> CDDBQueryResult:
+               opener=urllib.request.urlopen, endpoint=ENDPOINT,
+               contact_email='') -> CDDBQueryResult:
     """One HTTPS request; errors are sanitized, never leak URLs or user data."""
     if not isinstance(identity, CDDBIdentity):
         raise ValueError('expected CDDBIdentity')
     try:
         return parse_query(_get(identity.query_command, opener=opener,
-                                timeout_seconds=timeout_seconds, endpoint=endpoint))
+                                timeout_seconds=timeout_seconds, endpoint=endpoint,
+                                contact_email=contact_email))
     except urllib.error.HTTPError as exc:
         if exc.code in (429, 502, 503, 504):
             return CDDBQueryResult('unavailable', error=f'GnuDB HTTP {exc.code}')
@@ -263,12 +287,14 @@ def query_disc(identity: CDDBIdentity, *, timeout_seconds=5,
 
 
 def read_entry(identity: CDDBIdentity, match: CDDBMatch, *, timeout_seconds=5,
-               opener=urllib.request.urlopen, endpoint=ENDPOINT) -> CDDBEntry:
+               opener=urllib.request.urlopen, endpoint=ENDPOINT,
+               contact_email='') -> CDDBEntry:
     """Fetch a selected record; caller must still decide if names are trustworthy."""
     if (not isinstance(identity, CDDBIdentity) or not isinstance(match, CDDBMatch)
             or not _CATEGORY.fullmatch(match.category) or not _ID.fullmatch(match.disc_id)):
         raise ValueError('invalid CDDB entry request')
     command = f'cddb read {match.category} {match.disc_id}'
     return parse_entry(_get(command, opener=opener,
-                            timeout_seconds=timeout_seconds, endpoint=endpoint),
+                            timeout_seconds=timeout_seconds, endpoint=endpoint,
+                            contact_email=contact_email),
                        identity=identity, match=match)

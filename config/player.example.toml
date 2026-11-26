@@ -37,6 +37,8 @@ timeout_seconds = 8
 enabled = false
 timeout_seconds = 5
 endpoint = "https://gnudb.gnudb.org/~cddb/cddb.cgi"
+# Optional contact mailbox sent in CDDB hello. Use your own address for GnuDB.
+contact_email = ""
 
 [sonos]
 # Put before the album name that Sonos shows for a CD (track title, artist,
