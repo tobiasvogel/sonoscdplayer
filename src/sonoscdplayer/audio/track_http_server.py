@@ -3,7 +3,8 @@
 
 The player starts it as a child process (see audio/track_server_process.py).
 A cdparanoia process reads the track into a PCMRing; Sonos fetches
-``/track/<n>.wav`` and gets a WAV header followed by the PCM. If Sonos asks
+a session-scoped track URL (or a standalone ``/track/<n>.wav`` URL) and gets
+a WAV header followed by the PCM. If Sonos asks
 for a position that is no longer in RAM, the track is read again from the
 CD at that position. A request that conflicts with an active reader gets
 409. Nothing is written to disk and no Sonos command is sent from here.
@@ -22,6 +23,7 @@ import threading
 import time
 from urllib.parse import urlsplit
 from sonoscdplayer.audio.table_of_contents import read_toc
+from sonoscdplayer.audio.track_server_process import track_stream_path
 from sonoscdplayer.drive.drive_lock import drive_lock
 from sonoscdplayer.audio.pcm_ring_buffer import PCMRing, StreamingConfig, BufferTimeout, BufferClosed, DataExpired, ReaderRemoved
 
@@ -571,15 +573,16 @@ def load_cover(path):
 
 
 class TrackServer(ThreadingHTTPServer):
-    """Serves one track under /track/<n>.wav (plus the optional cover)."""
+    """Serves one track in the current session (plus the optional cover)."""
     daemon_threads = True
     allow_reuse_address = True
     ORPHAN_GRACE_SECONDS = 0.75
 
-    def __init__(self, addr, stream, track, cover=None):
+    def __init__(self, addr, stream, track, cover=None, *, session_id=None):
         self.stream = stream
         self.track = track
-        self.route = f'/track/{track}.wav'
+        self.session_id = session_id
+        self.route = track_stream_path(track, session_id=self.session_id)
         # Optional album art for Sonos: one JPEG, read once, served read-only.
         self.cover_route, self.cover_bytes = load_cover(cover)
         self._generation_lock = threading.Lock()
@@ -787,7 +790,8 @@ class DiscServer(TrackServer):
     # up the drive.
     START_GUARD_SECONDS = 5.0
 
-    def __init__(self, addr, stream, track, *, tracks, command_for, cover=None):
+    def __init__(self, addr, stream, track, *, tracks, command_for, cover=None,
+                 session_id=None):
         if track not in tracks:
             raise ValueError('start track not on the disc')
         self.tracks = dict(tracks)          # track number -> PCM bytes
@@ -795,11 +799,12 @@ class DiscServer(TrackServer):
         self._start_track = track
         self._first_get_pending = True      # no GET has attached yet
         self._start_served = False          # the selected track has been requested
-        super().__init__(addr, stream, track, cover=cover)
+        super().__init__(addr, stream, track, cover=cover, session_id=session_id)
 
     def track_for(self, path):
-        """Track number of a ``/track/<n>.wav`` path on this disc, or None."""
-        m = re.fullmatch(r'/track/(\d{1,2})\.wav', urlsplit(path).path)
+        """Track number on this disc and in this session, or None."""
+        prefix = self.route.rsplit('/', 1)[0]
+        m = re.fullmatch(re.escape(prefix) + r'/(\d{1,2})\.wav', urlsplit(path).path)
         if m is None:
             return None
         track = int(m.group(1))
@@ -902,7 +907,7 @@ class DiscServer(TrackServer):
         self.stream = stream
         self._streams.append(stream)
         self.track = track
-        self.route = f'/track/{track}.wav'
+        self.route = track_stream_path(track, session_id=self.session_id)
         self._generation += 1
         self._probe_used = False
         stream.log(f'SWITCH track={track} generation={self._generation} sector_seek_pcm={seek}')
@@ -926,12 +931,18 @@ def main():
                    help='validated playback setting passed by the player service')
     p.add_argument('--bind', default='0.0.0.0')
     p.add_argument('--port', type=int, default=8765)
+    p.add_argument('--session-id', default=None,
+                   help='32 lowercase hex characters; omit for standalone track URLs')
     p.add_argument('--write-timeout', type=float, default=30)
     p.add_argument('--initial-prebuffer-ms', type=int, default=0, help='PCM-Vorlauf vor erstem WAV-Byte; 0 = bisheriger Start')
     p.add_argument('--cover', default=None, help='cached album-art JPEG to offer Sonos under /cover/<name>')
     p.add_argument('--disc', action='store_true',
-                   help='serve every track of the CD (/track/<n>.wav), one reader at a time')
+                   help='serve every track of the CD, one reader at a time')
     a = p.parse_args()
+    try:
+        track_stream_path(a.track, session_id=a.session_id)
+    except ValueError as exc:
+        p.error(str(exc))
     cfg = StreamingConfig.load(a.config)
     if a.max_buffer_mib is not None:
         if not 16 <= a.max_buffer_mib <= 512:
@@ -947,9 +958,10 @@ def main():
         server_cm = DiscServer((a.bind, a.port), stream, a.track,
                                tracks={t.number: t.pcm_bytes for t in toc.tracks},
                                command_for=lambda n: cdparanoia_command(a.device, n),
-                               cover=a.cover)
+                               cover=a.cover, session_id=a.session_id)
     else:
-        server_cm = TrackServer((a.bind, a.port), stream, a.track, cover=a.cover)
+        server_cm = TrackServer((a.bind, a.port), stream, a.track, cover=a.cover,
+                                session_id=a.session_id)
     with server_cm as server:
         print(f'Serving http://{a.bind}:{a.port}{server.route} '
               f'PCM={track.pcm_bytes} RAM={cfg.capacity_bytes} initial_prebuffer_ms={a.initial_prebuffer_ms}', flush=True)
