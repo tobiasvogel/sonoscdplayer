@@ -20,7 +20,11 @@ def parse_position(value):
 
 
 def verified_progress(info, owned_uri, *, duration_fallback=None):
-    """Return a bounded position/duration only for this exact owned URI."""
+    """Return bounded timing for the exact owned URI, preferring physical duration.
+
+    The duration_fallback argument retains its name for compatibility; a valid
+    physical CD duration takes precedence over the Sonos report.
+    """
     if not isinstance(info, dict) or not owned_uri or info.get('uri') != owned_uri:
         return None
     elapsed = parse_position(info.get('position'))
@@ -31,7 +35,7 @@ def verified_progress(info, owned_uri, *, duration_fallback=None):
     # present it as a known track length or extrapolate the position.
     if duration == 0:
         duration = None
-    if duration is None and type(duration_fallback) is int and 0 < duration_fallback <= 359999:
+    if type(duration_fallback) is int and 0 < duration_fallback <= 359999:
         duration = duration_fallback
     if duration is not None and elapsed > duration:
         return None
