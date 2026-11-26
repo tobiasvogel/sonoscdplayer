@@ -754,8 +754,9 @@ class Controller:
         if not block:
             return False
         last = len(block['urls']) - 1
-        return (playing_from_queue(player)
-                and queue_item_is_ours(player, block['first'] + last, block['urls'][last]))
+        return (playing_from_queue(player, propagate_read_errors=True)
+                and queue_item_is_ours(player, block['first'] + last, block['urls'][last],
+                                       propagate_read_errors=True))
 
     def _drop_queue_entry(self, player):
         """After our own verified stop/end: remove our block where still ours."""

@@ -10,6 +10,11 @@ from pathlib import Path
 import re
 from xml.sax.saxutils import escape
 
+from requests.exceptions import (
+    ConnectionError as RequestsConnectionError,
+    Timeout as RequestsTimeout,
+)
+
 from sonoscdplayer.metadata.status_summary import track_entry
 
 DEFAULT_ALBUM_PREFIX = 'CD: '
@@ -113,11 +118,19 @@ def didl_item(didl):
     return from_didl_string(didl)[0]
 
 
-def queue_item_is_ours(player, position, url):
-    """True only if queue position (1-based) still holds exactly our stream."""
+def queue_item_is_ours(player, position, url, *, propagate_read_errors=False):
+    """True only if queue position (1-based) still holds exactly our stream.
+
+    Observation callers may propagate transient network failures; cleanup
+    callers default to refusing action when a read cannot be verified.
+    """
     try:
         items = player.get_queue(start=position - 1, max_items=1)
         return bool(items) and getattr(items[0].resources[0], 'uri', None) == url
+    except (TimeoutError, ConnectionError, RequestsTimeout, RequestsConnectionError):
+        if propagate_read_errors:
+            raise
+        return False
     except Exception:
         return False
 
@@ -136,10 +149,18 @@ def remove_queue_item(player, entry):
         return False
 
 
-def playing_from_queue(player):
-    """True if the speaker currently plays from its Sonos queue."""
+def playing_from_queue(player, *, propagate_read_errors=False):
+    """True if the speaker currently plays from its Sonos queue.
+
+    Observation callers may propagate transient network failures; cleanup
+    callers default to refusing action when a read cannot be verified.
+    """
     try:
         uri = player.avTransport.GetMediaInfo([('InstanceID', 0)])['CurrentURI']
+    except (TimeoutError, ConnectionError, RequestsTimeout, RequestsConnectionError):
+        if propagate_read_errors:
+            raise
+        return False
     except Exception:
         return False
     return isinstance(uri, str) and uri.startswith('x-rincon-queue:')
