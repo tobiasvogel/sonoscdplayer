@@ -28,3 +28,17 @@ def configure_request_timeout(settings, *, soco_config=None):
             return None
     soco_config.REQUEST_TIMEOUT = timeout
     return timeout
+
+
+def ensure_queue_speaker_info(player):
+    """Populate SoCo's cache before its implicit, unbounded queue-play read.
+
+    Alternative player implementations without this cache do not need it.
+    A failed or empty read must prevent queue writes, not trigger a retry.
+    """
+    if not hasattr(player, 'speaker_info') or player.speaker_info:
+        return
+    from soco import config as soco_config
+    player.get_speaker_info(timeout=soco_config.REQUEST_TIMEOUT)
+    if not player.speaker_info:
+        raise RuntimeError('Sonos speaker information unavailable')

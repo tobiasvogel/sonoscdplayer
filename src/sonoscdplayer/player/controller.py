@@ -33,6 +33,7 @@ from sonoscdplayer.sonos.speaker_checks import (SpeakerGrouped, TransportChanged
                                                 require_our_stream)
 from sonoscdplayer.ui.menu.playback_progress import verified_progress
 from sonoscdplayer.sonos import groups
+from sonoscdplayer.sonos.network_config import ensure_queue_speaker_info
 from sonoscdplayer.metadata.status_summary import status_metadata
 from sonoscdplayer.sonos.track_metadata import (DEFAULT_ALBUM_PREFIX, cover_route, didl_item, playing_from_queue,
                             queue_allowed, queue_item_is_ours, remove_queue_block, track_didl)
@@ -702,6 +703,7 @@ class Controller:
     def _enqueue_disc(self, player, host, meta, cover_url):
         """Append every track as one block at the END of the queue, play the
         selected one. The user's own queue entries are never touched."""
+        ensure_queue_speaker_info(player)
         tracks = list(self.state.track_numbers)
         urls = [track_stream_url(host, self.port, n) for n in tracks]
         first = None
@@ -1122,6 +1124,7 @@ class Controller:
         if not self.seen_playing or not self.owned_url:
             raise ValueError('track switch requires confirmed owned playback')
         player = self.verify_existing()
+        ensure_queue_speaker_info(player)
         expected = 'PLAYING' if self.state.mode == Mode.PLAYING else 'PAUSED_PLAYBACK'
         self._ownership(player, expected)
         self._ownership(player, expected)
