@@ -559,6 +559,12 @@ class Controller:
         except (TimeoutError, ConnectionError,
                 RequestsTimeout, RequestsConnectionError) as exc:
             now = time.monotonic()
+            if (self.state.mode == Mode.STARTING and not self.seen_playing
+                    and self.start_monotonic is not None
+                    and now - self.start_monotonic >= STARTUP_LIMIT_SECONDS):
+                self._fail(f'Sonos did not start playing within {STARTUP_LIMIT_SECONDS} s '
+                           '(status unavailable); startup aborted')
+                return
             if self._sonos_read_failure_since is None:
                 self._sonos_read_failure_since = now
                 print(f'[player] Sonos status temporarily unavailable: {type(exc).__name__}; '
