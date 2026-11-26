@@ -93,8 +93,8 @@ def track_didl(url, metadata, track, *, album_prefix=DEFAULT_ALBUM_PREFIX, cover
         parts.append(f'<upnp:album>{escape(album)}</upnp:album>')
     if cover_url:
         parts.append(f'<upnp:albumArtURI>{escape(cover_url)}</upnp:albumArtURI>')
-    # The track length lets the Sonos app show duration and progress.
-    length = _duration(entry.get('duration_seconds')) or _duration(duration_seconds)
+    # Prefer the physical CD duration; external metadata is only a fallback.
+    length = _duration(duration_seconds) or _duration(entry.get('duration_seconds'))
     duration = f' duration="{length}"' if length else ''
     parts += ['<upnp:class>object.item.audioItem.musicTrack</upnp:class>',
               f'<res protocolInfo="http-get:*:audio/wav:*"{duration}>{escape(url)}</res>',
