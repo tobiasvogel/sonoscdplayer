@@ -373,7 +373,7 @@ class LifecycleTests(unittest.TestCase):
 
     def test_track_switch_does_not_detach_when_stream_server_fails(self):
         self.start()
-        self.server.start = lambda track: (_ for _ in ()).throw(OSError('reader unavailable'))
+        self.server.start = lambda track, *, session_id=None: (_ for _ in ()).throw(OSError('reader unavailable'))
         with self.assertRaises(OSError):
             self.player.change('next')
         self.assertEqual(self.a.stop_calls, 1)
