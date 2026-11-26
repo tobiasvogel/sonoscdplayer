@@ -67,7 +67,7 @@ def gnudb_settings_from_config(metadata):
 
 
 def gnudb_contact_from_config(metadata):
-    """Read validated optional contact; keep the established settings tuple.""
+    """Read validated optional contact; keep the established settings tuple."""
     gnudb_settings_from_config(metadata)
     return metadata.get('gnudb', {}).get('contact_email', '')
 
