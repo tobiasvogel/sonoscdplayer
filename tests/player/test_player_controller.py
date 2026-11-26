@@ -119,7 +119,9 @@ class TargetSelectionTests(unittest.TestCase):
         self.assertTrue(handle_command(self.ctrl, {'command':'select 3'})['ok'])
         self.assertTrue(handle_command(self.ctrl, {'command':'play','uid':'TEST_ONE'})['ok'])
         self.assertEqual(self.ctrl.uid,'TEST_ONE')
-        self.assertEqual(self.one.plays,['http://192.0.2.10:8765/track/3.wav'])
+        session = self.server.options['session_id']
+        self.assertRegex(session, r'^[0-9a-f]{32}$')
+        self.assertEqual(self.one.plays, [f'http://192.0.2.10:8765/session/{session}/track/3.wav'])
         self.assertEqual(self.two.plays,[])
     def test_no_takeover_during_owned_playback(self):
         self.ctrl.play('TEST_ONE'); self.one.transport='PLAYING'; self.ctrl.refresh()
@@ -130,7 +132,9 @@ class TargetSelectionTests(unittest.TestCase):
         self.ctrl.play('TEST_ONE'); self.one.transport='PLAYING'; self.ctrl.refresh()
         self.ctrl.stop()
         self.ctrl.play('TEST_TWO')
-        self.assertEqual(self.two.plays,['http://192.0.2.20:8765/track/1.wav'])
+        session = self.server.options['session_id']
+        self.assertRegex(session, r'^[0-9a-f]{32}$')
+        self.assertEqual(self.two.plays, [f'http://192.0.2.20:8765/session/{session}/track/1.wav'])
     def test_route_failure_refuses_stream(self):
         self.ctrl.route=lambda ip: (_ for _ in ()).throw(OSError('no route'))
         result=handle_command(self.ctrl,{'command':'play','uid':'TEST_ONE'})

@@ -64,7 +64,7 @@ class Speaker:
 class Server:
     def __init__(self): self.running=False
     def alive(self): return self.running
-    def start(self,track): self.running=True
+    def start(self, track, *, session_id=None): self.running=True
     def close(self): self.running=False
 
 

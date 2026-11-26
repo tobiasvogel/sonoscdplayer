@@ -15,7 +15,7 @@ META = {'album': 'Album', 'artist': 'Artist',
         'tracks': [{'number': 1, 'title': 'One'}, {'number': 2, 'title': 'Two'},
                    {'number': 3, 'title': 'Three'}]}
 FOREIGN = 'x-sonos-spotify:foreign'
-URL = 'http://192.0.2.10:8765/track/{}.wav'
+URL = 'http://192.0.2.10:8765/session/{}/track/{}.wav'
 
 
 def entry(uri):
@@ -63,8 +63,8 @@ class QueuePlayer(FakePlayer):
         return [e.resources[0].uri for e in self.queue]
 
 
-def block():
-    return [URL.format(n) for n in (1, 2, 3)]
+def block(session):
+    return [URL.format(session, n) for n in (1, 2, 3)]
 
 
 class QueueTests(unittest.TestCase):
@@ -96,8 +96,10 @@ class QueueTests(unittest.TestCase):
         self.make(QueuePlayer())
         self.c.state = self.c.state.select(2)
         self.playing()
-        self.assertEqual(self.p.uris(), [FOREIGN] + block())
-        self.assertEqual(self.p.uri, URL.format(2))
+        session = self.s.options['session_id']
+        self.assertRegex(session, r'^[0-9a-f]{32}$')
+        self.assertEqual(self.p.uris(), [FOREIGN] + block(session))
+        self.assertEqual(self.p.uri, URL.format(session, 2))
         self.assertEqual(self.s.options.get('disc'), True)
         self.assertIn('<dc:title>Two</dc:title>', self.p.didls[1])
         self.assertEqual(self.p.direct, [])
@@ -123,17 +125,19 @@ class QueueTests(unittest.TestCase):
     def test_player_follows_skips_in_the_sonos_app(self):
         self.make(QueuePlayer())
         self.playing()
-        self.p.uri = URL.format(3)                          # app: jump to track 3
+        session = self.s.options['session_id']
+        self.p.uri = URL.format(session, 3)                 # app: jump to track 3
         self.c.refresh()
         self.assertEqual((self.c.state.mode, self.c.state.selected_track), (Mode.PLAYING, 3))
-        self.assertEqual(self.c.owned_url, URL.format(3))
+        self.assertEqual(self.c.owned_url, URL.format(session, 3))
         self.assertEqual(self.c.status_snapshot()['player']['track'], 3)
 
     def test_device_next_moves_within_the_block(self):
         self.make(QueuePlayer())
         self.playing()
+        session = self.s.options['session_id']
         self.c.change('next')
-        self.assertEqual(self.p.uri, URL.format(2))
+        self.assertEqual(self.p.uri, URL.format(session, 2))
         self.assertEqual(self.c.state.selected_track, 2)
         self.assertEqual(self.p.stops, 0)
         self.assertEqual(len(self.p.didls), 3)              # nothing re-added
@@ -141,7 +145,7 @@ class QueueTests(unittest.TestCase):
     def test_end_of_last_track_with_wrap_is_a_natural_end(self):
         self.make(QueuePlayer())
         self.playing()
-        self.p.uri = URL.format(3)
+        self.p.uri = URL.format(self.s.options['session_id'], 3)
         self.c.refresh()
         self.p.transport, self.p.uri = 'STOPPED', FOREIGN    # queue wrapped to its start
         self.c.refresh()
@@ -151,9 +155,10 @@ class QueueTests(unittest.TestCase):
     def test_wrap_onto_our_own_first_track(self):
         self.make(QueuePlayer(queue=()))
         self.playing()
-        self.p.uri = URL.format(3)
+        session = self.s.options['session_id']
+        self.p.uri = URL.format(session, 3)
         self.c.refresh()
-        self.p.transport, self.p.uri = 'STOPPED', URL.format(1)
+        self.p.transport, self.p.uri = 'STOPPED', URL.format(session, 1)
         self.c.refresh()
         self.assertEqual((self.c.state.mode, self.c.state.selected_track), (Mode.STOPPED, 1))
         self.assertEqual(self.p.uris(), [])

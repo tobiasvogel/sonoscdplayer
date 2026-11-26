@@ -193,7 +193,7 @@ class ServiceTests(unittest.TestCase):
 class Server:
     def __init__(self): self.up = False
     def alive(self): return self.up
-    def start(self, track): self.up = True
+    def start(self, track, *, session_id=None): self.up = True
     def close(self): self.up = False
 
 
@@ -511,8 +511,8 @@ class PauseTests(unittest.TestCase):
 class CountingServer(Server):
     def __init__(self):
         super().__init__(); self.starts=0; self.closes=0
-    def start(self, track):
-        self.starts += 1; super().start(track)
+    def start(self, track, *, session_id=None):
+        self.starts += 1; super().start(track, session_id=session_id)
     def close(self):
         self.closes += 1; super().close()
 
