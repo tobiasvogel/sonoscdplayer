@@ -287,9 +287,7 @@ class Controller:
         return snapshot
 
     def _ownership(self, player, expected):
-        self._follow_sonos(player)
-        return require_our_stream(player, self.uid, self.owned_url,
-                                       expected, frozenset(self._joined))
+        self._follow_sonos(player, expected=expected)
 
     def _release_group(self, *, owned_url=None):
         if not self._joined:
@@ -454,12 +452,11 @@ class Controller:
                 self._fail(f'Sonos did not start playing within {STARTUP_LIMIT_SECONDS} s '
                            f'(transport {transport}); startup aborted')
                 return
-            if transport in ('PLAYING', 'PAUSED_PLAYBACK', 'TRANSITIONING'):
+            if transport == 'TRANSITIONING':
                 self._follow_sonos(player)
             if transport == 'PLAYING':
                 self.stopped_since = None
-                require_our_stream(player, self.uid, self.owned_url, 'PLAYING',
-                                   frozenset(self._joined))
+                self._ownership(player, 'PLAYING')
                 self.seen_playing = True
                 if self.state.mode == Mode.STARTING:
                     self.state = self.state.playback_confirmed()
@@ -727,16 +724,23 @@ class Controller:
             return None
         return block['tracks'][block['urls'].index(uri)]
 
-    def _follow_sonos(self, player):
-        """Sonos (or the Sonos app) moved within our block: follow its track.
+    def _follow_sonos(self, player, *, expected=None):
+        """Follow our queue track, verifying ownership first when requested.
 
-        Only URLs of our own disc block are followed; anything else is left to
-        the ownership checks, which fail closed as before.
+        Only URLs of our own disc block can become the expected URI. Keep the
+        previous track state if a required ownership check fails. Observations
+        during TRANSITIONING retain their existing advisory behaviour.
         """
-        if not self._queue_block:
-            return
-        uri = player.get_current_track_info().get('uri')
-        track = self._block_track(uri)
+        uri = self.owned_url
+        track = None
+        if self._queue_block:
+            candidate = player.get_current_track_info().get('uri')
+            track = self._block_track(candidate)
+            if track is not None:
+                uri = candidate
+        if expected is not None:
+            require_our_stream(player, self.uid, uri, expected,
+                               frozenset(self._joined))
         if track is None or uri == self.owned_url:
             return
         self.owned_url = uri
