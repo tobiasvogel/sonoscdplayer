@@ -66,9 +66,9 @@ class MetaPlayer(FakePlayer):
 
 
 class CoverServer(FakeServer):
-    def start(self, track, cover=None):
+    def start(self, track, cover=None, *, session_id=None):
         self.cover = cover
-        super().start(track)
+        super().start(track, session_id=session_id)
 
 
 class ControllerTests(unittest.TestCase):

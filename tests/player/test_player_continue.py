@@ -29,7 +29,9 @@ class ContinueTests(unittest.TestCase):
         self.playing()
         self.end_track(197)
         self.assertEqual((self.c.state.mode, self.c.state.selected_track), (Mode.STARTING, 2))
-        self.assertEqual(self.p.plays[-1], 'http://192.0.2.10:8765/track/2.wav')
+        session = self.s.options['session_id']
+        self.assertRegex(session, r'^[0-9a-f]{32}$')
+        self.assertEqual(self.p.plays[-1], f'http://192.0.2.10:8765/session/{session}/track/2.wav')
 
     def test_stop_from_the_sonos_app_does_not_continue(self):
         self.make(QueuePlayer())
