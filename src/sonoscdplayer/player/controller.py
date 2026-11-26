@@ -19,6 +19,7 @@ import sys
 import threading
 import re
 import time
+from uuid import uuid4
 
 from requests.exceptions import (
     ConnectionError as RequestsConnectionError,
@@ -69,7 +70,7 @@ class TrackServerProcess:
             elif 'READER end written=' in line:
                 self._reader_active = False
 
-    def start(self, track, cover=None, disc=False):
+    def start(self, track, cover=None, disc=False, *, session_id=None):
         """Start the server for ``track`` and wait until its reader runs.
 
         With ``disc=True`` it serves all tracks of the CD (DiscServer).
@@ -82,7 +83,8 @@ class TrackServerProcess:
                         '--port', str(self.port), '--config', str(self.config)]
                        + (['--max-buffer-mib', str(self.max_buffer_mib)] if self.max_buffer_mib is not None else [])
                        + (['--cover', str(cover)] if cover else [])
-                       + (['--disc'] if disc else []),
+                       + (['--disc'] if disc else [])
+                       + (['--session-id', session_id] if session_id is not None else []),
                        cwd=self.base, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, text=True, bufsize=1)
         self.proc = p
@@ -706,12 +708,12 @@ class Controller:
                 self._recovery_url = None
             print(f'[player] continuing failed: {type(exc).__name__}: {exc}', flush=True)
 
-    def _enqueue_disc(self, player, host, meta, cover_url):
+    def _enqueue_disc(self, player, host, meta, cover_url, *, session_id):
         """Append every track as one block at the END of the queue, play the
         selected one. The user's own queue entries are never touched."""
         ensure_queue_speaker_info(player)
         tracks = list(self.state.track_numbers)
-        urls = [track_stream_url(host, self.port, n) for n in tracks]
+        urls = [track_stream_url(host, self.port, n, session_id=session_id) for n in tracks]
         first = None
         for index, (number, url) in enumerate(zip(tracks, urls)):
             didl = track_didl(url, meta or {}, number, album_prefix=self.album_prefix,
@@ -841,7 +843,10 @@ class Controller:
                 groups.require_member_ready_releasing(
                     member, member_uid, self.remembered_group())
         host = self.route(target.ip_address) if self.route is not None else self.host
-        url = track_stream_url(host, self.port, self.state.selected_track)
+        # A new server lifetime must never reuse an earlier audio resource.
+        session_id = uuid4().hex
+        url = track_stream_url(host, self.port, self.state.selected_track,
+                               session_id=session_id)
         self.server.close()
         # Publish STARTING before the potentially long, synchronous PCM prebuffer.
         # No Sonos command has been sent and ownership is not claimed here.
@@ -858,7 +863,7 @@ class Controller:
             # Whole disc as a block in the Sonos queue, unless shuffle/repeat
             # is on or [sonos] use_queue = false.
             block = self.use_queue and queue_allowed(target)
-            server_options = {}
+            server_options = {'session_id': session_id}
             if cover_path:
                 server_options['cover'] = cover_path
             if block:
@@ -892,7 +897,7 @@ class Controller:
                               album_prefix=self.album_prefix, cover_url=cover_url,
                               duration_seconds=self._toc_duration(self.state.selected_track))
             if block:
-                self._enqueue_disc(player, host, meta, cover_url)
+                self._enqueue_disc(player, host, meta, cover_url, session_id=session_id)
             elif didl is not None:
                 player.play_uri(url, meta=didl)
             else:
