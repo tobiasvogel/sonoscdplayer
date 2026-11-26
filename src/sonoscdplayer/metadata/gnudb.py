@@ -27,7 +27,8 @@ def hello_for_contact(contact_email: str = '') -> str:
         raise ValueError('invalid GnuDB contact email')
     if not contact_email:
         return HELLO  # Legacy configurations preserve their existing behaviour.
-    return f'{contact_email} SonosCDPlayer SonosCDPlayer 0.9'
+    username, domain = contact_email.rsplit('@', 1)
+    return f'{username} {domain} SonosCDPlayer 0.9'
 
 
 def valid_contact_email(value) -> bool:

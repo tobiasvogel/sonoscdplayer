@@ -48,7 +48,7 @@ class ContactTests(unittest.TestCase):
         result = query_disc(identity, opener=opener, contact_email='tester@example.org')
         self.assertEqual(result.status, 'not_found')
         self.assertEqual(parse_qs(urlsplit(seen[0]).query)['hello'][0],
-                         'tester@example.org SonosCDPlayer SonosCDPlayer 0.9')
+                         'tester example.org SonosCDPlayer 0.9')
 
     def test_worker_validates_contact_without_network(self):
         with tempfile.TemporaryDirectory() as tmp:
