@@ -1102,6 +1102,8 @@ def run(argv=None):
             raise ValueError('invalid service.shutdown_policy')
         from sonoscdplayer.player.playback_settings import merged, FIELDS as PLAYBACK_FIELDS
         settings, _ = merged(settings, state_dir=ns.state_dir)
+        from sonoscdplayer.sonos.network_config import configure_request_timeout
+        configure_request_timeout(settings)
         effective_buffer = settings['streaming']['max_buffer_mib']
         ctrl = Controller(state, None, None, ns.port,
                           TrackServerProcess(base, device, conf, ns.port,

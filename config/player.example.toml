@@ -41,6 +41,8 @@ endpoint = "https://gnudb.gnudb.org/~cddb/cddb.cgi"
 contact_email = ""
 
 [sonos]
+# SOAP connect/read timeout in seconds (1..30); not a total command deadline.
+request_timeout_seconds = 20.0
 # Put before the album name that Sonos shows for a CD (track title, artist,
 # album and cover come from the CD metadata). Empty string: no prefix.
 album_prefix = "CD: "
