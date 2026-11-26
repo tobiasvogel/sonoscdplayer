@@ -1127,7 +1127,11 @@ class Controller:
         self._ownership(player, expected)
         block = self._queue_block
         index = block['tracks'].index(track)
-        player.play_from_queue(block['first'] - 1 + index)
+        position = block['first'] + index
+        if not queue_item_is_ours(player, position, block['urls'][index],
+                                  propagate_read_errors=True):
+            raise RuntimeError('queue destination changed; refusing track switch')
+        player.play_from_queue(position - 1)
         self.owned_url = block['urls'][index]
         self.state = self.state.followed(track)
         if self.state.mode == Mode.PAUSED:
