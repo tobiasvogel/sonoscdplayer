@@ -8,6 +8,7 @@ UID is left alone.
 from __future__ import annotations
 
 from sonoscdplayer.sonos.groups import IDLE_TRANSPORTS, is_expected_group, visible_members
+from sonoscdplayer.sonos.network_timing import measure_network
 
 
 class TransportChanged(RuntimeError):
@@ -30,7 +31,7 @@ def find_speaker(uid: str, *, discover=None):
         except ImportError as exc:
             raise RuntimeError('SoCo is not installed; start the player with its Python '
                                'environment') from exc
-    speakers = discover(timeout=5) or set()
+    speakers = measure_network('discovery', lambda: discover(timeout=5)) or set()
     matches = [speaker for speaker in speakers if speaker.uid == uid]
     if len(matches) != 1:
         raise RuntimeError(f'speaker {uid} not found exactly once ({len(matches)} matches)')

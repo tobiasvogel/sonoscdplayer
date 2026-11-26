@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 import time
 
+from sonoscdplayer.sonos.network_timing import measure_network
+
 #: A speaker in one of these states plays nothing anybody listens to; the
 #: player may use it (a paused queue stays in the Sonos queue).
 IDLE_TRANSPORTS = frozenset(('STOPPED', 'PAUSED_PLAYBACK'))
@@ -85,7 +87,7 @@ def find_speakers(uids, *, discover=None, timeout=5):
     if discover is None:
         from soco import discover
     found = {}
-    devices = discover(timeout=timeout) or ()
+    devices = measure_network('discovery', lambda: discover(timeout=timeout)) or ()
     for uid in uids:
         matches = [p for p in devices if p.uid == uid]
         if len(matches) != 1:

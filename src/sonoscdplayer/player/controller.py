@@ -34,6 +34,7 @@ from sonoscdplayer.sonos.speaker_checks import (SpeakerGrouped, TransportChanged
 from sonoscdplayer.ui.menu.playback_progress import verified_progress
 from sonoscdplayer.sonos import groups
 from sonoscdplayer.sonos.network_config import ensure_queue_speaker_info
+from sonoscdplayer.sonos.network_timing import measure_network, read_grace_event, timed_network
 from sonoscdplayer.metadata.status_summary import status_metadata
 from sonoscdplayer.sonos.track_metadata import (DEFAULT_ALBUM_PREFIX, cover_route, didl_item, playing_from_queue,
                             queue_allowed, queue_item_is_ours, remove_queue_block, track_didl)
@@ -287,6 +288,7 @@ class Controller:
                                                    self.state.selected_track)
         return snapshot
 
+    @timed_network('ownership')
     def _ownership(self, player, expected):
         self._follow_sonos(player, expected=expected)
 
@@ -538,6 +540,7 @@ class Controller:
                 self._display_progress_poll_at = None
             # A successful complete observation restores trust in the live state.
             if self._sonos_read_failure_since is not None:
+                read_grace_event('read_grace_recovered', self._sonos_read_failure_since)
                 print('[player] Sonos status reachable again; ownership rechecked', flush=True)
                 self._sonos_read_failure_since = None
         except UriChanged as exc:
@@ -565,10 +568,12 @@ class Controller:
                 return
             if self._sonos_read_failure_since is None:
                 self._sonos_read_failure_since = now
+                read_grace_event('read_grace_started', now, now=now)
                 print(f'[player] Sonos status temporarily unavailable: {type(exc).__name__}; '
                       'keeping local stream, no Sonos command sent', flush=True)
             if now - self._sonos_read_failure_since < SONOS_READ_GRACE_SECONDS:
                 return
+            read_grace_event('read_grace_expired', self._sonos_read_failure_since, now=now)
             self._fail(f'Sonos status unavailable for {SONOS_READ_GRACE_SECONDS:g} s; '
                        'local stream closed; no Sonos STOP sent')
             return
@@ -585,6 +590,7 @@ class Controller:
         block = self._queue_block
         return uri == self.owned_url or bool(block and uri in block['urls'])
 
+    @timed_network('follow_group')
     def _follow_group(self, player):
         """Go along with group changes made in the Sonos app.
 
@@ -717,7 +723,8 @@ class Controller:
             elif position != first + index:
                 raise RuntimeError('queue changed while adding the disc')
             self._queue_block['urls'].append(url)
-        player.play_from_queue(first - 1 + tracks.index(self.state.selected_track))
+        measure_network('queue_play', lambda: player.play_from_queue(
+            first - 1 + tracks.index(self.state.selected_track)))
 
     def _block_track(self, uri):
         """Track number of ``uri`` if it is one of our block's URLs, else None."""
@@ -1134,7 +1141,7 @@ class Controller:
         if not queue_item_is_ours(player, position, block['urls'][index],
                                   propagate_read_errors=True):
             raise RuntimeError('queue destination changed; refusing track switch')
-        player.play_from_queue(position - 1)
+        measure_network('queue_play', lambda: player.play_from_queue(position - 1))
         self.owned_url = block['urls'][index]
         self.state = self.state.followed(track)
         if self.state.mode == Mode.PAUSED:

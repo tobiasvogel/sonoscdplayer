@@ -1,6 +1,8 @@
 """Player-process configuration of SoCo's SOAP request timeout."""
 from __future__ import annotations
 
+from sonoscdplayer.sonos.network_timing import measure_network
+
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 20.0
 
 
@@ -39,6 +41,10 @@ def ensure_queue_speaker_info(player):
     if not hasattr(player, 'speaker_info') or player.speaker_info:
         return
     from soco import config as soco_config
-    player.get_speaker_info(timeout=soco_config.REQUEST_TIMEOUT)
-    if not player.speaker_info:
-        raise RuntimeError('Sonos speaker information unavailable')
+
+    def populate():
+        player.get_speaker_info(timeout=soco_config.REQUEST_TIMEOUT)
+        if not player.speaker_info:
+            raise RuntimeError('Sonos speaker information unavailable')
+
+    measure_network('speaker_info', populate)

@@ -1,4 +1,6 @@
 """Optional passive player timing diagnostics; no network operations."""
+from contextvars import ContextVar
+from functools import wraps
 from importlib.metadata import version
 import time
 
@@ -16,6 +18,39 @@ def _log(message):
     except OSError:
         # A failed diagnostic write must not alter a command's outcome.
         pass
+
+
+# Scoped to the measured worker operation; never shared across threads.
+_active_timing = ContextVar('active_network_timing', default=None)
+
+
+def measure_network(operation, action):
+    """Measure an inner operation only inside an enabled worker measurement."""
+    timing = _active_timing.get()
+    return action() if timing is None else timing.measure(operation, action)
+
+
+def timed_network(operation):
+    """Instrument a method without changing its callers or arguments."""
+    def decorate(action):
+        @wraps(action)
+        def wrapped(*args, **kwargs):
+            return measure_network(operation, lambda: action(*args, **kwargs))
+        return wrapped
+    return decorate
+
+
+def read_grace_event(operation, started, *, now=None):
+    """Report a grace transition, independently of the duration threshold.
+
+    The caller supplies the existing monotonic start/deadline observation.
+    Recovery needs a fresh diagnostic timestamp only when timing is enabled.
+    """
+    timing = _active_timing.get()
+    if timing is None:
+        return
+    elapsed = (timing._clock() if now is None else now) - started
+    _log(f'[sonos-timing] operation={operation} elapsed_seconds={elapsed:.3f}')
 
 
 class TimingDiagnostics:
@@ -57,6 +92,7 @@ class TimingDiagnostics:
             return action()
         started = self._clock()
         outcome = 'returned'
+        token = _active_timing.set(self)
         try:
             result = action()
             if command is not None:
@@ -67,6 +103,7 @@ class TimingDiagnostics:
             outcome = type(exc).__name__
             raise
         finally:
+            _active_timing.reset(token)
             elapsed = self._clock() - started
             if elapsed >= self.threshold or outcome not in ('returned', 'ok'):
                 label = f' command={command}' if command is not None else ''
