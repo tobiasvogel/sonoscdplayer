@@ -35,3 +35,6 @@ https://grabcad.com/library/usb-type-a-male-connector-cable-1
 
 50mm Case Fan:
 https://grabcad.com/library/gelid-silent-5-fn-sx05-40-1
+
+Dupont Jumper Wires:
+https://grabcad.com/library/dupont-jumper-wire-1

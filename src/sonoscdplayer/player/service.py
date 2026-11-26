@@ -538,6 +538,8 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
     pending = []
     try:
         publisher = StatusPublisher(controller, power)
+        from sonoscdplayer.sonos.network_timing import TimingDiagnostics
+        timing = getattr(controller, 'network_timing', None) or TimingDiagnostics()
         selection = SelectedTarget(store=target_store)
         if selection.restore():
             print('[target] remembered speaker selection restored; no Sonos action until PLAY', flush=True)
@@ -829,6 +831,9 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                     publisher.publish(controller, power)
                 return reply
 
+            def timed_operate(request):
+                return timing.command(operate, request)
+
             # Retry only when the old optical path disappears/changes. Avoid
             # probing healthy drives and preserve the normal keepalive cadence.
             next_drive_recovery = 0.0
@@ -869,7 +874,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                         except (OSError, RuntimeError, ValueError) as exc:
                             print(f'[drive] idle USB recovery deferred: {type(exc).__name__}: {exc}',
                                   flush=True)
-                controller.refresh()
+                timing.measure('refresh', controller.refresh)
                 now = time.monotonic()
                 check_removal(now)
                 # Safe status inspection only. NEVER touch optical media while
@@ -955,7 +960,7 @@ def serve(controller, socket_path, *, poll_seconds=0.5, power=None, drive_id=Non
                         send_reply(conn, {'ok': False, 'error': 'busy: try again'})
                     else:
                         pending.append((conn, executor.submit(run_if_still_wanted,
-                                                              operate, conn, request)))
+                                                              timed_operate, conn, request)))
                 except (ValueError, UnicodeError, socket.timeout, OSError) as exc:
                     send_reply(conn, {'ok': False, 'error': f'bad request: {type(exc).__name__}'})
     finally:
@@ -1103,13 +1108,17 @@ def run(argv=None):
         from sonoscdplayer.player.playback_settings import merged, FIELDS as PLAYBACK_FIELDS
         settings, _ = merged(settings, state_dir=ns.state_dir)
         from sonoscdplayer.sonos.network_config import configure_request_timeout
-        configure_request_timeout(settings)
+        from sonoscdplayer.sonos.network_timing import TimingDiagnostics
+        timing = TimingDiagnostics.from_config(settings)
+        timeout = configure_request_timeout(settings)
+        timing.log_startup(timeout)
         effective_buffer = settings['streaming']['max_buffer_mib']
         ctrl = Controller(state, None, None, ns.port,
                           TrackServerProcess(base, device, conf, ns.port,
                                         startup_prebuffer=startup_enabled,
                                         startup_timeout=float(startup_timeout),
                                         max_buffer_mib=effective_buffer), route=routed_source_ip)
+        ctrl.network_timing = timing
         ctrl.playback_runtime_settings = {
             field: settings[field.split('.')[0]][field.split('.')[1]]
             for field in PLAYBACK_FIELDS
