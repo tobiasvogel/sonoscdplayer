@@ -239,6 +239,9 @@ def _safe_result(toc, cdtext=None, *, cache, cover_cache, cover_policy, online, 
                 query=gnudb_query, read=gnudb_read,
                 endpoint=gnudb_endpoint if gnudb_endpoint != GNUDB_ENDPOINT else None,
                 contact_email=gnudb_contact_email)
+            # A failed/no-match lookup otherwise leaves no trace in the journal.
+            # This is a sanitized status only: never log the contact address or URL.
+            print(f'[metadata] gnudb={_fallback_status}', flush=True)
             if fallback is not None:
                 effective, match, score = fallback, 'gnudb', None
                 try:
