@@ -665,13 +665,16 @@ class TrackServer(ThreadingHTTPServer):
             if stream is not self.stream or stream.ring.stats['readers'] != 0:
                 return
             if stream.thread.is_alive():
-                self._clear_orphan_timer()
-                timer = threading.Timer(self.ORPHAN_GRACE_SECONDS,
-                                        self._expire_orphan, args=(stream,))
-                timer.daemon = True
-                self._orphan_timer = timer
-                timer.start()
-                stream.log('GET disconnect: grace period for HTTP reconnect')
+                self._schedule_orphan_locked(stream)
+
+    def _schedule_orphan_locked(self, stream):
+        self._clear_orphan_timer()
+        timer = threading.Timer(self.ORPHAN_GRACE_SECONDS,
+                                self._expire_orphan, args=(stream,))
+        timer.daemon = True
+        self._orphan_timer = timer
+        timer.start()
+        stream.log('GET disconnect: grace period for HTTP reconnect')
 
     def acquire_get(self, offset=0, track=None):
         """Atomically attach a GET or schedule one SEQUENTIAL reread.
@@ -783,6 +786,7 @@ class DiscServer(TrackServer):
     """
     SWITCH_WAIT_SECONDS = 20.0
     SWITCH_POLL_SECONDS = 0.05
+    RANGE_RESTART_MIN_AHEAD_BYTES = 30 * RATE
     # When the queue becomes the source, Sonos first requests the queue's
     # current entry (often track 1) and only then seeks to the selected
     # track. Such an early request for another track waits this long for
@@ -799,7 +803,51 @@ class DiscServer(TrackServer):
         self._start_track = track
         self._first_get_pending = True      # no GET has attached yet
         self._start_served = False          # the selected track has been requested
+        self._range_reconnect = None
         super().__init__(addr, stream, track, cover=cover, session_id=session_id)
+
+    def _clear_orphan_timer(self):
+        super()._clear_orphan_timer()
+        self._range_reconnect = None
+
+    def _schedule_orphan_locked(self, stream):
+        super()._schedule_orphan_locked(stream)
+        self._range_reconnect = (stream, self._generation, self.track, time.monotonic())
+
+    def _restart_far_range_locked(self, offset, track):
+        """Cancel an orphaned sequential read only for a distant reconnect."""
+        current = self.stream
+        candidate = self._range_reconnect
+        if candidate is None:
+            return
+        # Consume the candidate on admission, even if the request is nearby.
+        self._range_reconnect = None
+        previous, generation, previous_track, disconnected_at = candidate
+        if (previous is not current or generation != self._generation
+                or previous_track != self.track or track != self.track
+                or time.monotonic() - disconnected_at >= self.ORPHAN_GRACE_SECONDS
+                or not current.thread.is_alive() or current._cancel.is_set()
+                or not current.command or current.command[0] != 'cdparanoia'):
+            return
+        state = current.ring.stats
+        if (state['readers'] or state['finished'] or not 0 < offset < current.expected
+                or offset - state['next_offset'] < self.RANGE_RESTART_MIN_AHEAD_BYTES):
+            return
+        # Validate the command before stopping a potentially useful producer.
+        seek = offset // SECTOR * SECTOR
+        try:
+            sector_replay_command(current.command, seek)
+        except ValueError:
+            return
+        self._clear_orphan_timer()
+        current.log(f'RANGE reconnect restart reader_offset={offset} '
+                    f'producer_offset={state["next_offset"]} sector_seek_pcm={seek}')
+        current.cancel_orphan()
+        current.thread.join(timeout=2.0)
+        if current.thread.is_alive() or not current.ring.stats['finished']:
+            raise ReplayBusy()
+        # _acquire_locked handles the cancelled generation with the existing
+        # sequential replay/continuation logic and reuses the PCM allocation.
 
     def track_for(self, path):
         """Track number on this disc and in this session, or None."""
@@ -835,6 +883,7 @@ class DiscServer(TrackServer):
                     self._first_get_pending = False
                     if track == self._start_track:
                         self._start_served = True
+                    self._restart_far_range_locked(offset, track)
                     return self._acquire_locked(offset)
                 if early and time.monotonic() < guard_until:
                     stream = None                # give the selected track a moment
