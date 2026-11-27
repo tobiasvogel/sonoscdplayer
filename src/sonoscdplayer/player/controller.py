@@ -37,7 +37,7 @@ from sonoscdplayer.sonos import groups
 from sonoscdplayer.sonos.network_config import ensure_queue_speaker_info
 from sonoscdplayer.sonos.network_timing import measure_network, read_grace_event, timed_network
 from sonoscdplayer.metadata.status_summary import status_metadata
-from sonoscdplayer.sonos.track_metadata import (DEFAULT_ALBUM_PREFIX, cover_route, didl_item, playing_from_queue,
+from sonoscdplayer.sonos.track_metadata import (DEFAULT_ALBUM_PREFIX, cover_route, didl_item, play_queue_position, playing_from_queue,
                             queue_allowed, queue_item_is_ours, remove_queue_block, track_didl)
 
 
@@ -485,6 +485,7 @@ class Controller:
                 # Do not call this a natural end if the URI has changed.
                 info = player.get_current_track_info()
                 group_proof_url = self.owned_url
+                wrapped = False
                 if info.get('uri') != self.owned_url:
                     # At the end of the queue Sonos jumps back to its first
                     # entry - possibly the first track of our own block.
@@ -494,13 +495,20 @@ class Controller:
                         self._fail('Sonos URI changed before STOPPED')
                         return
                     group_proof_url = None   # proven through our queue block
+                    wrapped = True           # Sonos reached the end of its queue
                     first = self._block_track(info.get('uri'))
                     if first is not None:
                         self.state = self.state.followed(first)
                 # In block mode Sonos plays on by itself.
                 advance = (None if self._queue_block
                            else self._next_after_end(self._display_progress))
+                played_out = advance is None and self._disc_played_out(wrapped)
                 self.state = self.state.natural_end()
+                if played_out and self.state.selected_track != self.state.track_numbers[0]:
+                    # Like a CD player: after the last track the disc starts
+                    # from the beginning again on the next PLAY.
+                    self.state = self.state.select(self.state.track_numbers[0])
+                    print('[player] disc played to its end; back to the first track', flush=True)
                 self.owned_url = None
                 self.player = None
                 self.server.close()
@@ -695,6 +703,28 @@ class Controller:
         index = numbers.index(self.state.selected_track)
         return numbers[index + 1] if index + 1 < len(numbers) else None
 
+    def _disc_played_out(self, wrapped):
+        """True if a STOPPED means the last track of the disc has played out.
+
+        ``wrapped``: Sonos jumped back to the start of its queue, which it only
+        does at the end of the queue. Otherwise the last track must be
+        selected and its last verified position within END_TOLERANCE of the
+        end; a STOP in the Sonos app earlier in the disc keeps the track.
+        """
+        numbers = self.state.track_numbers
+        if not numbers:
+            return False
+        if wrapped:
+            return True
+        if self.state.selected_track != numbers[-1]:
+            return False
+        progress = self._display_progress
+        if not isinstance(progress, dict):
+            return False
+        elapsed, duration = progress.get('elapsed_seconds'), progress.get('duration_seconds')
+        return (type(elapsed) is int and type(duration) is int
+                and duration - elapsed <= END_TOLERANCE_SECONDS)
+
     def _advance_to(self, track):
         members = self._group_members
         try:
@@ -725,8 +755,8 @@ class Controller:
             elif position != first + index:
                 raise RuntimeError('queue changed while adding the disc')
             self._queue_block['urls'].append(url)
-        measure_network('queue_play', lambda: player.play_from_queue(
-            first - 1 + tracks.index(self.state.selected_track)))
+        measure_network('queue_play', lambda: play_queue_position(
+            player, first + tracks.index(self.state.selected_track)))
 
     def _block_track(self, uri):
         """Track number of ``uri`` if it is one of our block's URLs, else None."""
@@ -1146,11 +1176,11 @@ class Controller:
         if not queue_item_is_ours(player, position, block['urls'][index],
                                   propagate_read_errors=True):
             raise RuntimeError('queue destination changed; refusing track switch')
-        measure_network('queue_play', lambda: player.play_from_queue(position - 1))
+        measure_network('queue_play', lambda: play_queue_position(player, position))
         self.owned_url = block['urls'][index]
         self.state = self.state.followed(track)
         if self.state.mode == Mode.PAUSED:
-            self.state = self.state.resumed()   # play_from_queue starts playback
+            self.state = self.state.resumed()   # play_queue_position starts playback
         self._display_progress = None
         self._display_progress_poll_at = None
         self.last_transport = 'TRANSITIONING'

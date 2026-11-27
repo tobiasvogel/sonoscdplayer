@@ -32,10 +32,23 @@ class QueuePlayer(FakePlayer):
         self.didls = []
         outer = self
 
+        self.seeks = []
+        self.queue_starts = 0
+
         class AV:
             def GetMediaInfo(self, _args):
                 return {'CurrentURI': outer.media_uri}
+
+            def Seek(self, args):
+                args = dict(args)
+                assert args['Unit'] == 'TRACK_NR'
+                outer.seeks.append(args['Target'])
+                outer.uri = outer.queue[args['Target'] - 1].resources[0].uri
+                outer.transport = 'TRANSITIONING'
         self.avTransport = AV()
+
+    def play(self):
+        self.plays.append(self.uri)
 
     def add_to_queue(self, didl):
         self.didls.append(didl)
@@ -44,6 +57,9 @@ class QueuePlayer(FakePlayer):
         return len(self.queue)
 
     def play_from_queue(self, index):
+        # Like SoCo: the queue becomes the source (Sonos starts at its
+        # first entry), then the seek follows.
+        self.queue_starts += 1
         self.uri = self.queue[index].resources[0].uri
         self.media_uri = 'x-rincon-queue:TEST_UID#0'
         self.transport = 'TRANSITIONING'
@@ -162,6 +178,63 @@ class QueueTests(unittest.TestCase):
         self.c.refresh()
         self.assertEqual((self.c.state.mode, self.c.state.selected_track), (Mode.STOPPED, 1))
         self.assertEqual(self.p.uris(), [])
+
+    def test_device_next_seeks_directly_while_the_queue_plays(self):
+        # A second play_from_queue would first send Sonos to queue entry 1.
+        self.make(QueuePlayer())
+        self.playing()
+        session = self.s.options['session_id']
+        self.assertEqual(self.p.queue_starts, 1)          # the start itself
+        self.c.change('next')
+        self.p.transport = 'PLAYING'
+        self.c.refresh()
+        self.c.change('next')
+        self.assertEqual(self.p.queue_starts, 1)
+        self.assertEqual(self.p.seeks, [3, 4])            # queue positions of tracks 2 and 3
+        self.assertEqual(self.p.uri, URL.format(session, 3))
+        self.assertEqual(self.c.state.selected_track, 3)
+
+    def test_start_from_a_paused_own_queue_seeks_directly(self):
+        player = QueuePlayer()
+        player.media_uri = 'x-rincon-queue:TEST_UID#0'    # user queue paused/stopped
+        self.make(player)
+        self.c.state = self.c.state.select(2)
+        self.playing()
+        self.assertEqual((player.queue_starts, player.seeks), (0, [3]))
+        self.assertEqual(player.uri, URL.format(self.s.options['session_id'], 2))
+
+    def test_another_speakers_queue_is_not_taken_as_ours(self):
+        player = QueuePlayer()
+        player.media_uri = 'x-rincon-queue:OTHER_UID#0'
+        self.make(player)
+        self.playing()
+        self.assertEqual((player.queue_starts, player.seeks), (1, []))
+
+    def end_of_disc(self, *, elapsed, track=3, wrap_to=None):
+        self.make(QueuePlayer())
+        self.playing()
+        session = self.s.options['session_id']
+        self.p.uri = URL.format(session, track)
+        self.c.refresh()
+        self.c._display_progress = {'elapsed_seconds': elapsed, 'duration_seconds': 200}
+        self.p.transport = 'STOPPED'
+        if wrap_to is not None:
+            self.p.uri = wrap_to
+        self.c.refresh()
+        self.assertEqual(self.c.state.mode, Mode.STOPPED)
+        return self.c.state.selected_track
+
+    def test_after_the_last_track_the_counter_returns_to_track_one(self):
+        self.assertEqual(self.end_of_disc(elapsed=198), 1)
+
+    def test_after_a_wrap_to_a_foreign_entry_the_counter_returns_to_track_one(self):
+        self.assertEqual(self.end_of_disc(elapsed=5, wrap_to=FOREIGN), 1)
+
+    def test_stop_in_the_app_during_the_last_track_keeps_it(self):
+        self.assertEqual(self.end_of_disc(elapsed=60), 3)
+
+    def test_stop_in_the_app_earlier_in_the_disc_keeps_the_track(self):
+        self.assertEqual(self.end_of_disc(elapsed=198, track=2), 2)
 
     def test_foreign_takeover_is_still_an_error(self):
         self.make(QueuePlayer())

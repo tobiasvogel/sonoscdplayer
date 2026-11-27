@@ -166,6 +166,29 @@ def playing_from_queue(player, *, propagate_read_errors=False):
     return isinstance(uri, str) and uri.startswith('x-rincon-queue:')
 
 
+def play_queue_position(player, position):
+    """Play the 1-based queue ``position`` of ``player`` (a coordinator).
+
+    SoCo's ``play_from_queue`` first sets the queue as transport source and
+    only then seeks. When the queue already is the source (our block is
+    playing or paused, or a paused user queue), that first step makes Sonos
+    jump to the queue's first entry and fetch it before the seek arrives;
+    for our disc the track server then starts reading the wrong track. So
+    seek directly when the speaker already plays from its own queue.
+    """
+    uid = getattr(player, 'uid', None)
+    try:
+        uri = player.avTransport.GetMediaInfo([('InstanceID', 0)])['CurrentURI']
+    except (AttributeError, KeyError, TypeError):
+        uri = None              # no media info available: take the long way
+    if isinstance(uid, str) and isinstance(uri, str) and uri.startswith(f'x-rincon-queue:{uid}#'):
+        player.avTransport.Seek([('InstanceID', 0), ('Unit', 'TRACK_NR'),
+                                 ('Target', position)])
+        player.play()
+    else:
+        player.play_from_queue(position - 1)
+
+
 def remove_queue_block(player, block):
     """Remove our disc block, last entry first; only entries that are still ours."""
     if not block:

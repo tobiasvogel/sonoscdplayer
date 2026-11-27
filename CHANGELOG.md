@@ -6,6 +6,14 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- NEXT and PREVIOUS during playback (device or web client) go straight to
+  the chosen track. Before, Sonos briefly jumped to the first entry of its
+  queue and requested it, so the player threw away its read-ahead and read
+  the CD twice. The same applies to PLAY when the speaker already plays
+  from its queue.
+- After the last track of a CD has played out, the track counter returns
+  to track 1, so the next PLAY starts the CD from the beginning. A stop in
+  the Sonos app earlier in the CD keeps the current track.
 - All texts on the display and in the web client come from the language
   files: the Wi-Fi setup and Wi-Fi entry screens of the ST7735S preview had
   their own German and English texts and now use the same wording as the
