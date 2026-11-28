@@ -113,9 +113,9 @@ class ButtonActivityOrderTests(unittest.TestCase):
         for action in ("playpause", "stop", "next", "previous"):
             with self.subTest(action=action):
                 calls = self.execute(action, fail_activity=True)
-                # NEXT/PREVIOUS first look whether the player is stopped
+                # NEXT/PREVIOUS/STOP first look whether the player is stopped
                 # (here: unknown mode, so the drive must wake first).
-                expected = ([("read", "status")] if action in ("next", "previous")
+                expected = ([("read", "status")] if action in ("next", "previous", "stop")
                             else []) + [("send", "drive-activity")]
                 self.assertEqual(
                     [c for c in calls if c[0] != "report"], expected)
@@ -404,7 +404,7 @@ def run_action(action, *, wake_fails=False, mode="PLAYING"):
 class WakeOrderTests(unittest.TestCase):
 
     def test_each_transport_button_wakes_before_reading(self):
-        for action in ("playpause", "stop"):
+        for action in ("playpause",):
             with self.subTest(action=action):
                 calls = run_action(action)
 
@@ -422,7 +422,7 @@ class WakeOrderTests(unittest.TestCase):
                 )
 
     def test_track_change_during_playback_wakes_before_the_deciding_read(self):
-        for action in ("next", "previous"):
+        for action in ("next", "previous", "stop"):
             with self.subTest(action=action):
                 calls = run_action(action)
                 self.assertEqual(calls, [
@@ -434,8 +434,8 @@ class WakeOrderTests(unittest.TestCase):
                 ])
 
     def test_track_change_while_stopped_does_not_wake_the_drive(self):
-        # Stopped, NEXT/PREVIOUS only move the track number; PLAY wakes later.
-        for action in ("next", "previous"):
+        # Stopped, NEXT/PREVIOUS/STOP only move the track number; PLAY wakes later.
+        for action in ("next", "previous", "stop"):
             with self.subTest(action=action):
                 calls = run_action(action, mode="STOPPED")
                 self.assertEqual(calls, [
@@ -445,13 +445,13 @@ class WakeOrderTests(unittest.TestCase):
                 ])
 
     def test_failed_wake_blocks_following_commands(self):
-        for action in ("playpause", "stop"):
+        for action in ("playpause",):
             with self.subTest(action=action):
                 self.assertEqual(
                     run_action(action, wake_fails=True),
                     [("send", "drive-activity")],
                 )
-        for action in ("next", "previous"):
+        for action in ("next", "previous", "stop"):
             with self.subTest(action=action):
                 self.assertEqual(
                     run_action(action, wake_fails=True),

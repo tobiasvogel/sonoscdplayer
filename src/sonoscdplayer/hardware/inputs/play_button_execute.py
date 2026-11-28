@@ -4,8 +4,9 @@ Read status and selection once per physical press, apply the fail-closed policy,
 then attempt exactly one player transport command. No retry, UID, or implicit
 fallback to the legacy 'playpause' RPC.
 
-NEXT/PREVIOUS while STOPPED only move the selected track number in the player,
-so they neither wake the drive nor get lost: presses that arrive while another
+NEXT/PREVIOUS (and STOP, which goes back to the first track) while STOPPED
+only move the selected track number in the player, so they do not wake the
+drive. NEXT/PREVIOUS do not get lost either: presses that arrive while another
 press is in flight are counted and sent afterwards, but only if the player is
 still STOPPED then. The real track is read from the CD at PLAY.
 """
@@ -85,7 +86,7 @@ class SelectedTargetExecutor:
         sent = False
         try:
             status = None
-            if action in ('next', 'previous'):
+            if action in ('next', 'previous', 'stop'):
                 # A stopped player only moves its track number: no wake needed.
                 status = self.reader(self.socket_path, 'status')
                 if _mode(status) != 'STOPPED' and self.activity_before_read:

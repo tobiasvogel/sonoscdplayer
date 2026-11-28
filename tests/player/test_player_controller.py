@@ -60,6 +60,20 @@ class TestController(unittest.TestCase):
     def test_explicit_owned_stop(self):
         self.playing(); self.c.stop(); self.assertEqual(self.p.stops,1)
         self.assertEqual(self.c.state.mode,Mode.STOPPED)
+    def test_own_stop_goes_back_to_track_one(self):
+        # D-006: like a CD player, STOP starts the disc from the beginning.
+        self.c.apply_command('next'); self.c.apply_command('next')
+        self.playing(); self.c.stop()
+        self.assertEqual((self.c.state.mode, self.c.state.selected_track), (Mode.STOPPED, 1))
+    def test_stop_while_stopped_only_selects_track_one(self):
+        self.c.apply_command('next'); self.c.apply_command('next')
+        self.c.apply_command('stop')
+        self.assertEqual(self.c.state.selected_track, 1)
+        self.assertEqual((self.p.stops, self.p.plays), (0, []))   # no Sonos action
+    def test_stop_reported_by_sonos_keeps_the_track(self):
+        self.c.apply_command('next')
+        self.playing(); self.p.transport='STOPPED'; self.c.refresh()
+        self.assertEqual((self.c.state.mode, self.c.state.selected_track), (Mode.STOPPED, 2))
     def test_close_no_sonos_stop(self):
         self.playing(); self.c.close(); self.assertEqual(self.p.stops,0)
     def test_natural_end(self):

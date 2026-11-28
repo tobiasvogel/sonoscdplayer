@@ -66,6 +66,9 @@ def plan_playpause(status, target):
 def plan_stop(status, target):
     """Authorize STOP only for an acknowledged, owned active playback.
 
+    While STOPPED (nothing of ours on Sonos) STOP is allowed too: the player
+    then only selects the first track again.
+
     A selected target alone never authorizes STOP. The player performs its
     independent live URI, topology, transport, and ownership checks.
     """
@@ -90,6 +93,11 @@ def plan_stop(status, target):
         # STOP acknowledges a released error; never a Sonos write.
         if sonos.get('owned') is False and stream.get('active') is False:
             return 'reset'
+        return None
+    if player.get('mode') == 'STOPPED':
+        # Only moves the selection back to the first track; no Sonos write.
+        if sonos.get('owned') is False and stream.get('active') is False:
+            return 'stop'
         return None
     if selection.get('selected') is not True:
         return None

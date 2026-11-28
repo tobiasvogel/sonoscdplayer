@@ -6,6 +6,10 @@ All notable changes for users of SonosCDPlayer. The version number is in
 
 ## Unreleased
 
+- STOP on the device or in the web client selects track 1 again, like on a
+  CD player; pressed while already stopped it only does that, without
+  waking the drive. A stop reported by Sonos in the middle of the CD keeps
+  the track, so PLAY continues there after a glitch.
 - NEXT and PREVIOUS during playback (device or web client) go straight to
   the chosen track. Before, Sonos briefly jumped to the first entry of its
   queue and requested it, so the player threw away its read-ahead and read

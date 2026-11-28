@@ -123,8 +123,14 @@ class SafeButtonPolicyTests(unittest.TestCase):
         for mode in ('PLAYING', 'PAUSED'):
             self.assertEqual(plan_stop(
                 snapshot(mode, owned=True, active=True), target()), 'stop')
+        # Stopped with nothing of ours on Sonos: STOP only selects track 1.
+        for selected in (True, False):
+            self.assertEqual(plan_stop(
+                snapshot('STOPPED', owned=False, active=False), target(selected)), 'stop')
         for mode, owned, active, pending, selected in (
-                ('STOPPED', False, False, False, True),
+                ('STOPPED', False, False, True, True),
+                ('STOPPED', True, False, False, True),
+                ('STOPPED', False, True, False, True),
                 ('PLAYING', False, True, False, True),
                 ('PAUSED', True, False, False, True),
                 ('PLAYING', True, True, True, True),
@@ -411,12 +417,19 @@ class ExecuteTests(unittest.TestCase):
     def test_stop_blocks_when_unowned_or_cleanup_pending(self):
         for snap in (status_reply('PLAYING', False, True),
                      status_reply('PLAYING', True, True, pending=True),
-                     status_reply('STOPPED', False, False)):
+                     status_reply('STOPPED', False, False, pending=True)):
             with self.subTest(snap=snap):
                 sends = []
                 run_one(lambda path, cmd: snap if cmd == 'status' else target(),
                         lambda *args: sends.append(args), action='stop')
                 self.assertEqual(sends, [])
+
+    def test_stop_while_stopped_goes_back_to_track_one(self):
+        sends = []
+        run_one(lambda path, cmd: status_reply('STOPPED', False, False)
+                if cmd == 'status' else target(False),
+                lambda *args: sends.append(args), action='stop')
+        self.assertEqual(sends, [('/not-a-socket', 'stop', None)])
 
     def test_stop_sender_timeout_does_not_retry(self):
         sends = []

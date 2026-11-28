@@ -1008,8 +1008,24 @@ class Controller:
         if not keep_group and self._joined:
             self.resolve_idle_group()     # we just stopped it: it is idle
 
+    def _back_to_first_track(self):
+        """After an own STOP the next PLAY starts the CD from the beginning."""
+        numbers = self.state.track_numbers
+        if (self.state.mode == Mode.STOPPED and numbers
+                and self.state.selected_track != numbers[0]):
+            self.state = self.state.select(numbers[0])
+
     def stop(self):
-        """Stop our own stream (after checking it twice) and release the group."""
+        """Stop our own stream (after checking it twice) and release the group.
+
+        Like a CD player, an own STOP (device button or web client) selects
+        the first track again; while already stopped it does only that,
+        without any Sonos action. A STOPPED reported by Sonos is not handled
+        here and keeps the track (see refresh).
+        """
+        if self.state.mode == Mode.STOPPED:
+            self._back_to_first_track()
+            return
         # If Sonos already stopped during STARTING, release ONLY our local session.
         # Never issue Sonos STOP on this recovery path.
         if self.state.mode == Mode.STARTING and self.owned_url and self.player:
@@ -1030,8 +1046,10 @@ class Controller:
             self.server.close()
             self._release_group(owned_url=old_url)   # before the queue changes
             self._drop_queue_entry(player)
+            self._back_to_first_track()
             return
         self._stop_owned()
+        self._back_to_first_track()
 
     def retarget(self, uid, members=None):
         """Change the speakers of the running playback.
